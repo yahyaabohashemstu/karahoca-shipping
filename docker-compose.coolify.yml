@@ -1,0 +1,328 @@
+# =============================================================================
+# KaraHoca Shipping — the COOLIFY-MANAGED variant
+# =============================================================================
+# Coolify → New Resource → Private Repository (GitHub App)
+#   Build Pack             Docker Compose
+#   Base Directory         /
+#   Docker Compose Location  /docker-compose.coolify.yml
+#
+# Derived from infra/compose.hetzner.yml, which deploys the same stack by hand.
+# The differences all come from one fact: Coolify runs `docker compose` for you,
+# from a checkout of this repository, on a box that is already serving live
+# sites. Four things follow.
+#
+# 1. BUILD CONTEXTS ARE REPOSITORY-ROOT RELATIVE.
+#    The hand-run file lives in infra/ and reaches up with `../apps/api`. This
+#    one sits at the root and uses `./apps/api`, so it resolves the same whether
+#    Coolify invokes compose from the root or from a base directory.
+#
+# 2. NO `name:` KEY.
+#    Coolify derives the compose project name from the resource UUID. Setting it
+#    here makes the deployed project name disagree with what Coolify records,
+#    and it then cannot find its own containers to stop or redeploy them.
+#
+# 3. THE TRAEFIK LABELS STAY HAND-WRITTEN, AND NO DOMAIN IS SET IN THE UI.
+#    Coolify generates routers named http-0-<uuid> / https-0-<uuid> for whatever
+#    domain you type into the resource form, and — verified on this box against
+#    the clonelens.com container — it sets no `priority`. Traefik then falls
+#    back to ranking by rule length, which happens to give the right answer for
+#    /api over /, but only by accident of string length.
+#
+#    This stack needs a deliberate order: three prefixes to the API at priority
+#    100, everything else to the dashboard at priority 1. So the routers below
+#    are declared explicitly, and the Domains field in Coolify is left EMPTY.
+#    Filling it in would add a second pair of routers for the same hostname and
+#    let Traefik pick between them by length. Leave it blank.
+#
+# 4. NO `:?required` GUARDS.
+#    The hand-run file fails fast on a missing secret. Coolify's compose parser
+#    is not docker-compose, and the `${VAR:?message}` form is not worth the risk
+#    of a parse error at deploy time. Every required variable is instead listed
+#    in the environment section of the deployment runbook, and Postgres or the
+#    API will refuse to start — loudly — if one is blank.
+# =============================================================================
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ===========================================================================
+  # PostgreSQL 16 + TimescaleDB 2.17.2 + PostGIS — private, capped, no ports
+  # ===========================================================================
+  # NAMED kh-postgres, NOT postgres. This is not cosmetic.
+  #
+  # api and web join the shared `coolify` network so Traefik can route to them,
+  # and Docker resolves DNS across EVERY attached network with no way to scope a
+  # lookup to one. Coolify's own control-plane containers hold these aliases
+  # there:
+  #
+  #     coolify-db     aliases = [coolify-db, postgres]
+  #     coolify-redis  aliases = [coolify-redis, redis]
+  #
+  # A service called `postgres` here would make the API resolve `postgres` to
+  # THE DATABASE THAT RUNS COOLIFY ITSELF. The first hand-run deploy of this
+  # stack failed with "NOAUTH Authentication required" from Coolify's Redis —
+  # which was luck. Had the credentials happened to match, this application
+  # would have been writing into the hosting platform's own database.
+  #
+  # Renaming these back to generic names silently reintroduces that.
+  # ===========================================================================
+  kh-postgres:
+    image: timescale/timescaledb-ha:pg16.6-ts2.17.2-all
+    restart: unless-stopped
+    logging: *logging
+    # 128 MB, not 1 GB: parallel workers are capped at 2 on a 2-vCPU box, so
+    # large shared sort buffers would be reserved and never used.
+    shm_size: 128mb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: UTC
+      PGTZ: UTC
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=timescaledb,pg_stat_statements
+      # ---- Sized for a 640 MB container on a SHARED 3.7 GB host -------------
+      - -c
+      - max_connections=40
+      - -c
+      - shared_buffers=160MB
+      # Deliberately conservative: this is a planner hint about the OS page
+      # cache, and on a shared box most of that cache belongs to other people.
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - wal_buffers=4MB
+      # 1 GB, not 8: bounded WAL keeps the 75 GB disk predictable.
+      - -c
+      - max_wal_size=1GB
+      - -c
+      - min_wal_size=128MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      # 2 vCPU shared with five other apps — parallelism here steals from them.
+      - -c
+      - timescaledb.max_background_workers=2
+      - -c
+      - max_worker_processes=8
+      - -c
+      - max_parallel_workers=2
+      - -c
+      - max_parallel_workers_per_gather=1
+      - -c
+      - max_locks_per_transaction=128
+      - -c
+      - log_min_duration_statement=2000
+    volumes:
+      - kh-postgres-data:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 640M
+    networks: [internal]
+
+  # ===========================================================================
+  # Redis — derived state only, so a tiny cap and LRU eviction are correct
+  # ===========================================================================
+  # kh-redis, not redis — see the note on kh-postgres above.
+  # ===========================================================================
+  kh-redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    logging: *logging
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --save
+      - ""
+      - --maxmemory
+      - 48mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+    networks: [internal]
+
+  # ===========================================================================
+  # Migrations — runs once, exits; the API is gated on it completing
+  # ===========================================================================
+  migrate:
+    build:
+      context: ./db
+    restart: "no"
+    logging: *logging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@kh-postgres:5432/${POSTGRES_DB}
+    depends_on:
+      kh-postgres: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks: [internal]
+
+  # ===========================================================================
+  # API — /api/*, /realtime, /t/*
+  # ===========================================================================
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      NODE_ENV: production
+      # Node's heap must sit BELOW the container cap or the kernel OOM-killer
+      # gets there before V8's own GC does.
+      NODE_OPTIONS: "--max-old-space-size=224"
+      PORT: 4000
+      HOST: 0.0.0.0
+      API_PREFIX: api/v1
+      PUBLIC_API_URL: https://${APP_DOMAIN}
+      # Same-origin: the dashboard is served from this very hostname.
+      CORS_ORIGINS: https://${APP_DOMAIN}
+      TRUST_PROXY: "true"
+
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@kh-postgres:5432/${POSTGRES_DB}
+      # 40 server-side max, shared with the migrate job and psql sessions.
+      DB_POOL_MAX: 12
+      REDIS_URL: redis://kh-redis:6379
+
+      JWT_USER_SECRET: ${JWT_USER_SECRET}
+      JWT_DRIVER_SECRET: ${JWT_DRIVER_SECRET}
+      INGEST_KEY_SECRET: ${INGEST_KEY_SECRET}
+
+      INGEST_REQUIRE_HMAC: "true"
+      INGEST_MAX_BATCH_POINTS: ${INGEST_MAX_BATCH_POINTS}
+      SESSION_CLAIM_TTL_MIN: ${SESSION_CLAIM_TTL_MIN}
+      DEEP_LINK_SCHEME: karahoca
+      DEEP_LINK_PACKAGE: ${DEEP_LINK_PACKAGE}
+      APK_DOWNLOAD_URL: ${APK_DOWNLOAD_URL}
+
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME}
+      APP_VERSION: ${APP_VERSION}
+    depends_on:
+      kh-postgres: { condition: service_healthy }
+      kh-redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+    networks: [internal, coolify]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+
+      # Priority 100 beats the dashboard's catch-all. Three prefixes, because
+      # the driver app needs /api and /realtime, and the printed QR code
+      # resolves to the short /t/<code> hand-off page.
+      - traefik.http.routers.kh-api-http.entryPoints=http
+      - traefik.http.routers.kh-api-http.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`))
+      - traefik.http.routers.kh-api-http.priority=100
+      - traefik.http.routers.kh-api-http.middlewares=kh-to-https
+      - traefik.http.routers.kh-api-http.service=kh-api
+
+      - traefik.http.routers.kh-api.entryPoints=https
+      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`))
+      - traefik.http.routers.kh-api.priority=100
+      - traefik.http.routers.kh-api.tls=true
+      - traefik.http.routers.kh-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.kh-api.service=kh-api
+
+      - traefik.http.services.kh-api.loadbalancer.server.port=4000
+      - traefik.http.middlewares.kh-to-https.redirectscheme.scheme=https
+
+  # ===========================================================================
+  # Dashboard — everything else on the hostname
+  # ===========================================================================
+  web:
+    build:
+      context: ./apps/web
+      args:
+        # Baked in at build time: NEXT_PUBLIC_* is inlined into the bundle, not
+        # read at runtime. Changing it needs a rebuild, not a restart.
+        NEXT_PUBLIC_API_URL: https://${APP_DOMAIN}/api/v1
+        NEXT_PUBLIC_MAP_STYLE: ${NEXT_PUBLIC_MAP_STYLE}
+        NODE_BUILD_MEMORY: ${NODE_BUILD_MEMORY}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: "--max-old-space-size=200"
+    depends_on:
+      api: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          memory: 288M
+    networks: [internal, coolify]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+
+      - traefik.http.routers.kh-web-http.entryPoints=http
+      - traefik.http.routers.kh-web-http.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.kh-web-http.priority=1
+      - traefik.http.routers.kh-web-http.middlewares=kh-to-https
+      - traefik.http.routers.kh-web-http.service=kh-web
+
+      - traefik.http.routers.kh-web.entryPoints=https
+      - traefik.http.routers.kh-web.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.kh-web.priority=1
+      - traefik.http.routers.kh-web.tls=true
+      - traefik.http.routers.kh-web.tls.certresolver=letsencrypt
+      - traefik.http.routers.kh-web.middlewares=kh-gzip
+      - traefik.http.routers.kh-web.service=kh-web
+
+      - traefik.http.services.kh-web.loadbalancer.server.port=3000
+      - traefik.http.middlewares.kh-gzip.compress=true
+
+volumes:
+  kh-postgres-data:
+    driver: local
+
+networks:
+  # Private. Postgres and Redis are reachable only from these containers — no
+  # host ports, not on the proxy network.
+  internal:
+    driver: bridge
+  # Owned by Coolify. Never let compose try to create or remove it.
+  coolify:
+    external: true
