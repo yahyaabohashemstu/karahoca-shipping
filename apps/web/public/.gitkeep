@@ -1,0 +1,3 @@
+# Static assets served at the site root.
+# Kept in git so the Dockerfile's `COPY /app/public` step never fails on a
+# fresh clone.

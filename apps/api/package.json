@@ -1,0 +1,62 @@
+{
+  "name": "@karahoca/api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KaraHoca Shipping — tracking API, ingest pipeline and realtime gateway",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main.js",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && node test/e2e.mjs"
+  },
+  "dependencies": {
+    "@fastify/compress": "^8.0.1",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/helmet": "^12.0.1",
+    "@fastify/static": "^10.1.2",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-fastify": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.0.1",
+    "@nestjs/schedule": "^5.0.1",
+    "@nestjs/swagger": "^11.0.3",
+    "@nestjs/websockets": "^11.0.1",
+    "@node-rs/argon2": "^2.0.2",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1",
+    "ulid": "^2.3.0"
+  },
+  "overrides": {
+    "fastify": "$fastify"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.7",
+    "@types/pg": "^8.11.10",
+    "@types/qrcode": "^1.5.5",
+    "socket.io-client": "^4.8.1",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

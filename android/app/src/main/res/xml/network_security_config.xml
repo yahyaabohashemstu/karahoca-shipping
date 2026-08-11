@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Production: TLS only, no user-installed CAs.
+
+      Excluding the "user" trust anchor means a driver who installs a proxy
+      certificate (or has malware that does) cannot intercept telemetry. The
+      per-request HMAC would still detect tampering, but refusing the connection
+      outright is better than detecting the attack afterwards.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+      Development only: 10.0.2.2 is the emulator's alias for the host machine.
+      Unreachable from a real device on a real network, so shipping this block
+      in a release APK is inert.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+
+    <!--
+      Certificate pinning: enable once the production certificate is issued.
+      Pin BOTH the leaf and a backup key, and set an expiration — an expired pin
+      set fails open rather than bricking every truck in the fleet on renewal
+      day, which is exactly the behaviour you want for a sideloaded app that is
+      hard to update in the field.
+
+    <domain-config>
+        <domain includeSubdomains="true">track.karahoca.com</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">REPLACE_WITH_LEAF_SPKI_SHA256</pin>
+            <pin digest="SHA-256">REPLACE_WITH_BACKUP_SPKI_SHA256</pin>
+        </pin-set>
+    </domain-config>
+    -->
+</network-security-config>

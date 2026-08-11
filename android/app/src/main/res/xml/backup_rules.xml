@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing is backed up.
+
+  Restoring a tracking session onto a different phone would produce a second
+  device claiming the same session id with a stale token — the server would
+  reject it (DEVICE_MISMATCH) and the driver would be stuck. Cleaner to require
+  a fresh claim code. The GPS buffer is likewise device-local by design.
+-->
+<full-backup-content>
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="." />
+</full-backup-content>

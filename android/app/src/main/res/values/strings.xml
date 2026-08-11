@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KaraHoca Takip</string>
+
+    <!-- Notification channels -->
+    <string name="channel_tracking">Sevkiyat Takibi</string>
+    <string name="channel_tracking_desc">Takip aktifken görünen kalıcı bildirim. Kapatmayın.</string>
+    <string name="channel_alerts">Uyarılar</string>
+    <string name="channel_alerts_desc">Oturum durumu ile ilgili önemli uyarılar.</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_starting">Takip başlatılıyor…</string>
+    <string name="notification_acquiring_gps">GPS sinyali aranıyor</string>
+    <string name="notification_buffered">%1$d konum bekliyor</string>
+
+    <string name="action_stop">Durdur</string>
+    <string name="action_sync_now">Şimdi gönder</string>
+</resources>

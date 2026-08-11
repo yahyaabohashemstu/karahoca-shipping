@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose owns the real theming; this only needs to exist for the
+         window background and splash before setContent runs. -->
+    <style name="Theme.KaraHocaTracker" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@color/brand_primary</item>
+        <item name="android:navigationBarColor">@color/window_background</item>
+    </style>
+</resources>

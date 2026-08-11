@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ======================================================================
+         NETWORK
+         ====================================================================== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- ======================================================================
+         LOCATION
+
+         FINE is mandatory: COARSE gives ~1–3 km cell-tower accuracy, useless
+         for a delivery route. BACKGROUND is requested *separately and later*
+         (Android 11+ forces a second trip to Settings) because a foreground
+         service started while the app is visible technically does not need it —
+         but our watchdog and BOOT_COMPLETED paths restart the service with no
+         UI on screen, and without BACKGROUND those restarts get no fixes.
+         ====================================================================== -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- ======================================================================
+         FOREGROUND SERVICE
+
+         `location` is the correct type and also the *safest* one: Android 15
+         imposes a 6-hour daily runtime cap on `dataSync` foreground services,
+         but location-type services are exempt. A 14-hour haul would be cut off
+         mid-route if we had chosen dataSync.
+         ====================================================================== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ======================================================================
+         SURVIVING DOZE AND APP-STANDBY
+
+         WAKE_LOCK          — hold a partial wake lock so the CPU stays awake
+                              between fixes and, critically, for the duration of
+                              an upload. Without it a Doze-napping CPU can kill
+                              a socket mid-POST.
+         RECEIVE_BOOT_COMPLETED — resurrect an interrupted session after the
+                              driver's phone reboots (or dies and is charged).
+         SCHEDULE_EXACT_ALARM — the watchdog heartbeat that restarts a service
+                              the OEM killed. Requested at runtime on API 31+.
+         REQUEST_IGNORE_BATTERY_OPTIMIZATIONS — the single most important
+                              permission in this file. Beyond exempting us from
+                              Doze deferral, being on the exemption list is one
+                              of the documented conditions that allows starting
+                              a foreground service *from the background* on
+                              Android 12+, which is exactly what the watchdog
+                              and boot receiver must do.
+
+         NOTE: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS carries Play Store policy
+         restrictions. This APK is sideloaded onto company-managed devices for
+         the duration of a shift and is never published, so the restriction does
+         not apply. See docs/06-device-rollout-runbook.md.
+         ====================================================================== -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+
+    <!-- Battery level reporting and QR hand-off -->
+    <uses-permission android:name="android.permission.BATTERY_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.location.gps" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <application
+        android:name=".TrackerApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.KaraHocaTracker"
+        tools:targetApi="35">
+
+        <!-- WorkManager is initialised by Hilt, not by the default initializer -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            tools:ignore="LockedOrientationActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- karahoca://track?c=K7H29QX4  — QR / SMS hand-off -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="karahoca" android:host="track" />
+            </intent-filter>
+        </activity>
+
+        <!-- ==================================================================
+             THE TRACKING SERVICE
+
+             android:stopWithTask="false" is the line that makes the app survive
+             being swiped out of Recents. Without it the system tears the
+             service down with the task and the truck goes dark.
+
+             android:foregroundServiceType="location" must match the type passed
+             to ServiceCompat.startForeground(); on Android 14+ a mismatch is an
+             immediate crash, not a warning.
+             ================================================================== -->
+        <service
+            android:name=".service.LocationTrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
+
+        <!-- ==================================================================
+             RESURRECTION RECEIVERS
+             ================================================================== -->
+
+        <!-- Phone rebooted / app updated / battery died and was recharged -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- AlarmManager heartbeat: "are you still alive?" every few minutes -->
+        <receiver
+            android:name=".service.WatchdogReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Notification action: driver taps "Stop" without opening the app -->
+        <receiver
+            android:name=".service.NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- ==================================================================
+             SYNC
+             ================================================================== -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
+    </application>
+</manifest>

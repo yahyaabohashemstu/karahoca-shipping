@@ -1,0 +1,27 @@
+{
+  "name": "karahoca-shipping",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KaraHoca 3PL tracking ecosystem — API, dispatcher dashboard, database and Android driver app",
+  "scripts": {
+    "migrate": "npm --prefix db run migrate",
+    "migrate:seed": "npm --prefix db run migrate:seed",
+    "migrate:status": "npm --prefix db run migrate:status",
+
+    "build:api": "npm --prefix apps/api run build",
+    "build:web": "npm --prefix apps/web run build",
+    "build": "npm run build:api && npm run build:web",
+
+    "test:sql": "node db/tests/run.mjs",
+    "test:e2e": "npm --prefix apps/api run test:e2e",
+    "test": "npm run test:sql && npm run test:e2e",
+
+    "dev:stack": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-stack.ps1 -Start",
+    "dev:stack:install": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-stack.ps1 -Install",
+    "dev:stack:stop": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-stack.ps1 -Stop"
+  },
+  "workspaces": [],
+  "engines": {
+    "node": ">=22"
+  }
+}

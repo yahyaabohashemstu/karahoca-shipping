@@ -1,0 +1,19 @@
+{
+  "name": "@karahoca/db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PostgreSQL + TimescaleDB + PostGIS schema and migration runner for KaraHoca Shipping",
+  "scripts": {
+    "migrate": "node migrate.mjs",
+    "migrate:seed": "node migrate.mjs --seed",
+    "migrate:status": "node migrate.mjs --status",
+    "migrate:verify": "node migrate.mjs --verify"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,77 @@
+# =============================================================================
+# Caddy — only used with `--profile edge` (deployment WITHOUT Coolify).
+# Coolify provides its own Traefik/Caddy proxy and TLS; do not run both.
+# =============================================================================
+
+{
+	email {$ACME_EMAIL}
+	servers {
+		# Trucks on cellular links benefit from HTTP/3's faster recovery from
+		# packet loss and its connection migration across cell handovers.
+		protocols h1 h2 h3
+	}
+}
+
+# -----------------------------------------------------------------------------
+# API + realtime gateway
+# -----------------------------------------------------------------------------
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Socket.IO. Long timeouts because an idle dispatcher dashboard should not
+	# be disconnected every 60 seconds and forced to resubscribe.
+	@websocket {
+		path /realtime*
+	}
+	handle @websocket {
+		reverse_proxy api:4000 {
+			transport http {
+				read_timeout 24h
+				write_timeout 24h
+			}
+		}
+	}
+
+	# Telemetry ingest. Generous body limit + write timeout: a truck emerging
+	# from a long dead zone uploads a multi-megabyte (gzipped) backlog over a
+	# 2G link, and cutting that off means it can never catch up.
+	handle /api/v1/ingest/* {
+		request_body {
+			max_size 16MB
+		}
+		reverse_proxy api:4000 {
+			transport http {
+				write_timeout 180s
+				read_timeout 180s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy api:4000
+	}
+}
+
+# -----------------------------------------------------------------------------
+# Dispatcher dashboard
+# -----------------------------------------------------------------------------
+{$WEB_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy web:3000
+}

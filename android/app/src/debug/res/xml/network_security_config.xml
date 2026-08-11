@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG-ONLY network policy.
+
+  Overrides the strict `main` config (resource merging: same filename in the
+  debug source set wins) so a physical test phone can reach a development API
+  over plain HTTP on the office LAN.
+
+  cleartextTrafficPermitted is set on base-config, i.e. for ALL hosts, rather
+  than on a list of private ranges. That is deliberate:
+
+    Android's <domain> element matches a HOSTNAME. It does not understand CIDR.
+    <domain>192.168.0.0/16</domain> is treated as the literal string
+    "192.168.0.0/16", matches nothing, and the phone fails with
+    "CLEARTEXT communication not permitted" — while the config looks correct.
+    Listing every possible dev IP instead is unmaintainable, because the LAN
+    address changes with the network.
+
+  This is safe because it is scoped to the debug source set. The release
+  variant keeps the strict policy in src/main: TLS only, system trust anchors
+  only, no user CAs. Nothing here can reach a driver's phone.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Debug builds trust user CAs so Charles/mitmproxy can be used
+                 while diagnosing an ingest problem. -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

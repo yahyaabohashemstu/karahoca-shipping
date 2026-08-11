@@ -1,0 +1,48 @@
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+.env.dev.local
+android/keystore.properties
+android/*.jks
+android/*.keystore
+infra/secrets/
+
+# Node
+node_modules/
+dist/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+.npm/
+
+# Android
+# NOTE: gradle/wrapper/gradle-wrapper.jar IS committed on purpose — it pins the
+# Gradle version so every machine and CI runner builds identically.
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# Local dev toolchain provisioned by scripts/dev-stack.ps1
+.toolchain/
+android/.idea/
+android/captures/
+*.apk
+*.aab
+!docs/**/*.apk
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Runtime
+backups/
+*.log
+
+# dev-run.ps1 service logs
+.logs/
