@@ -314,6 +314,55 @@ services:
       - traefik.http.services.kh-web.loadbalancer.server.port=3000
       - traefik.http.middlewares.kh-gzip.compress=true
 
+  # ===========================================================================
+  # APK download — how a driver's phone gets the app in the first place
+  # ===========================================================================
+  # A driver is handed a printed QR code at the loading dock. If the app is
+  # already installed the code deep-links straight into it; if it is not, the
+  # /t/<code> landing page falls back to S.browser_fallback_url, which points
+  # here. Without this service that fallback is a dead link, and onboarding a
+  # new phone means someone emailing a 23 MB file around.
+  #
+  # The file is a HOST BIND MOUNT, not a named volume, and that is deliberate:
+  # publishing a new build becomes one `scp` with no redeploy, so shipping an
+  # app update never risks the tracking stack that trucks are currently using.
+  #
+  #   scp app-release.apk root@host:/opt/karahoca/downloads/karahoca-takip.apk
+  #
+  # Read-only inside the container: nginx serves this, it must never write it.
+  # ===========================================================================
+  apk:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - /opt/karahoca/downloads:/usr/share/nginx/html/downloads:ro
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+    networks: [coolify]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+
+      # Priority 100, same tier as the API: without it the dashboard's
+      # catch-all at priority 1 would swallow /downloads and return its 404.
+      - traefik.http.routers.kh-apk-http.entryPoints=http
+      - traefik.http.routers.kh-apk-http.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/downloads`)
+      - traefik.http.routers.kh-apk-http.priority=100
+      - traefik.http.routers.kh-apk-http.middlewares=kh-to-https
+      - traefik.http.routers.kh-apk-http.service=kh-apk
+
+      - traefik.http.routers.kh-apk.entryPoints=https
+      - traefik.http.routers.kh-apk.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/downloads`)
+      - traefik.http.routers.kh-apk.priority=100
+      - traefik.http.routers.kh-apk.tls=true
+      - traefik.http.routers.kh-apk.tls.certresolver=letsencrypt
+      - traefik.http.routers.kh-apk.service=kh-apk
+
+      - traefik.http.services.kh-apk.loadbalancer.server.port=80
+
 volumes:
   kh-postgres-data:
     driver: local
