@@ -12,6 +12,29 @@ import { useTheme } from '@/lib/theme';
 /** Gebze — the KaraHoca plant. Sensible default view before any truck loads. */
 const HOME: [number, number] = [29.4318, 40.7989];
 
+/**
+ * A fontstack the current basemap can actually serve.
+ *
+ * Takes the first `text-font` the loaded style uses for its own labels, which
+ * is by definition available from its glyph endpoint. Falls back to Noto Sans,
+ * which is what OpenFreeMap serves, and which is a far safer default than
+ * MapLibre's built-in Open Sans — see the note in installLayers for what a
+ * missing fontstack does to an entire source.
+ */
+function styleFont(instance: MapLibreMap): string[] {
+  try {
+    for (const layer of instance.getStyle()?.layers ?? []) {
+      const font = (layer as { layout?: { 'text-font'?: unknown } }).layout?.['text-font'];
+      if (Array.isArray(font) && font.length > 0 && typeof font[0] === 'string') {
+        return font as string[];
+      }
+    }
+  } catch {
+    /* style not readable yet — fall through */
+  }
+  return ['Noto Sans Regular'];
+}
+
 interface Props {
   positions: FleetPosition[];
   liveUpdates: Map<string, LivePositionEvent>;
@@ -137,6 +160,28 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       },
     });
 
+    /*
+     * text-font IS MANDATORY HERE, and leaving it out is what hid every truck.
+     *
+     * Omit it and MapLibre falls back to its built-in default,
+     * ["Open Sans Regular", "Arial Unicode MS Regular"]. OpenFreeMap serves
+     * exactly one fontstack — Noto Sans Regular — so the glyph request 404s.
+     *
+     * The consequence is far worse than missing text. A failed glyph fetch
+     * fails the whole TILE PARSE for that source, so nothing on the source
+     * renders: not the labels, not the heading arrows, and not the circle
+     * layers either. The source reports loaded, the layers report visible,
+     * setData succeeds, and querySourceFeatures returns zero.
+     *
+     * Measured: a working GeoJSON source rendering two features dropped to an
+     * empty tile index the instant a font-less symbol layer was added to it.
+     *
+     * The font is read from the style rather than hard-coded, so pointing
+     * NEXT_PUBLIC_MAP_STYLE at a different tile server cannot silently
+     * reintroduce this.
+     */
+    const font = styleFont(instance);
+
     // Heading arrow, only when the truck is actually moving — a rotating arrow
     // on a parked vehicle is noise that reads as movement.
     instance.addLayer({
@@ -146,6 +191,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       filter: ['>', ['coalesce', ['get', 'speedMps'], 0], 1],
       layout: {
         'text-field': '▲',
+        'text-font': font,
         'text-size': 11,
         'text-rotate': ['coalesce', ['get', 'bearingDeg'], 0],
         'text-rotation-alignment': 'map',
@@ -162,6 +208,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       source: 'trucks',
       layout: {
         'text-field': ['get', 'label'],
+        'text-font': font,
         'text-size': 11,
         'text-offset': [0, 1.6],
         'text-anchor': 'top',
