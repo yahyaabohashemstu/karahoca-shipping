@@ -184,6 +184,8 @@ export interface Customer {
   name: string;
   city: string | null;
   region: string | null;
+  /** ISO 3166-1 alpha-2. Stored since the first migration, surfaced only now. */
+  countryCode: string | null;
   contactName: string | null;
   contactPhone: string | null;
   lat: number | null;
@@ -227,6 +229,16 @@ export interface Order {
   activeSessionId: string | null;
   activeSessionRef: string | null;
   activeSessionStatus: string | null;
+}
+
+export interface OrderItem {
+  id: string;
+  /** The column is `sku`, but the dashboard lets a dispatcher type a product name. */
+  sku: string;
+  description: string | null;
+  quantity: number;
+  unit: string;
+  weightKg: number | null;
 }
 
 export interface Vehicle {
@@ -338,10 +350,31 @@ export const api = {
     return apiFetch<{ items: Order[]; total: number; limit: number; offset: number }>(`/orders?${params}`);
   },
 
-  order: (id: string) => apiFetch<Order>(`/orders/${id}`),
+  order: (id: string) => apiFetch<Order & { items: OrderItem[] }>(`/orders/${id}`),
 
   createOrder: (body: Record<string, unknown>) =>
     apiFetch<Order>('/orders', { method: 'POST', body: JSON.stringify(body) }),
+
+  /**
+   * Edit the consignee and the load.
+   *
+   * `items` is replace-all and an empty array CLEARS the list, so omit the key
+   * entirely rather than sending `[]` when a form did not touch the manifest.
+   */
+  updateOrder: (
+    id: string,
+    body: {
+      customerId?: string;
+      cargoSummary?: string;
+      totalWeightKg?: number;
+      palletCount?: number;
+      items?: Array<{ sku: string; quantity: number; unit?: string; description?: string; weightKg?: number }>;
+    },
+  ) =>
+    apiFetch<Order & { items: OrderItem[] }>(`/orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   customers: (query: Record<string, string | number | undefined> = {}) => {
     const params = new URLSearchParams();

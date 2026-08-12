@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Customer } from '@/lib/api';
 import { Button } from './ui/Button';
-import { Input } from './ui/Form';
+import { Input, Select } from './ui/Form';
 import { ErrorState } from './ui/Feedback';
 import { Modal } from './ui/Modal';
 import { useToast } from './ui/Toast';
+import { COUNTRY_OPTIONS } from '@/lib/countries';
 
 /**
  * Create a customer without leaving whatever you were doing.
@@ -31,6 +32,7 @@ export function CustomerDialog({
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
+  const [countryCode, setCountryCode] = useState('TR');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [coords, setCoords] = useState('');
@@ -39,6 +41,7 @@ export function CustomerDialog({
     setCode('');
     setName('');
     setCity('');
+    setCountryCode('TR');
     setContactName('');
     setContactPhone('');
     setCoords('');
@@ -58,7 +61,7 @@ export function CustomerDialog({
         contactPhone: contactPhone.trim() || undefined,
         lat: parsed?.lat,
         lon: parsed?.lon,
-        countryCode: 'TR',
+        countryCode,
       }),
     onSuccess: (c) => {
       qc.invalidateQueries({ queryKey: ['customers'] });
@@ -121,16 +124,26 @@ export function CustomerDialog({
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
+          {/* A select, not free text. Typed per shipment, the same firm ends up
+              filed under DE, DEU and Almanya, and no export report ever adds up. */}
+          <Select label="Ülke" required value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
+            {COUNTRY_OPTIONS.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.label}
+              </option>
+            ))}
+          </Select>
           <Input label="Şehir" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Manisa" />
-          <Input
-            label="Koordinat"
-            value={coords}
-            onChange={(e) => setCoords(e.target.value)}
-            placeholder="38.6191, 27.4289"
-            error={coordError}
-            numeric
-          />
         </div>
+        <Input
+          label="Koordinat"
+          value={coords}
+          onChange={(e) => setCoords(e.target.value)}
+          placeholder="38.6191, 27.4289"
+          error={coordError}
+          numeric
+          hint="Girilirse kalan mesafe ve varış tespiti çalışır."
+        />
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="Yetkili"

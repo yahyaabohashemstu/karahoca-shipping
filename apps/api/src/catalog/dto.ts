@@ -95,6 +95,31 @@ export class CreateOrderDto {
   items?: OrderItemDto[];
 }
 
+/**
+ * What a dispatcher edits at dispatch time: who the load is going to, and what
+ * is actually on the truck.
+ *
+ * Everything is optional and `undefined` means "leave it alone" — except
+ * `items`, where an empty array explicitly clears the list. That distinction
+ * matters: a form that omits items must not silently delete them.
+ */
+export class UpdateOrderDto {
+  @IsOptional() @IsUUID()
+  customerId?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  cargoSummary?: string;
+
+  @IsOptional() @IsNumber() @Min(0)
+  totalWeightKg?: number;
+
+  @IsOptional() @IsInt() @Min(0)
+  palletCount?: number;
+
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => OrderItemDto)
+  items?: OrderItemDto[];
+}
+
 export class CreateShippingCompanyDto {
   @IsString() @Length(2, 32)
   code!: string;

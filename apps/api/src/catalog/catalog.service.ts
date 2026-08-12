@@ -7,6 +7,7 @@ import type {
   CreateShippingCompanyDto,
   CreateVehicleDto,
   ListQueryDto,
+  UpdateOrderDto,
 } from './dto';
 
 @Injectable()
@@ -132,11 +133,36 @@ export class CatalogService {
     }
   }
 
+  /**
+   * Columns are named explicitly rather than `SELECT o.*`.
+   *
+   * The star leaked the database's snake_case straight to the browser while
+   * every other endpoint returns camelCase, so the dashboard had to know which
+   * convention each endpoint happened to use. That is the same defect that once
+   * rendered the fleet list as a column of blanks.
+   */
   async getOrder(id: string) {
     const order = await this.db.maybeOne(
-      `SELECT o.*, ST_Y(o.destination::geometry) AS destination_lat,
-              ST_X(o.destination::geometry) AS destination_lon,
-              c.name AS customer_name
+      `SELECT o.id,
+              o.order_number            AS "orderNumber",
+              o.status::text            AS status,
+              o.destination_label       AS "destinationLabel",
+              o.destination_address     AS "destinationAddress",
+              ST_Y(o.destination::geometry) AS "destinationLat",
+              ST_X(o.destination::geometry) AS "destinationLon",
+              o.destination_radius_m    AS "destinationRadiusM",
+              o.total_weight_kg         AS "totalWeightKg",
+              o.pallet_count            AS "palletCount",
+              o.cargo_summary           AS "cargoSummary",
+              o.planned_dispatch_at     AS "plannedDispatchAt",
+              o.planned_delivery_at     AS "plannedDeliveryAt",
+              o.dispatched_at           AS "dispatchedAt",
+              o.delivered_at            AS "deliveredAt",
+              o.created_at              AS "createdAt",
+              o.customer_id             AS "customerId",
+              c.name                    AS "customerName",
+              c.city                    AS "customerCity",
+              c.country_code::text      AS "customerCountry"
        FROM kh.orders o JOIN kh.customers c ON c.id = o.customer_id
        WHERE o.id = $1`,
       [id],
@@ -144,15 +170,74 @@ export class CatalogService {
     if (!order) throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Unknown order' });
 
     const [items, sessions] = await Promise.all([
-      this.db.query(`SELECT * FROM kh.order_items WHERE order_id = $1`, [id]),
       this.db.query(
-        `SELECT id, reference, status::text AS status, started_at, ended_at,
-                round(distance_m::numeric/1000, 2) AS distance_km, points_total
+        `SELECT id, sku::text AS sku, description, quantity::float8 AS quantity,
+                unit, weight_kg::float8 AS "weightKg"
+           FROM kh.order_items WHERE order_id = $1 ORDER BY sku`,
+        [id],
+      ),
+      this.db.query(
+        `SELECT id, reference, status::text AS status,
+                started_at AS "startedAt", ended_at AS "endedAt",
+                round(distance_m::numeric/1000, 2)::float8 AS "distanceKm",
+                points_total AS "pointsTotal"
          FROM kh.tracking_sessions WHERE order_id = $1 ORDER BY created_at DESC`,
         [id],
       ),
     ]);
     return { ...order, items, sessions };
+  }
+
+  /**
+   * Update the parts of an order a dispatcher edits at dispatch time: who it is
+   * going to, and what is actually on the truck.
+   *
+   * `items` is REPLACE-ALL, not a merge. The UI is a repeater — add a row,
+   * delete a row, retype a quantity — and reconciling that against server-side
+   * ids would mean the client tracking which row is which through re-orders and
+   * deletions. Deleting and re-inserting inside one transaction is the same
+   * observable result with none of that state.
+   */
+  async updateOrder(id: string, dto: UpdateOrderDto) {
+    return this.db.transaction(async (tx) => {
+      // FOR UPDATE: two dispatchers editing the same load must serialise, or the
+      // second delete-and-reinsert can interleave with the first and leave a
+      // merged item list that neither of them asked for.
+      const existing = await tx.query(`SELECT id FROM kh.orders WHERE id = $1 FOR UPDATE`, [id]);
+      if (existing.rowCount === 0) {
+        throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Unknown order' });
+      }
+
+      await tx.query(
+        `UPDATE kh.orders
+            SET customer_id   = coalesce($2::uuid, customer_id),
+                cargo_summary = coalesce($3, cargo_summary),
+                total_weight_kg = coalesce($4::numeric, total_weight_kg),
+                pallet_count  = coalesce($5::int, pallet_count),
+                updated_at    = now()
+          WHERE id = $1`,
+        [
+          id,
+          dto.customerId ?? null,
+          dto.cargoSummary ?? null,
+          dto.totalWeightKg ?? null,
+          dto.palletCount ?? null,
+        ],
+      );
+
+      // undefined means "not touched"; an empty array means "clear them".
+      if (dto.items !== undefined) {
+        await tx.query(`DELETE FROM kh.order_items WHERE order_id = $1`, [id]);
+        for (const item of dto.items) {
+          await tx.query(
+            `INSERT INTO kh.order_items (order_id, sku, description, quantity, unit, weight_kg)
+             VALUES ($1, $2, $3, $4, coalesce($5, 'PCS'), $6)`,
+            [id, item.sku, item.description ?? null, item.quantity, item.unit ?? null, item.weightKg ?? null],
+          );
+        }
+      }
+      return id;
+    }).then((orderId) => this.getOrder(orderId));
   }
 
   // ---------------------------------------------------------------------------
@@ -244,7 +329,12 @@ export class CatalogService {
 
   listCustomers(search?: string) {
     return this.db.query(
+      // country_code has been stored since the first migration and was never
+      // returned, so the dashboard could not show — let alone filter by — which
+      // shipments leave the country. For an exporter that is the first thing
+      // you want on the screen.
       `SELECT id, code::text AS code, name, city, region,
+              country_code::text AS "countryCode",
               contact_name AS "contactName", contact_phone AS "contactPhone",
               ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
               is_active AS "isActive"

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import { CustomerDialog } from '@/components/CustomerDialog';
+import { countryLabel, isExport } from '@/lib/countries';
 import {
   Badge,
   Button,
@@ -21,7 +22,7 @@ import {
   TRMessage,
 } from '@/components/ui';
 
-const COLS = 6;
+const COLS = 7;
 
 export default function CustomersPage() {
   const authed = useRequireAuth();
@@ -41,7 +42,7 @@ export default function CustomersPage() {
     const all = data ?? [];
     if (!q) return all;
     return all.filter((c) =>
-      [c.name, c.code, c.city, c.contactName].filter(Boolean).some((v) =>
+      [c.name, c.code, c.city, c.contactName, countryLabel(c.countryCode)].filter(Boolean).some((v) =>
         String(v).toLocaleLowerCase('tr').includes(q),
       ),
     );
@@ -77,6 +78,7 @@ export default function CustomersPage() {
               <TR>
                 <TH>Kod</TH>
                 <TH>Ünvan</TH>
+                <TH>Ülke</TH>
                 <TH>Şehir</TH>
                 <TH>Yetkili</TH>
                 <TH>Telefon</TH>
@@ -124,6 +126,15 @@ export default function CustomersPage() {
                         <Badge tone="neutral" className="ml-2">
                           Pasif
                         </Badge>
+                      )}
+                    </TD>
+                    <TD>
+                      {/* An export shipment needs customs paperwork a domestic
+                          one does not, so it is worth spotting in a list. */}
+                      {isExport(c.countryCode) ? (
+                        <Badge tone="brand">{countryLabel(c.countryCode)}</Badge>
+                      ) : (
+                        <span className="text-ink-2">{countryLabel(c.countryCode)}</span>
                       )}
                     </TD>
                     <TD muted>{c.city ?? '—'}</TD>

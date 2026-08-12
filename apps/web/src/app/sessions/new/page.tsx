@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type SessionDetail } from '@/lib/api';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
@@ -22,6 +22,12 @@ import {
   validateCadence,
   type Cadence,
 } from '@/components/CadencePicker';
+import {
+  ConsignmentEditor,
+  EMPTY_LINE,
+  consignmentToItems,
+  type Consignment,
+} from '@/components/ConsignmentEditor';
 
 /**
  * Create a tracking session and print the hand-off.
@@ -33,6 +39,7 @@ import {
 export default function NewSessionPage() {
   const authed = useRequireAuth();
   const toast = useToast();
+  const qc = useQueryClient();
 
   const [orderId, setOrderId] = useState('');
   const [shippingCompanyId, setShippingCompanyId] = useState('');
@@ -40,6 +47,10 @@ export default function NewSessionPage() {
   const [driverPhone, setDriverPhone] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [cadence, setCadence] = useState<Cadence>(DEFAULT_CADENCE);
+  const [consignment, setConsignment] = useState<Consignment>({
+    customerId: '',
+    lines: [{ ...EMPTY_LINE }],
+  });
   const [created, setCreated] = useState<SessionDetail | null>(null);
 
   // Only orders that do not already have a live session — creating a second one
@@ -56,18 +67,45 @@ export default function NewSessionPage() {
     enabled: authed,
   });
 
+  const selectedOrder = orders.data?.items.find((o) => o.id === orderId);
+
   const mutation = useMutation({
-    mutationFn: () =>
-      api.createSession({
+    mutationFn: async () => {
+      /*
+       * The consignee and the load go to the ORDER, the cadence goes to the
+       * SESSION. Two calls, in that order.
+       *
+       * The order update runs first and is allowed to fail loudly: creating a
+       * tracking session that says it carries products the order does not
+       * record is worse than not creating it at all, because the dispatcher
+       * would walk away believing the manifest was saved.
+       */
+      const items = consignmentToItems(consignment.lines);
+      const consigneeChanged =
+        consignment.customerId && consignment.customerId !== selectedOrder?.customerId;
+
+      if (items.length > 0 || consigneeChanged) {
+        await api.updateOrder(orderId, {
+          customerId: consigneeChanged ? consignment.customerId : undefined,
+          // Only send items when there are some. An empty array CLEARS the
+          // list server-side, and a dispatcher who left the section untouched
+          // did not ask to erase a manifest entered on the order screen.
+          items: items.length > 0 ? items : undefined,
+        });
+      }
+
+      return api.createSession({
         orderId,
         shippingCompanyId,
         driverName: driverName.trim() || undefined,
         driverPhone: driverPhone.trim() || undefined,
         vehiclePlate: vehiclePlate.trim() || undefined,
         ...cadenceToPolicy(cadence),
-      }),
+      });
+    },
     onSuccess: (s) => {
       setCreated(s);
+      qc.invalidateQueries({ queryKey: ['orders'] });
       toast.success('Oturum oluşturuldu', s.reference);
     },
     onError: (e) => toast.error('Oturum oluşturulamadı', (e as Error).message),
@@ -191,6 +229,18 @@ export default function NewSessionPage() {
                 placeholder="34 ABC 123"
                 numeric
               />
+
+              {/* Appears only once an order is chosen: without one there is
+                  nothing to attach a consignee or a load to, and an empty
+                  section invites the dispatcher to fill in fields that will be
+                  thrown away. */}
+              {orderId && (
+                <ConsignmentEditor
+                  value={consignment}
+                  onChange={setConsignment}
+                  defaultCustomerId={selectedOrder?.customerId}
+                />
+              )}
 
               <CadencePicker value={cadence} onChange={setCadence} />
 
