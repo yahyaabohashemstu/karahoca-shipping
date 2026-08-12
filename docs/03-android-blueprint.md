@@ -187,6 +187,36 @@ directions.
 merely "a network exists" — service-station captive portals associate happily
 and route nowhere) and enqueues an expedited sync the instant it fires.
 
+### Backoff on the realtime pump
+
+The table above describes what WorkManager does with a failure. The pump had no
+equivalent: it fired every 15 seconds and attempted an upload on every tick
+regardless of how the previous one had failed. A server returning 429 or 503
+therefore received **240 requests an hour from every truck in the fleet**, each
+one dragging the modem out of `RRC_IDLE` and back through the tail timer for
+nothing — and doing it precisely when the server was already struggling.
+
+`sync/UploadBackoff.kt` gates it. 15 s base (one pump tick, so a single dropped
+packet never delays a moving truck), doubling to a 5-minute cap — which is also
+the watchdog heartbeat, so a genuinely unreachable server settles at roughly one
+attempt per heartbeat instead of twenty. On success everything resets.
+
+Three details are load-bearing, and each has a test:
+
+- **`elapsedRealtime`, never wall clock.** An NTP correction mid-shift must not
+  skip a backoff or extend it by hours.
+- **`retryAfterSec` wins over the local ladder, in both directions.** The server
+  is the only party that knows when its own rate-limit window resets. Guessing
+  shorter burns the allowance again; guessing longer leaves a truck invisible
+  for no reason.
+- **Jitter is up to +20%, never negative.** Forty trucks that hit the same 429
+  in the same second would otherwise retry in the same second forever,
+  reconstructing the burst that caused the limit.
+
+WorkManager keeps its own backoff and is deliberately not gated by this. It runs
+on the order of minutes and is network-constrained, so it was never the source
+of the wasted wake-ups.
+
 ---
 
 ## 5. Problem 4 — security

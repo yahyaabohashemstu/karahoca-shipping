@@ -26,6 +26,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.karahoca.tracker.BuildConfig
 import com.karahoca.tracker.data.local.SessionStore
+import com.karahoca.tracker.data.local.TrackingPolicy
 import com.karahoca.tracker.data.repository.TrackingRepository
 import com.karahoca.tracker.di.ApplicationScope
 import com.karahoca.tracker.sync.SyncScheduler
@@ -251,7 +252,7 @@ class LocationTrackingService : LifecycleService() {
             }
 
             ACTION_RELOAD_POLICY -> {
-                lifecycleScope.launch { applyPolicy(force = true) }
+                lifecycleScope.launch { forceReregister() }
                 return START_STICKY
             }
 
@@ -590,7 +591,12 @@ class LocationTrackingService : LifecycleService() {
                  * is no data risk: nothing is dropped, it is only sent slightly
                  * later, and WorkManager's periodic sync is still behind it.
                  */
-                val idleEvery = (store.policy().idleIntervalMs /
+                // One read per tick, shared by the cadence calculation and the
+                // policy check below. This was two DataStore reads every 15 s
+                // for a value that changes a handful of times a shift.
+                val policy = store.policy()
+
+                val idleEvery = (policy.idleIntervalMs /
                     BuildConfig.REALTIME_FLUSH_INTERVAL_MS).coerceAtLeast(1)
                 val shouldFlush = currentMode == Mode.MOVING || tick % idleEvery == 0L
 
@@ -603,20 +609,35 @@ class LocationTrackingService : LifecycleService() {
                 // reach DataStore eventually — just not 10,000 times a shift.
                 if (lastFixAtMs > 0) store.markFix(lastFixAtMs)
 
-                maybeUpdateNotification()
-                applyPolicy(force = false)
+                /*
+                 * Refresh the notification on the same cadence as uploads.
+                 *
+                 * While MOVING that is every tick, unchanged. While IDLE it
+                 * drops to once per idle interval — because snapshot() runs two
+                 * COUNT queries and a ConnectivityService binder call, and doing
+                 * that four times a minute to re-render "parked, nothing
+                 * buffered" is work with no reader.
+                 */
+                if (shouldFlush) maybeUpdateNotification()
+                applyPolicy(policy)
             }
         }
     }
 
     /** Adopt a policy the dispatcher changed mid-shift (echoed on every ack). */
-    private suspend fun applyPolicy(force: Boolean) {
-        val policy = store.policy()
+    private fun applyPolicy(policy: TrackingPolicy) {
         val target = if (currentMode == Mode.IDLE) policy.idleIntervalMs else policy.pingIntervalMs
-        if (force || target != activeIntervalMs) {
+        if (target != activeIntervalMs) {
             activeIntervalMs = target
             requestLocationUpdates(target)
         }
+    }
+
+    /** Force a re-registration — the watchdog's remedy for a wedged fused client. */
+    private suspend fun forceReregister() {
+        val policy = store.policy()
+        activeIntervalMs = if (currentMode == Mode.IDLE) policy.idleIntervalMs else policy.pingIntervalMs
+        requestLocationUpdates(activeIntervalMs)
     }
 
     private var activeIntervalMs: Long = BuildConfig.DEFAULT_PING_INTERVAL_MS

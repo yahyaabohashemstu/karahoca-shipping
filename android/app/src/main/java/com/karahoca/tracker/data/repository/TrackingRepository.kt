@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Location
 import android.os.BatteryManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import com.karahoca.tracker.BuildConfig
 import com.karahoca.tracker.data.local.LocationPointDao
@@ -18,6 +19,7 @@ import com.karahoca.tracker.data.remote.IngestBatchRequest
 import com.karahoca.tracker.data.remote.LocationPointDto
 import com.karahoca.tracker.data.remote.RefreshRequest
 import com.karahoca.tracker.data.remote.TrackingApi
+import com.karahoca.tracker.sync.UploadBackoff
 import com.karahoca.tracker.sync.NetworkMonitor
 import com.karahoca.tracker.util.DeviceInfoProvider
 import com.karahoca.tracker.util.Ulid
@@ -73,6 +75,18 @@ class TrackingRepository @Inject constructor(
         /** Sequence numbers reserved per DataStore write. ~100 fsyncs/shift, not 10,000. */
         private const val SEQ_WINDOW = 100L
 
+        /**
+         * Upload backoff bounds for the 15-second realtime pump.
+         *
+         * 15 s base is one pump tick — the first failure costs nothing extra,
+         * so a single dropped packet does not delay a live truck. Doubling
+         * reaches the 5-minute cap after five consecutive failures, which is
+         * also the watchdog's heartbeat, so a genuinely unreachable server
+         * settles at roughly one attempt per heartbeat instead of twenty.
+         */
+        private const val BACKOFF_BASE_MS = 15_000L
+        private const val BACKOFF_CAP_MS = 5 * 60 * 1000L
+
         /** Shared serializer for the free-form event payload map. */
         private val STRING_MAP = MapSerializer(String.serializer(), String.serializer())
     }
@@ -112,6 +126,19 @@ class TrackingRepository @Inject constructor(
     @Volatile private var cachedCharging = false
     @Volatile private var cachedNetworkType: String? = null
     @Volatile private var telemetrySampledAt = 0L
+
+    /**
+     * Gates the realtime pump after a failed upload. See [UploadBackoff].
+     *
+     * WorkManager keeps its own backoff and is deliberately not gated by this:
+     * it runs on the order of minutes and is network-constrained, so it was
+     * never the source of the wasted radio wake-ups.
+     */
+    private val backoff = UploadBackoff(
+        baseMs = BACKOFF_BASE_MS,
+        capMs = BACKOFF_CAP_MS,
+        clock = SystemClock::elapsedRealtime,
+    )
 
     // =========================================================================
     // 1. CAPTURE — called from the location callback. Must be fast and infallible.
@@ -303,8 +330,32 @@ class TrackingRepository @Inject constructor(
 
     /** Opportunistic single-chunk push from the service's realtime pump. */
     suspend fun flushIfOnline(): SyncOutcome {
+        if (backoff.shouldWait()) {
+            // The cheapest possible exit: no connectivity binder call, no Room
+            // query, no socket. Arithmetic only.
+            return SyncOutcome.Retry("backing off ${backoff.remainingMs() / 1000}s")
+        }
         if (!network.isOnline()) return SyncOutcome.Retry("offline")
         return syncOnce()
+    }
+
+    private fun noteFailure(retryAfterSec: Long? = null) {
+        backoff.onFailure(retryAfterSec)
+        Log.d(TAG, "Backing off ${backoff.remainingMs() / 1000}s (failure #${backoff.failureCount})")
+    }
+
+    private fun noteSuccess() = backoff.onSuccess()
+
+    /** Seconds the server asked us to wait, if it said. */
+    private fun retryAfterFrom(response: Response<*>, body: String?): Long? {
+        // Prefer the standard header; fall back to the envelope's details block,
+        // which is what this API actually populates (ADR-011).
+        response.headers()["Retry-After"]?.toLongOrNull()?.let { return it }
+        if (body == null) return null
+        return runCatching {
+            json.decodeFromString<com.karahoca.tracker.data.remote.ApiErrorBody>(body)
+                .error?.details?.get("retryAfterSec")?.toLongOrNull()
+        }.getOrNull()
     }
 
     /**
@@ -380,10 +431,12 @@ class TrackingRepository @Inject constructor(
         } catch (e: IOException) {
             // Network died mid-flight. Release and let backoff handle it.
             pointDao.releaseBatch(batchId)
+            noteFailure()
             Log.d(TAG, "Upload failed (network): ${e.message}")
             return@withLock SyncOutcome.Retry("network: ${e.message}")
         } catch (e: Exception) {
             pointDao.releaseBatch(batchId)
+            noteFailure()
             Log.e(TAG, "Upload failed (unexpected)", e)
             return@withLock SyncOutcome.Retry("unexpected: ${e.message}")
         }
@@ -406,6 +459,7 @@ class TrackingRepository @Inject constructor(
                 }
             }
             store.markSynced()
+            noteSuccess()
             if (chunkSize < BuildConfig.SYNC_BATCH_SIZE) {
                 chunkSize = (chunkSize * 2).coerceAtMost(BuildConfig.SYNC_BATCH_SIZE)
             }
@@ -432,7 +486,18 @@ class TrackingRepository @Inject constructor(
         // ---- Failure ----------------------------------------------------------
         pointDao.releaseBatch(batchId)
 
-        val apiCode = parseErrorCode(response)
+        /*
+         * The error body is read EXACTLY ONCE.
+         *
+         * okhttp's ResponseBody.string() consumes and closes the source; a
+         * second call throws. Both of this class's parse helpers call it, and
+         * because they wrap in runCatching a double read would not surface as
+         * an error — it would silently return null and the retry policy would
+         * quietly fall through to the generic branch. Read it here, pass the
+         * string down.
+         */
+        val rawError = runCatching { response.errorBody()?.string() }.getOrNull()
+        val apiCode = decodeErrorCode(rawError)
         Log.w(TAG, "Upload rejected: HTTP ${response.code()} / $apiCode")
 
         return@withLock when (ApiFailure.from(response.code(), apiCode)) {
@@ -447,12 +512,17 @@ class TrackingRepository @Inject constructor(
             ApiFailure.BATCH_TOO_LARGE -> {
                 // Halve and retry. Self-tunes to whatever this link/server allows
                 // instead of retrying an identical oversized payload forever.
+                // Not a backoff case: a smaller payload may well succeed at once.
                 chunkSize = (chunkSize / 2).coerceAtLeast(25)
                 Log.w(TAG, "Chunk size reduced to $chunkSize")
                 SyncOutcome.Retry("batch too large; chunk=$chunkSize")
             }
 
-            ApiFailure.RATE_LIMITED -> SyncOutcome.Retry("rate limited")
+            ApiFailure.RATE_LIMITED -> {
+                val after = retryAfterFrom(response, rawError)
+                noteFailure(retryAfterSec = after)
+                SyncOutcome.Retry("rate limited${after?.let { "; retry after ${it}s" } ?: ""}")
+            }
 
             ApiFailure.PERMANENT -> {
                 /*
@@ -465,7 +535,10 @@ class TrackingRepository @Inject constructor(
                 SyncOutcome.Retry("payload rejected; isolating with chunk=$chunkSize")
             }
 
-            ApiFailure.TRANSIENT -> SyncOutcome.Retry("server ${response.code()}")
+            ApiFailure.TRANSIENT -> {
+                noteFailure()
+                SyncOutcome.Retry("server ${response.code()}")
+            }
         }
     }
 
@@ -500,7 +573,8 @@ class TrackingRepository @Inject constructor(
             ClaimRequest(code = code, device = deviceInfo.toDto(store.deviceId())),
         )
         if (!response.isSuccessful) {
-            error(parseErrorMessage(response) ?: "Session code was rejected")
+            error(decodeErrorMessage(runCatching { response.errorBody()?.string() }.getOrNull())
+                ?: "Session code was rejected")
         }
         val body = response.body() ?: error("Empty response from server")
 
@@ -619,15 +693,22 @@ class TrackingRepository @Inject constructor(
         seq = e.deviceSeq,
     )
 
-    private fun parseErrorCode(response: Response<*>): String? = runCatching {
-        val raw = response.errorBody()?.string() ?: return null
-        json.decodeFromString<com.karahoca.tracker.data.remote.ApiErrorBody>(raw).error?.code
-    }.getOrNull()
+    /*
+     * These take the already-read body rather than the Response, so a caller
+     * cannot accidentally consume errorBody() twice. Reading it is the caller's
+     * job, exactly once.
+     */
+    private fun decodeErrorCode(raw: String?): String? = raw?.let {
+        runCatching {
+            json.decodeFromString<com.karahoca.tracker.data.remote.ApiErrorBody>(it).error?.code
+        }.getOrNull()
+    }
 
-    private fun parseErrorMessage(response: Response<*>): String? = runCatching {
-        val raw = response.errorBody()?.string() ?: return null
-        json.decodeFromString<com.karahoca.tracker.data.remote.ApiErrorBody>(raw).error?.message
-    }.getOrNull()
+    private fun decodeErrorMessage(raw: String?): String? = raw?.let {
+        runCatching {
+            json.decodeFromString<com.karahoca.tracker.data.remote.ApiErrorBody>(it).error?.message
+        }.getOrNull()
+    }
 
     @Suppress("DEPRECATION")
     private fun isMockLocation(location: Location): Boolean =
