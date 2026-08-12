@@ -29,7 +29,7 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
   const map = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const fitted = useRef(false);
-  const { resolved } = useTheme();
+  const { resolved, ready: themeReady } = useTheme();
 
   const installLayers = useCallback((instance: MapLibreMap) => {
     if (instance.getSource('route')) return;
@@ -71,6 +71,9 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
   }, []);
 
   useEffect(() => {
+    // Same gate as FleetMap: building the map before the theme is known forces
+    // a setStyle that discards every source and layer. See lib/theme.tsx.
+    if (!themeReady) return;
     if (map.current || !container.current) return;
     const instance = new maplibregl.Map({
       container: container.current,
@@ -99,7 +102,7 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
       setReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [themeReady]);
 
   // setStyle discards application sources and layers; rebuild them.
   useEffect(() => {
@@ -107,10 +110,14 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
     if (!instance || !ready) return;
     setReady(false);
     instance.setStyle(mapStyleFor(resolved));
-    instance.once('styledata', () => {
+    // See FleetMap: styledata fires repeatedly and the first one is too early.
+    const onStyle = () => {
+      if (!instance.isStyleLoaded()) return;
+      instance.off('styledata', onStyle);
       installLayers(instance);
       setReady(true);
-    });
+    };
+    instance.on('styledata', onStyle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved]);
 

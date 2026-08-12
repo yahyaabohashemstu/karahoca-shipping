@@ -29,9 +29,33 @@ interface ThemeCtx {
   pref: ThemePref;
   resolved: Resolved;
   setPref: (p: ThemePref) => void;
+  /**
+   * False until the stored preference has been read.
+   *
+   * `resolved` starts at 'light' so the server and the first client render
+   * agree, then flips to the real value in an effect. Anything that merely
+   * paints can ignore that one frame — but anything that BUILDS something from
+   * the theme must wait, because rebuilding it costs more than a repaint.
+   *
+   * MapLibre is the case that forced this. Child effects run before parent
+   * effects in React, so a map created in FleetMap's mount effect was always
+   * constructed with 'light'; the provider then resolved to 'dark' and the map
+   * had to setStyle, which discards every source and layer the application
+   * added. Re-adding them from a `styledata` handler races the style load and
+   * leaves a source that exists in JavaScript and has no tiles behind it — the
+   * features are present, the layers are visible, and MapLibre paints nothing.
+   *
+   * Gating construction on this removes the swap, and with it the whole race.
+   */
+  ready: boolean;
 }
 
-const Ctx = createContext<ThemeCtx>({ pref: 'system', resolved: 'light', setPref: () => {} });
+const Ctx = createContext<ThemeCtx>({
+  pref: 'system',
+  resolved: 'light',
+  setPref: () => {},
+  ready: false,
+});
 
 function systemDark() {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -44,6 +68,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // is visibly wrong during the one frame they disagree.
   const [pref, setPrefState] = useState<ThemePref>('system');
   const [resolved, setResolved] = useState<Resolved>('light');
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let stored: ThemePref = 'system';
@@ -54,6 +79,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     setPrefState(stored);
     setResolved(stored === 'system' ? (systemDark() ? 'dark' : 'light') : stored);
+    setReady(true);
   }, []);
 
   // Follow the OS only while the user has not made an explicit choice.
@@ -80,7 +106,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  return <Ctx.Provider value={{ pref, resolved, setPref }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ pref, resolved, setPref, ready }}>{children}</Ctx.Provider>;
 }
 
 export const useTheme = () => useContext(Ctx);

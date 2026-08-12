@@ -62,9 +62,12 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
    */
   const appliedStyle = useRef<string | null>(null);
 
+  /** The fleet is framed once per mount; after that the viewport is the user's. */
+  const hasFitted = useRef(false);
+
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
-  const { resolved } = useTheme();
+  const { resolved, ready: themeReady } = useTheme();
 
   /*
    * Layer setup is a named function rather than inline in the load handler
@@ -174,6 +177,22 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
   // ---- Init -----------------------------------------------------------------
   useEffect(() => {
+    /*
+     * Wait for the theme before building anything.
+     *
+     * Child effects run before parent effects, so without this gate the map was
+     * always constructed with the provider's provisional 'light' and then had
+     * to setStyle the moment the real preference resolved. setStyle discards
+     * every source and layer the application added, and re-adding them from a
+     * styledata handler races the style load: the source ends up present in
+     * JavaScript with no tiles behind it, the layers report visible, and
+     * MapLibre paints nothing at all.
+     *
+     * That is not a theory. queryRenderedFeatures against a camera parked
+     * directly on a truck at zoom 12 returned an empty array while the source
+     * held two correct features and all five layers reported visible.
+     */
+    if (!themeReady) return;
     if (map.current || !container.current) return;
 
     const initialStyle = mapStyleFor(resolved);
@@ -233,10 +252,11 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       map.current = null;
       setReady(false);
     };
-    // Only on mount. Theme changes are handled by the effect below, which swaps
-    // the style in place rather than destroying the map and losing the viewport.
+    // Runs once the theme is known. Later theme changes go through the effect
+    // below, which swaps the style in place rather than destroying the map and
+    // losing the viewport.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [themeReady]);
 
   // ---- Theme -----------------------------------------------------------------
   useEffect(() => {
@@ -247,10 +267,22 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     appliedStyle.current = wanted;
     setReady(false);
     instance.setStyle(wanted);
-    instance.once('styledata', () => {
+    /*
+     * NOT once('styledata'). MapLibre emits styledata several times while a
+     * style loads, and the first one arrives before the style is actually in
+     * place. Sources added at that moment attach to a transient style and end
+     * up with no worker-side tile index: the source holds the features, the
+     * layers report visible, and nothing is ever painted.
+     *
+     * isStyleLoaded() is the only reliable "the swap is complete" signal.
+     */
+    const onStyle = () => {
+      if (!instance.isStyleLoaded()) return;
+      instance.off('styledata', onStyle);
       installLayers(instance);
       setReady(true);
-    });
+    };
+    instance.on('styledata', onStyle);
   }, [resolved, ready, installLayers]);
 
   // ---- Data -----------------------------------------------------------------
@@ -332,7 +364,34 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       type: 'FeatureCollection',
       features: destinationFeatures,
     });
-  }, [positions, liveUpdates, selectedId, now, resolved]);
+
+    /*
+     * Frame the fleet the first time there is one.
+     *
+     * The map opens on the plant at Gebze, which is the right default with
+     * nothing on the road — and completely wrong the moment there is. A truck
+     * running to Kilis is 800 km outside that viewport, so the dispatcher's
+     * first impression of a working system was an empty map of the Marmara,
+     * and finding the vehicle meant panning across Anatolia by hand.
+     *
+     * Once only, and never while something is selected: after that the viewport
+     * belongs to the dispatcher, and a map that keeps yanking itself back is
+     * worse than one that never moved.
+     */
+    if (!hasFitted.current && truckFeatures.length > 0 && !selectedId) {
+      hasFitted.current = true;
+      fitTo(instance, truckFeatures);
+    }
+  }, [ready, positions, liveUpdates, selectedId, now, resolved]);
+
+  /** Re-frame every truck on demand. Wired to the button over the map. */
+  const fitAll = useCallback(() => {
+    const instance = map.current;
+    const source = instance?.getSource('trucks') as maplibregl.GeoJSONSource | undefined;
+    const data = (source as unknown as { _data?: GeoJSON.FeatureCollection })?._data;
+    if (!instance || !data?.features?.length) return;
+    fitTo(instance, data.features);
+  }, []);
 
   // ---- Follow the selection --------------------------------------------------
   useEffect(() => {
@@ -355,9 +414,55 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         ref={container}
         className={`h-full w-full transition-opacity duration-500 ${stale ? 'opacity-55' : ''}`}
       />
+
+      {/* Below the zoom controls, which MapLibre puts at top-right. */}
+      <button
+        type="button"
+        onClick={fitAll}
+        title="Tüm araçları haritaya sığdır"
+        className="absolute right-2 top-[4.75rem] flex h-8 items-center gap-1.5 rounded-md bg-surface px-2.5 text-sm text-ink-2 shadow-sm ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-ink"
+      >
+        <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
+          <path
+            d="M1.5 4.5v-3h3M12.5 4.5v-3h-3M1.5 9.5v3h3M12.5 9.5v3h-3"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="7" cy="7" r="1.6" fill="currentColor" />
+        </svg>
+        Tümünü göster
+      </button>
+
       <MapLegend />
     </div>
   );
+}
+
+/**
+ * Fit the camera to every truck.
+ *
+ * `maxZoom` matters: a single vehicle, or several parked in the same yard,
+ * collapses the bounding box to a point and fitBounds happily zooms to 22 —
+ * street furniture filling the screen with no context at all.
+ */
+function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[]) {
+  const points = features
+    .map((f) => (f.geometry?.type === 'Point' ? (f.geometry.coordinates as [number, number]) : null))
+    .filter((c): c is [number, number] => Array.isArray(c));
+  if (points.length === 0) return;
+
+  const bounds = points.reduce(
+    (acc, c) => acc.extend(c),
+    new maplibregl.LngLatBounds(points[0], points[0]),
+  );
+  instance.fitBounds(bounds, {
+    // Right padding clears the selected-truck panel; bottom clears the legend.
+    padding: { top: 60, right: 80, bottom: 70, left: 60 },
+    maxZoom: 13,
+    duration: 700,
+  });
 }
 
 /**
