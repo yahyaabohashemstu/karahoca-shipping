@@ -158,35 +158,49 @@ export function ConsignmentEditor({
 
         <div className="space-y-2">
           {value.lines.map((line, i) => (
+            /*
+             * Widths live on WRAPPERS, not on the controls.
+             *
+             * Input and Select both carry `w-full` in their base class string,
+             * and Tailwind resolves competing width utilities by stylesheet
+             * order, not by the order they appear in the className. `w-20` on a
+             * control that also has `w-full` therefore loses — which collapsed
+             * the product-name field to a sliver while the quantity box took
+             * the whole row, and a dispatcher typed the quantity into what
+             * looked like the name field.
+             */
             <div key={i} className="flex items-start gap-2">
-              <Input
-                value={line.name}
-                onChange={(e) => setLine(i, { name: e.target.value })}
-                placeholder="Ürün adı — örn. Bulaşık deterjanı 5 L"
-                className="flex-1"
-                aria-label={`Ürün ${i + 1} adı`}
-              />
-              <Input
-                value={line.quantity}
-                onChange={(e) => setLine(i, { quantity: e.target.value.replace(/[^\d.,]/g, '') })}
-                placeholder="Adet"
-                inputMode="decimal"
-                numeric
-                className="w-20"
-                aria-label={`Ürün ${i + 1} miktarı`}
-              />
-              <Select
-                value={line.unit}
-                onChange={(e) => setLine(i, { unit: e.target.value })}
-                className="w-28"
-                aria-label={`Ürün ${i + 1} birimi`}
-              >
-                {UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </Select>
+              <div className="min-w-0 flex-1">
+                <Input
+                  value={line.name}
+                  onChange={(e) => setLine(i, { name: e.target.value })}
+                  placeholder="Ürün adı — örn. Bulaşık deterjanı 5 L"
+                  aria-label={`Ürün ${i + 1} adı`}
+                />
+              </div>
+              <div className="w-20 shrink-0">
+                <Input
+                  value={line.quantity}
+                  onChange={(e) => setLine(i, { quantity: e.target.value.replace(/[^\d.,]/g, '') })}
+                  placeholder="Adet"
+                  inputMode="decimal"
+                  numeric
+                  aria-label={`Ürün ${i + 1} miktarı`}
+                />
+              </div>
+              <div className="w-28 shrink-0">
+                <Select
+                  value={line.unit}
+                  onChange={(e) => setLine(i, { unit: e.target.value })}
+                  aria-label={`Ürün ${i + 1} birimi`}
+                >
+                  {UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <IconButton
                 label={`Ürün ${i + 1} satırını sil`}
                 size="md"

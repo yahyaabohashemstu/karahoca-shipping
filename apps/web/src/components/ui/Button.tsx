@@ -54,12 +54,19 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'secondary', size = 'md', loading, block, className, children, disabled, ...rest },
+  { variant = 'secondary', size = 'md', loading, block, className, children, disabled, type, ...rest },
   ref,
 ) {
   return (
     <button
       ref={ref}
+      /*
+       * `type="button"` by default. HTML's default is `submit`, which means any
+       * button placed inside a form — a row-delete icon, a dialog's Cancel —
+       * submits it. Opting in to submit is one word; discovering that "remove
+       * product line" also created the shipment is not.
+       */
+      type={type ?? 'button'}
       // `loading` must disable as well as decorate. The old detail page fired a
       // second POST on the impatient second click.
       disabled={disabled || loading}
@@ -113,6 +120,7 @@ export function IconButton({
   size = 'md',
   className,
   children,
+  type,
   ...rest
 }: { label: string; variant?: Variant; size?: Size } & Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -121,6 +129,7 @@ export function IconButton({
   const box = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-10 w-10' : 'h-8 w-8';
   return (
     <button
+      type={type ?? 'button'}
       aria-label={label}
       title={label}
       className={clsx(BASE, VARIANTS[variant], box, 'p-0', className)}

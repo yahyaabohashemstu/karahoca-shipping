@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import { Button } from './Button';
 
@@ -14,6 +15,24 @@ import { Button } from './Button';
    The reason this exists at all: "Teslim edildi" and "İptal et" close a
    shipment irreversibly and used to fire on a single unguarded click, with no
    confirmation, no pending state and no error handling.
+
+   RENDERED THROUGH A PORTAL, and that is not cosmetic.
+
+   `showModal()` lifts the dialog into the top layer visually, but it stays
+   exactly where it was in the DOM — and if that was inside a <form>, every
+   control in the dialog is still one of that form's controls. A `required`
+   field in a CLOSED dialog is therefore an empty required field in the form:
+   on submit the browser runs constraint validation, finds an invalid control
+   it cannot focus (the dialog is display:none), and ABORTS THE SUBMIT SILENTLY.
+   No event handler runs. No message appears. The button simply does nothing.
+
+   That is not hypothetical. Putting the consignee editor — which renders the
+   new-customer dialog — inside the tracking-session form broke session
+   creation completely, with no error anywhere, and it took reading
+   `form.querySelectorAll(':invalid')` on the deployed site to see why: two
+   required inputs, `offsetParent: null`, inside a dialog with `open: false`.
+
+   Portalling to <body> means a modal can never belong to a form again.
    ========================================================================== */
 
 export function Modal({
@@ -34,20 +53,26 @@ export function Modal({
   size?: 'sm' | 'md' | 'lg';
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // createPortal needs a document, which does not exist during the server
+  // render. Mounting first keeps this component usable from any page.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (open && !el.open) el.showModal();
     if (!open && el.open) el.close();
-  }, [open]);
+  }, [open, mounted]);
 
   // `close` fires for Escape too, so this is the single exit path.
   const handleClose = useCallback(() => onClose(), [onClose]);
 
   const widths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' } as const;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <dialog
       ref={ref}
       onClose={handleClose}
@@ -78,7 +103,8 @@ export function Modal({
           </Button>
         )}
       </div>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 
