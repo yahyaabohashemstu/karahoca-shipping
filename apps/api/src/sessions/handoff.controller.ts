@@ -68,9 +68,13 @@ export class HandoffController {
     const pretty = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
     const scheme = this.config.session.deepLinkScheme;
     const pkg = this.config.session.deepLinkPackage;
+    // karahoca-takip.apk, not -tracker.apk. The default was wrong and the
+    // "Uygulamayı İndir" button on this page returned 404 in production: the
+    // filename the nginx sidecar serves is fixed by the publishing convention
+    // in docker-compose (`scp … /opt/karahoca/downloads/karahoca-takip.apk`).
     const apkUrl =
       this.config.session.apkDownloadUrl ??
-      `${this.config.publicApiUrl}/downloads/karahoca-tracker.apk`;
+      `${this.config.publicApiUrl}/downloads/karahoca-takip.apk`;
     const intentUrl =
       `intent://track?c=${code}#Intent;scheme=${scheme};` +
       `package=${pkg};S.browser_fallback_url=${encodeURIComponent(apkUrl)};end`;
