@@ -93,13 +93,23 @@ export class RateLimitGuard implements CanActivate {
         const result = await this.redis.consume(check.key, check.limit, spec.windowSec);
         if (!result.allowed) {
           this.log.warn(`rate limit hit: ${check.key} (${spec.bucket}) from ${ip}`);
+          /*
+           * FLAT, not wrapped in { error: … }.
+           *
+           * AllExceptionsFilter builds the envelope itself and reads `code` and
+           * `message` off the top level of whatever an HttpException carries.
+           * A nested { error: … } means it finds neither, falls back to the
+           * generic "Request could not be processed", and drops the payload —
+           * which is exactly what the deployed system returned on the first
+           * attempt at this. Everything not named code/message/statusCode/error
+           * is passed through as `details`, which is where the Android client's
+           * backoff already looks for retryAfterSec (ADR-011).
+           */
           throw new HttpException(
             {
-              error: {
-                code: 'RATE_LIMITED',
-                message: `Çok fazla deneme. ${result.resetSec} saniye sonra tekrar deneyin.`,
-                details: { retryAfterSec: result.resetSec },
-              },
+              code: 'RATE_LIMITED',
+              message: `Too many attempts. Retry in ${result.resetSec}s.`,
+              retryAfterSec: result.resetSec,
             },
             HttpStatus.TOO_MANY_REQUESTS,
           );
