@@ -173,6 +173,68 @@ services:
     networks: [internal]
 
   # ===========================================================================
+  # Backups — nightly logical dump, weekly restore drill
+  #
+  # A sidecar rather than a host cron: the schedule then lives in git and ships
+  # with the stack, instead of in a crontab nobody remembers and nothing
+  # recreates when the server is rebuilt. There was no backup of any kind
+  # before this service existed.
+  #
+  # The dumps land on a HOST BIND MOUNT, same reasoning as the APK above: they
+  # must outlive the deploy cycle, and `scp root@host:/opt/karahoca/backups/…`
+  # has to work without going through Docker.
+  #
+  # WARNING, and it is written here because it is the thing most likely to be
+  # forgotten: this directory is on the same physical disk as the database it
+  # is protecting. That covers a bad migration, a dropped table, a corrupted
+  # row — not a lost disk or a lost server. Set BACKUP_SFTP_* to an off-site
+  # target (a Hetzner Storage Box is the obvious one) and it starts pushing
+  # there too. See docs/09-backup-and-restore.md.
+  # ===========================================================================
+  backup:
+    # Built, not bind-mounted — see infra/backup.Dockerfile for why that
+    # distinction is load-bearing under Coolify.
+    build:
+      context: ./infra
+      dockerfile: backup.Dockerfile
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      PGHOST: kh-postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      # Off-site push. Unset means local-only, which the sidecar logs loudly
+      # on every cycle so it cannot quietly become the permanent state.
+      BACKUP_SFTP_HOST: ${BACKUP_SFTP_HOST:-}
+      BACKUP_SFTP_USER: ${BACKUP_SFTP_USER:-}
+      BACKUP_SFTP_PATH: ${BACKUP_SFTP_PATH:-}
+      TZ: UTC
+    volumes:
+      - /opt/karahoca/backups:/backups
+    # A backup nobody watches is half a backup system. The container reports
+    # itself unhealthy once there is no full dump from the last 26 hours, which
+    # surfaces in the Coolify dashboard the same way a dead API would — rather
+    # than waiting for someone to read the logs on the day they need a restore.
+    # 26h, not 24h: the schedule is daily and a redeploy must not trip it.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - find /backups -name 'karahoca-full-*.dump' -mmin -1560 | grep -q .
+      interval: 15m
+      timeout: 10s
+      retries: 2
+      start_period: 5m
+    depends_on:
+      kh-postgres: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks: [internal]
+
+  # ===========================================================================
   # Migrations — runs once, exits; the API is gated on it completing
   # ===========================================================================
   migrate:
