@@ -8,6 +8,7 @@ import com.karahoca.tracker.data.local.SessionStore
 import com.karahoca.tracker.data.repository.TrackingRepository
 import com.karahoca.tracker.service.LocationTrackingService
 import com.karahoca.tracker.sync.NetworkMonitor
+import com.karahoca.tracker.util.ClaimCode
 import com.karahoca.tracker.util.DeviceInfoProvider
 import com.karahoca.tracker.util.ReadinessCheck
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -44,6 +45,21 @@ data class TrackerUiState(
     enum class Screen { CLAIM, READINESS, TRACKING }
 
     val canStart: Boolean get() = checks.none { it.blocking && !it.satisfied }
+
+    /** The code is complete and worth sending. */
+    val canClaim: Boolean get() = codeInput.length == ClaimCode.LENGTH
+
+    /**
+     * The phone's master location switch, as of the last 2-second refresh.
+     *
+     * Exposed separately from [checks] because it is the one item the driver
+     * can turn off *after* the checklist has passed — from the notification
+     * shade, without ever reopening the app — so the tracking screen has to
+     * watch it too. Absent (no checks loaded yet) counts as fine: showing an
+     * alarm during the first render would cry wolf on every cold start.
+     */
+    val locationServicesOn: Boolean
+        get() = checks.firstOrNull { it.key == "location_services" }?.satisfied ?: true
 }
 
 @HiltViewModel
@@ -130,20 +146,48 @@ class TrackerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Every keystroke goes through the canonical normaliser.
+     *
+     * The field shows `XXXX-XXXX` via ClaimCodeTransformation, but what is
+     * stored here never contains the dash — so a driver who types or pastes one
+     * anyway (they did, which is why the dash is now automatic) does not end up
+     * with a code the server rejects.
+     */
     fun onCodeChanged(value: String) {
-        _state.update { it.copy(codeInput = value.uppercase().take(12), error = null) }
+        _state.update { it.copy(codeInput = ClaimCode.normalise(value), error = null) }
     }
 
-    /** Called by MainActivity when opened from a `karahoca://track?c=…` link. */
+    /**
+     * A QR scan or hand-off link arrived. Fill the field and, when it is safe,
+     * claim without making the driver press anything.
+     *
+     * "When it is safe" excludes an active shift. A verified App Link opens
+     * this app for *any* /t/ URL on the host, so a driver who scans a colleague's
+     * dispatch note mid-route would otherwise silently reassign their own phone
+     * to the wrong shipment and abandon the one it is carrying.
+     */
     fun onDeepLinkCode(code: String) {
-        _state.update { it.copy(codeInput = code.uppercase()) }
-        claim()
+        val normalised = ClaimCode.normalise(code)
+        if (normalised.isEmpty()) return
+
+        if (_state.value.trackingActive) {
+            _state.update {
+                it.copy(
+                    error = "Takip sürerken yeni kod açılamaz. Önce mevcut takibi durdurun.",
+                )
+            }
+            return
+        }
+
+        _state.update { it.copy(codeInput = normalised, error = null) }
+        if (normalised.length == ClaimCode.LENGTH) claim()
     }
 
     fun claim() {
-        val code = _state.value.codeInput.trim()
-        if (code.length < 6) {
-            _state.update { it.copy(error = "Kod en az 6 karakter olmalıdır") }
+        val code = ClaimCode.normalise(_state.value.codeInput)
+        if (code.length != ClaimCode.LENGTH) {
+            _state.update { it.copy(error = "Kod ${ClaimCode.LENGTH} karakter olmalıdır") }
             return
         }
         _state.update { it.copy(busy = true, error = null) }

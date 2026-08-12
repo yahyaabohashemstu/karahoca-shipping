@@ -4,20 +4,60 @@ import { Public } from '../auth/decorators';
 import { normalizeClaimCode } from '../common/crypto.util';
 
 /**
- * The QR-code landing page.
+ * The QR hand-off: both halves of it.
  *
  * Most Android QR scanners refuse to follow a bare `karahoca://` custom scheme,
- * so the printed QR encodes an https URL that lands here. This page then fires
- * an `intent://` URL, which Chrome resolves to the installed app and — if the
- * app is missing — falls through to `S.browser_fallback_url`, the APK download.
+ * so the printed QR encodes an https URL instead. Two things can then happen,
+ * and this controller owns both:
  *
- * Deliberately a single self-contained HTML string: it must render on a cheap
- * driver phone with no network beyond this one request, and it must never
- * become a reason to deploy a second web service.
+ *   1. The app is installed and the App Link is verified — Android opens
+ *      MainActivity directly and the driver never sees a browser. That path
+ *      depends on `/.well-known/assetlinks.json`, served below.
+ *   2. Anything else — the landing page renders, fires an `intent://` URL that
+ *      Chrome resolves to the installed app, and falls through to
+ *      `S.browser_fallback_url` (the APK download) when there is no app.
+ *
+ * The landing page is deliberately a single self-contained HTML string: it must
+ * render on a cheap driver phone with no network beyond this one request, and
+ * it must never become a reason to deploy a second web service.
  */
 @Controller()
 export class HandoffController {
   constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+
+  /**
+   * Digital Asset Links — the file that turns `/t/<code>` into an App Link.
+   *
+   * Android fetches this once, at install time, over HTTPS. If the package name
+   * and one of the signing fingerprints match, every `https://<host>/t/…` URL
+   * on the device is routed straight to MainActivity — no browser, no chooser,
+   * no "open with" dialog. That is the whole mechanism behind "scan the QR and
+   * the app opens with the code already filled in".
+   *
+   * Three things break it silently, so all three are pinned here rather than
+   * left to a static-file server: it must be served over HTTPS, it must return
+   * `application/json`, and it must not redirect.
+   *
+   * The short max-age matters after a re-key. Android re-checks periodically
+   * and on app update; a day-long CDN cache would keep handing out the old
+   * fingerprint long after the new APK shipped.
+   */
+  @Public()
+  @Get('.well-known/assetlinks.json')
+  @Header('Content-Type', 'application/json; charset=utf-8')
+  @Header('Cache-Control', 'public, max-age=300')
+  assetLinks() {
+    return [
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: this.config.session.deepLinkPackage,
+          sha256_cert_fingerprints: this.config.session.androidCertFingerprints,
+        },
+      },
+    ];
+  }
 
   @Public()
   @Get('t/:code')

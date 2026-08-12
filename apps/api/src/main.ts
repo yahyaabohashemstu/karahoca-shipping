@@ -117,6 +117,9 @@ async function bootstrap(): Promise<void> {
     exclude: [
       { path: 't/:code', method: RequestMethod.GET },
       { path: 'healthz', method: RequestMethod.GET },
+      // Android will only look here. The path is fixed by the platform and
+      // cannot carry an /api/v1 prefix.
+      { path: '.well-known/assetlinks.json', method: RequestMethod.GET },
     ],
   });
 

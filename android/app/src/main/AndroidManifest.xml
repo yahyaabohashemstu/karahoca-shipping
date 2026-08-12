@@ -111,7 +111,52 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- karahoca://track?c=K7H29QX4  — QR / SMS hand-off -->
+            <!--
+                THE QR CODE LANDS HERE.
+
+                android:autoVerify="true" makes this an Android App Link rather
+                than an ordinary web intent filter. At install time the platform
+                fetches
+
+                    https://${appLinkHost}/.well-known/assetlinks.json
+
+                and, if this package and its signing certificate are listed,
+                registers us as the *sole* handler for every /t/ URL on the
+                host. A camera app then opens the driver app directly: no
+                browser, no "Open with" chooser, no tap.
+
+                This is the only construct on Android that achieves that. A
+                custom scheme cannot: stock Camera, Samsung Camera and Google
+                Lens all refuse to launch an unknown scheme from a QR, which is
+                why drivers were reading the code off the screen and typing it.
+
+                If verification fails — no network during install, or the APK
+                was re-signed without updating assetlinks.json — Android quietly
+                downgrades this to a normal link and the URL opens in Chrome.
+                That still works: the landing page fires the intent:// below.
+                It just costs the driver a tap, so a failed verification is
+                invisible in testing. Confirm it explicitly with
+
+                    adb shell pm get-app-links com.karahoca.tracker
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="${appLinkHost}"
+                    android:pathPrefix="/t/" />
+            </intent-filter>
+
+            <!--
+                karahoca://track?c=K7H29QX4 — the fallback path.
+
+                Kept separate from the App Link filter above, and kept at all,
+                because it is what the landing page's intent:// URL resolves to
+                and what an SMS hand-off uses. A custom scheme needs no
+                verification, so this one always works.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

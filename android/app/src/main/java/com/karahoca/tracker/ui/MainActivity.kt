@@ -12,11 +12,13 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.app.ActivityCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -39,7 +42,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.karahoca.tracker.ui.theme.KaraHocaTheme
+import com.karahoca.tracker.util.ClaimCode
 import com.karahoca.tracker.util.CrashReporter
+import com.karahoca.tracker.util.LocationSettingsHelper
 import com.karahoca.tracker.util.PowerHelper
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
@@ -106,8 +111,18 @@ class MainActivity : ComponentActivity() {
         pendingDeepLinkCode = extractCode(intent)
     }
 
+    /**
+     * Both hand-off shapes, one parser.
+     *
+     * The printed QR now carries `https://<host>/t/<code>` — a verified App
+     * Link, which is the only form Android camera apps will open directly —
+     * while `karahoca://track?c=<code>` still arrives from the landing page's
+     * intent:// fallback and from SMS. ClaimCode.fromLink knows both, checks
+     * the host, and returns null for anything else that gets thrown at this
+     * exported activity.
+     */
     private fun extractCode(intent: Intent?): String? =
-        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.getQueryParameter("c")
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.let { ClaimCode.fromLink(it.data) }
 }
 
 // =============================================================================
@@ -146,16 +161,29 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
             value = state.codeInput,
             onValueChange = viewModel::onCodeChanged,
             label = { Text("Oturum Kodu") },
-            placeholder = { Text("K7H2 9QX4") },
+            placeholder = { Text("K7H2-9QX4") },
             singleLine = true,
             isError = state.error != null,
             textStyle = TextStyle(
                 fontSize = 28.sp,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 6.sp,
+                // 6sp of tracking pushed a formatted 9-character code past the
+                // field on a 5" phone, and the dash is the character that goes
+                // missing first. Enough to keep the groups legible, not enough
+                // to overflow.
+                letterSpacing = 3.sp,
                 textAlign = TextAlign.Center,
             ),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+            // The dash appears by itself after the fourth character. It is
+            // painted, not typed: what the state holds stays 8 clean
+            // characters. See ClaimCodeTransformation.
+            visualTransformation = remember { ClaimCodeTransformation() },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                autoCorrectEnabled = false,
+                imeAction = ImeAction.Go,
+            ),
+            keyboardActions = KeyboardActions(onGo = { if (state.canClaim) viewModel.claim() }),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -167,7 +195,7 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         Spacer(Modifier.height(24.dp))
         Button(
             onClick = viewModel::claim,
-            enabled = !state.busy && state.codeInput.length >= 6,
+            enabled = !state.busy && state.canClaim,
             modifier = Modifier.fillMaxWidth().height(56.dp),
         ) {
             if (state.busy) {
@@ -271,6 +299,14 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
         ActivityResultContracts.RequestPermission(),
     ) { viewModel.refreshChecks() }
 
+    // Play Services' "turn on location?" dialog is delivered as an IntentSender,
+    // not an Intent, so it needs its own contract. Launching e.resolution
+    // directly from the Context would show the dialog and then throw the answer
+    // away — the row would stay red until the 2-second poll caught up.
+    val locationSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { viewModel.refreshChecks() }
+
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { viewModel.refreshChecks() }
@@ -318,6 +354,23 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
                 blocking = check.blocking,
                 onFix = {
                     when (check.key) {
+                        // Try to fix it without leaving the app. Play Services
+                        // shows a system dialog over us and one tap turns
+                        // location on; only when that is unavailable — Huawei,
+                        // de-Googled phones — do we hand the driver off to the
+                        // Settings screen and hope they find the switch.
+                        "location_services" -> LocationSettingsHelper.requestEnable(
+                            context = context,
+                            onResolution = { resolvable ->
+                                runCatching {
+                                    locationSettingsLauncher.launch(
+                                        IntentSenderRequest.Builder(resolvable.resolution).build(),
+                                    )
+                                }.onFailure { LocationSettingsHelper.openSettings(context) }
+                            },
+                            onUnavailable = { LocationSettingsHelper.openSettings(context) },
+                        )
+
                         "location" -> locationLauncher.launch(
                             arrayOf(
                                 Manifest.permission.ACCESS_FINE_LOCATION,
@@ -403,6 +456,10 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
     val context = LocalContext.current
     val time = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
+    val locationSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { viewModel.refreshChecks() }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -410,6 +467,81 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        /*
+         * The checklist gate is not enough for this one row.
+         *
+         * Location is the only requirement a driver can revoke *after* starting
+         * — two taps in the notification shade, often by accident while
+         * reaching for the torch. Everything downstream keeps claiming success:
+         * the service runs, the notification says "Takip aktif", the screen
+         * above says "Konumunuz merkeze gönderiliyor". The only visible symptom
+         * is that "Son konum" stops advancing, which nobody watches.
+         *
+         * So it is checked again here, on the screen the driver actually looks
+         * at, with the same one-tap fix.
+         */
+        if (!state.locationServicesOn) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Konum servisi kapalı",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                    Text(
+                        "Telefonun konum düğmesi kapatıldı. Açılana kadar hiçbir konum kaydedilmiyor.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Button(
+                        onClick = {
+                            LocationSettingsHelper.requestEnable(
+                                context = context,
+                                onResolution = { resolvable ->
+                                    runCatching {
+                                        locationSettingsLauncher.launch(
+                                            IntentSenderRequest.Builder(resolvable.resolution).build(),
+                                        )
+                                    }.onFailure { LocationSettingsHelper.openSettings(context) }
+                                },
+                                onUnavailable = { LocationSettingsHelper.openSettings(context) },
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    ) { Text("KONUMU AÇ", fontWeight = FontWeight.Bold) }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // A background failure — an unreadable buffer, a store that will not
+        // open — used to be written to state.error and then rendered nowhere on
+        // this screen, which is where a driver spends the entire shift.
+        state.error?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            )
+        }
+
         Spacer(Modifier.height(24.dp))
 
         Icon(

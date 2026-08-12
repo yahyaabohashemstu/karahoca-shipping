@@ -25,13 +25,30 @@ android {
         applicationId = "com.karahoca.tracker"
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
-        versionCode = 12
-        versionName = "1.1.0"
+        versionCode = 13
+        versionName = "1.2.0"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",
             "\"${project.findProperty("khApiBaseUrl") ?: "https://track.karahoca.com/api/v1/"}\"")
         buildConfigField("String", "DEEP_LINK_SCHEME", "\"karahoca\"")
+
+        /*
+         * The host whose https://<host>/t/<code> links this app claims.
+         *
+         * It appears twice on purpose: once as a manifest placeholder, which is
+         * what Android matches an incoming intent against and what it verifies
+         * against /.well-known/assetlinks.json, and once as a BuildConfig field
+         * so the code that parses the link can reject a URL from some other
+         * host instead of trusting whatever the intent carried.
+         *
+         * Keep the two in step — a mismatch means the app is launched by a link
+         * it then refuses to read, which looks exactly like "the QR does
+         * nothing".
+         */
+        val appLinkHost = (project.findProperty("khAppLinkHost") ?: "track.karahoca.com").toString()
+        manifestPlaceholders["appLinkHost"] = appLinkHost
+        buildConfigField("String", "APP_LINK_HOST", "\"$appLinkHost\"")
 
         // ---- Tracking defaults (server can override per session) -------------
         buildConfigField("long", "DEFAULT_PING_INTERVAL_MS", "10000L")

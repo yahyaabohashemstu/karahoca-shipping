@@ -313,7 +313,7 @@ function Handoff({ session }: { session: SessionDetail }) {
           />
 
           <p className="mt-4 text-sm text-ink-2 print:text-black">
-            Sürücü QR kodu okutabilir veya kodu elle girebilir.
+            QR okutulduğunda uygulama açılır ve kod otomatik yazılır.
           </p>
           {handoff.expiresAt && (
             <p className="kh-num mt-1 text-sm text-ink-3 print:text-black">
@@ -335,6 +335,22 @@ function Handoff({ session }: { session: SessionDetail }) {
             }}
           >
             Kodu kopyala
+          </Button>
+          {/*
+            The same URL the QR encodes. Pasted into WhatsApp it behaves
+            identically — one tap opens the app with the code already in place —
+            which is the only hand-off that works when the driver is not
+            standing at the desk.
+          */}
+          <Button
+            onClick={() => {
+              navigator.clipboard
+                ?.writeText(handoff.webLink)
+                .then(() => toast.success('Bağlantı kopyalandı', 'Sürücüye gönderebilirsiniz.'))
+                .catch(() => toast.error('Kopyalanamadı', 'Bağlantıyı elle seçip kopyalayın.'));
+            }}
+          >
+            Bağlantıyı kopyala
           </Button>
           <Button onClick={() => window.print()}>Yazdır</Button>
           <Link href={`/sessions/${session.sessionId}`}>

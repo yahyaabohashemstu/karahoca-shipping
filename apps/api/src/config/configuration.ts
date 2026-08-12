@@ -34,6 +34,28 @@ function bool(name: string, fallback: boolean): boolean {
 }
 
 /**
+ * A comma-separated list of SHA-256 certificate fingerprints, normalised to the
+ * `AA:BB:…` form Google's Digital Asset Links validator insists on.
+ *
+ * Accepts whatever shape the operator pasted — `apksigner` prints unseparated
+ * lowercase hex, `keytool` prints colon-separated uppercase — because a
+ * fingerprint typed in the wrong case does not fail loudly. Android just
+ * silently declines to verify the App Link, the QR opens Chrome instead of the
+ * app, and nobody connects that to an environment variable.
+ */
+function fingerprints(name: string, fallback: string): string[] {
+  return optional(name, fallback)
+    .split(',')
+    .map((entry) => entry.replace(/[^0-9a-fA-F]/g, '').toUpperCase())
+    .filter((hex) => {
+      if (hex.length === 64) return true;
+      if (hex.length > 0) logger.warn(`${name}: ignoring malformed fingerprint (${hex.length} hex chars, expected 64)`);
+      return false;
+    })
+    .map((hex) => hex.match(/../g)!.join(':'));
+}
+
+/**
  * Secrets must be at least 32 bytes of entropy. In production we refuse to
  * start without them; in development we generate an ephemeral one and shout
  * about it, because a dev environment that silently uses a weak fixed key is
@@ -115,6 +137,7 @@ export interface AppConfig {
     deepLinkScheme: string;
     deepLinkPackage: string;
     apkDownloadUrl: string | null;
+    androidCertFingerprints: string[];
   };
 
   bootstrap: { adminEmail: string | null; adminPassword: string | null; adminName: string };
@@ -195,6 +218,21 @@ export function loadConfig(): AppConfig {
       // silently fail to open the app during field testing.
       deepLinkPackage: optional('DEEP_LINK_PACKAGE', 'com.karahoca.tracker'),
       apkDownloadUrl: process.env.APK_DOWNLOAD_URL?.trim() || null,
+      /*
+       * Signing certificates allowed to claim https://<host>/t/* as an Android
+       * App Link. Published at /.well-known/assetlinks.json; Android verifies
+       * it at install time and only then will a camera app open the QR code
+       * straight into the driver app instead of into Chrome.
+       *
+       * The default is the fingerprint of the current release keystore. It is a
+       * *list* because re-keying is a two-step operation: publish the new
+       * fingerprint alongside the old one, then ship the re-signed APK. Drop
+       * the old entry only once no phone still runs the old build.
+       */
+      androidCertFingerprints: fingerprints(
+        'ANDROID_CERT_SHA256',
+        '1A:2B:12:86:9E:96:9C:E6:07:AE:59:78:73:A8:83:C2:4A:D9:3E:C0:DF:C3:D8:24:3F:C0:07:C7:E8:3E:30:79',
+      ),
     },
 
     bootstrap: {

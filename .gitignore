@@ -24,6 +24,9 @@ android/.gradle/
 android/build/
 android/app/build/
 android/local.properties
+# Kotlin compiler session markers — one file per build, named after the PID.
+# They were being committed and then deleted on the next build.
+android/.kotlin/
 
 # Local dev toolchain provisioned by scripts/dev-stack.ps1
 .toolchain/

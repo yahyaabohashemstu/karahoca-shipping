@@ -310,7 +310,21 @@ export class SessionsService {
       expiresAt,
       deepLink,
       webLink,
-      qrDataUrl: await QRCode.toDataURL(deepLink, {
+      /*
+       * The QR encodes the https link, NOT the karahoca:// deep link.
+       *
+       * A custom scheme in a QR is a dead end on Android: the stock camera,
+       * Samsung's camera and Google Lens all decline to launch an unknown
+       * scheme, so the driver saw raw text and typed the code by hand — which
+       * is exactly the step this QR exists to remove.
+       *
+       * The https URL is claimed by the app as a verified App Link (see
+       * assetlinks.json below), so scanning it opens the app directly. Where
+       * verification has not happened — no network at install time, or the app
+       * is not installed at all — it opens the landing page instead, which
+       * fires the intent:// and falls back to the APK download.
+       */
+      qrDataUrl: await QRCode.toDataURL(webLink, {
         errorCorrectionLevel: 'M',
         margin: 1,
         width: 320,

@@ -3,8 +3,11 @@ package com.karahoca.tracker.util
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
+import androidx.core.location.LocationManagerCompat
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.karahoca.tracker.BuildConfig
@@ -61,6 +64,24 @@ class DeviceInfoProvider @Inject constructor(
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Is the phone's master location switch on?
+     *
+     * Orthogonal to every permission above, and the app checked none of it
+     * until now. A driver can hold ACCESS_FINE_LOCATION *and* background
+     * location and still produce nothing all day, because the toggle in the
+     * quick-settings shade is off — Android returns no fixes and reports no
+     * error for it.
+     *
+     * LocationManagerCompat is the correct read: `isLocationEnabled` only
+     * exists from API 28, and below that the answer is "is any provider on",
+     * which the compat shim already handles.
+     */
+    fun isLocationEnabled(): Boolean =
+        context.getSystemService<LocationManager>()
+            ?.let { LocationManagerCompat.isLocationEnabled(it) }
+            ?: false
+
     fun hasBackgroundLocation(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContextCompat.checkSelfPermission(
@@ -100,6 +121,27 @@ class DeviceInfoProvider @Inject constructor(
      * reliability. Ordered worst-first so the driver fixes what matters.
      */
     fun readinessChecks(): List<ReadinessCheck> = buildList {
+        add(
+            ReadinessCheck(
+                key = "location_services",
+                label = "Konum servisi açık",
+                satisfied = isLocationEnabled(),
+                /*
+                 * First in the list and blocking, because it outranks every
+                 * permission below it: with the master switch off, a fully
+                 * permitted app still records nothing, and it does so without
+                 * a single error anywhere. Everything downstream — the
+                 * notification, the buffer count, the dispatcher's map —
+                 * reports a healthy session with no points in it.
+                 *
+                 * Also the only row here whose state the driver can change
+                 * from the notification shade after passing the checklist, so
+                 * TrackingScreen re-checks it while a shift is running.
+                 */
+                blocking = true,
+                detail = "Telefonun konum düğmesi kapalı. Açılmadan konum alınamaz.",
+            ),
+        )
         add(
             ReadinessCheck(
                 key = "location",
