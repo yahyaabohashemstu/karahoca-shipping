@@ -108,13 +108,13 @@ the target database must already have the extensions — the dump is
 The dumps still land on the same disk as the database — that has not changed —
 but they no longer only live there.
 
-`D:\karahoca\ackups\pull-backups.ps1` on the office machine pulls every new
+`D:\karahoca\backups\pull-backups.ps1` on the office machine pulls every new
 dump and manifest over SSH, verifies each one by sha256 against the server copy
 before keeping it, and prunes at 90 days (longer than the server's 30: an
 off-site copy is the one you still want when you discover the corruption
 started six weeks ago). It is registered as the Windows scheduled task
 **KaraHoca backup pull**, daily at 06:00 local — three and a half hours after
-the server's 02:30 UTC dump — and it logs to `D:\karahoca\ackups\pull.log`.
+the server's 02:30 UTC dump — and it logs to `D:\karahoca\backups\pull.log`.
 It warns in that log when the newest off-site dump is more than two days old,
 because a pull that silently stops is the same as no backup at all.
 
