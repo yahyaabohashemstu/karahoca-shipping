@@ -259,14 +259,14 @@ services:
       - traefik.http.routers.kh-api-http.middlewares=kh-to-https
       - traefik.http.routers.kh-api-http.service=kh-api
 
-      # The https router carries one extra path: the Android App Links manifest.
-      # An exact Path(), and deliberately NOT on the http router above — the
-      # ACME HTTP-01 challenge also lives under /.well-known on port 80, and
-      # this stack has already lost a certificate once over port-80 routing.
-      # Android only ever fetches assetlinks.json over https, so http gains
-      # nothing and risks something.
+      # The https router carries two extra exact paths: the Android App Links
+      # manifest, and /app — the public install page a driver is told over the
+      # phone. Exact Path(), and assetlinks deliberately NOT on the http router
+      # above: the ACME HTTP-01 challenge also lives under /.well-known on port
+      # 80, and this stack has already lost a certificate once over port-80
+      # routing. Android only fetches assetlinks.json over https anyway.
       - traefik.http.routers.kh-api.entryPoints=https
-      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`) || Path(`/.well-known/assetlinks.json`))
+      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`) || Path(`/.well-known/assetlinks.json`) || Path(`/app`))
       - traefik.http.routers.kh-api.priority=100
       - traefik.http.routers.kh-api.tls=true
       - traefik.http.routers.kh-api.tls.certresolver=letsencrypt

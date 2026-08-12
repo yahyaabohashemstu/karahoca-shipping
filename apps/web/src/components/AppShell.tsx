@@ -96,6 +96,23 @@ function TopBar({ right }: { right?: React.ReactNode }) {
 
       <div className="flex shrink-0 items-center gap-2 pl-2">
         {right}
+        {/*
+          The driver app's install page. Reachable from every screen because the
+          moment a dispatcher needs it is never predictable — a driver rings
+          from a yard with a phone that has no app on it.
+
+          A plain <a>, not next/link: /app is served by the API, not by this
+          Next router, so a client-side navigation would 404.
+        */}
+        <a
+          href="/app"
+          target="_blank"
+          rel="noreferrer"
+          title="Sürücü uygulamasının kurulum sayfası — track.karahoca.com/app"
+          className="hidden whitespace-nowrap rounded px-2 py-1.5 text-2xs uppercase tracking-wider text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink md:inline"
+        >
+          Sürücü uygulaması
+        </a>
         <ThemeToggle />
         <SignOut />
       </div>

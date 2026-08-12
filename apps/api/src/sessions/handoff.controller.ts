@@ -59,6 +59,92 @@ export class HandoffController {
     ];
   }
 
+  /**
+   * The install page — `track.karahoca.com/app`.
+   *
+   * There was no way to get the app onto a phone. The dashboard mentioned
+   * `track.karahoca.com/downloads` as plain text, which is a directory: nginx
+   * has autoindex off, so following it returned 403. The APK itself was only
+   * reachable by knowing the exact filename.
+   *
+   * It has to live outside the dashboard because drivers have no dashboard
+   * account — a link behind the login screen is no link at all. Short enough to
+   * read down a phone line, which is how a stranded driver will receive it.
+   */
+  @Public()
+  @Get('app')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  landingApp(): string {
+    const apkUrl = this.apkUrl();
+
+    return `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>KaraHoca Sürücü Uygulaması</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; display: grid; place-items: center;
+    font: 16px/1.55 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    background: #0b1220; color: #e8eef9; padding: 24px;
+  }
+  .card { width: 100%; max-width: 420px; }
+  .logo { font-weight: 800; letter-spacing: .14em; font-size: 13px; color: #7dd3fc; text-align: center; }
+  h1 { font-size: 21px; font-weight: 600; margin: 22px 0 6px; text-align: center; }
+  p.lead { color: #94a3b8; margin: 0 0 26px; font-size: 15px; text-align: center; }
+  a.btn {
+    display: block; padding: 17px; border-radius: 12px; font-weight: 700;
+    text-decoration: none; text-align: center; background: #2563eb; color: #fff;
+  }
+  ol { margin: 26px 0 0; padding-left: 20px; color: #cbd5e1; font-size: 14.5px; }
+  li { margin-bottom: 10px; }
+  .note {
+    margin-top: 24px; padding: 13px 15px; border-radius: 10px;
+    background: #111c33; border: 1px solid #1e3a5f; color: #94a3b8; font-size: 13.5px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">KARAHOCA</div>
+    <h1>Sürücü Takip Uygulaması</h1>
+    <p class="lead">Android telefonlar için.</p>
+
+    <a class="btn" href="${apkUrl}">UYGULAMAYI İNDİR</a>
+
+    <ol>
+      <li>İndirme bitince dosyaya dokunun.</li>
+      <li>Telefon <b>&ldquo;bilinmeyen kaynak&rdquo;</b> uyarısı verirse izin verin — uygulama Play Store'da değildir.</li>
+      <li>Kurulumdan sonra uygulamayı açın.</li>
+      <li>Sevkiyat sorumlunuzun gönderdiği <b>karekodu okutun</b>; kod otomatik yazılır. Karekod yoksa 8 haneli kodu elle girin.</li>
+      <li>Listedeki tüm izinleri verin, sonra <b>TAKİBİ BAŞLAT</b>.</li>
+    </ol>
+
+    <div class="note">
+      Uygulama zaten yüklüyse tekrar indirmeniz gerekmez; doğrudan karekodu okutun.
+      Sorun yaşarsanız sevkiyat sorumlunuzu arayın.
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * karahoca-takip.apk, not -tracker.apk. The default was wrong and the
+   * download button returned 404 in production: the filename the nginx sidecar
+   * serves is fixed by the publishing convention in docker-compose
+   * (`scp … /opt/karahoca/downloads/karahoca-takip.apk`).
+   */
+  private apkUrl(): string {
+    return (
+      this.config.session.apkDownloadUrl ??
+      `${this.config.publicApiUrl}/downloads/karahoca-takip.apk`
+    );
+  }
+
   @Public()
   @Get('t/:code')
   @Header('Content-Type', 'text/html; charset=utf-8')
@@ -68,13 +154,7 @@ export class HandoffController {
     const pretty = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
     const scheme = this.config.session.deepLinkScheme;
     const pkg = this.config.session.deepLinkPackage;
-    // karahoca-takip.apk, not -tracker.apk. The default was wrong and the
-    // "Uygulamayı İndir" button on this page returned 404 in production: the
-    // filename the nginx sidecar serves is fixed by the publishing convention
-    // in docker-compose (`scp … /opt/karahoca/downloads/karahoca-takip.apk`).
-    const apkUrl =
-      this.config.session.apkDownloadUrl ??
-      `${this.config.publicApiUrl}/downloads/karahoca-takip.apk`;
+    const apkUrl = this.apkUrl();
     const intentUrl =
       `intent://track?c=${code}#Intent;scheme=${scheme};` +
       `package=${pkg};S.browser_fallback_url=${encodeURIComponent(apkUrl)};end`;

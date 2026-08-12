@@ -320,8 +320,17 @@ function Handoff({ session }: { session: SessionDetail }) {
               Geçerlilik: {new Date(handoff.expiresAt).toLocaleString('tr-TR')}
             </p>
           )}
+          {/*
+            Was plain text pointing at /downloads — a directory with autoindex
+            off, so anyone who typed it got a 403. /app is a real page, and this
+            line is printed on the dispatch note, so it has to be a URL a driver
+            can key into a phone by hand.
+          */}
           <p className="mt-3 text-2xs text-ink-3 print:text-black">
-            Uygulama yüklü değilse: track.karahoca.com/downloads
+            Uygulama yüklü değilse:{' '}
+            <a href="/app" target="_blank" rel="noreferrer" className="underline">
+              track.karahoca.com/app
+            </a>
           </p>
         </div>
 
