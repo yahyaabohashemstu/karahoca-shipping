@@ -25,8 +25,8 @@ android {
         applicationId = "com.karahoca.tracker"
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
-        versionCode = 11
-        versionName = "1.0.1"
+        versionCode = 12
+        versionName = "1.1.0"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",

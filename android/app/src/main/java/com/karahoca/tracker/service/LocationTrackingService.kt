@@ -103,6 +103,24 @@ class LocationTrackingService : LifecycleService() {
     private var lastMovementElapsedMs: Long = 0
     private var lastLocation: Location? = null
 
+    // ---- Distance-triggered state --------------------------------------------
+    /**
+     * Metres of travel between stored fixes. 0 = time-triggered.
+     *
+     * The policy has carried this field since the first release and the service
+     * ignored it: the LocationRequest hard-coded a zero displacement filter and
+     * nothing else looked at it. A dispatcher choosing "every 500 m" got a
+     * time-based session and no indication that their choice had been dropped.
+     */
+    @Volatile private var minDistanceM = 0
+
+    /** Idle cadence, cached from the policy. Doubles as the distance-mode heartbeat. */
+    @Volatile private var idleIntervalMs = 60_000L
+
+    /** The last fix actually written to the buffer — the reference for the trigger. */
+    private var lastStoredLocation: Location? = null
+    private var lastStoredElapsedMs = 0L
+
     // ---- Health state --------------------------------------------------------
     private var gpsAvailable = true
     private var fixCount = 0L
@@ -355,6 +373,9 @@ class LocationTrackingService : LifecycleService() {
         store.setTrackingActive(true)
         trackingActive = true
         selfStopped = false
+        // Before the first fix arrives, so the very first callback already knows
+        // whether it is running a distance trigger.
+        cachePolicy(store.policy())
         acquireWakeLock()
         ServiceWatchdog.schedule(this)
 
@@ -505,9 +526,23 @@ class LocationTrackingService : LifecycleService() {
 
         updateMovementState(location)
         fixCount++
-        // Plain volatile write. This used to be a DataStore edit{} — a full
-        // preferences rewrite plus fsync — on every single fix.
+        /*
+         * Updated on every RECEIVED fix, not every stored one.
+         *
+         * This is what the watchdog reads to decide whether the location engine
+         * has wedged. In distance mode a parked truck legitimately stores
+         * nothing for a long time while the GPS keeps working perfectly, and
+         * gating this on storage would make the watchdog tear down a healthy
+         * session every idle interval.
+         *
+         * Plain volatile write. This used to be a DataStore edit{} — a full
+         * preferences rewrite plus fsync — on every single fix.
+         */
         lastFixAtMs = location.time
+
+        if (!shouldStore(location)) return
+        lastStoredLocation = location
+        lastStoredElapsedMs = SystemClock.elapsedRealtime()
 
         /*
          * The ONLY work on the per-fix path: one Room insert.
@@ -520,6 +555,37 @@ class LocationTrackingService : LifecycleService() {
          * the shade. The 15 s pump already owns the notification.
          */
         lifecycleScope.launch { repository.storeFix(location) }
+    }
+
+    /**
+     * Distance trigger.
+     *
+     * When the dispatcher chose "every N metres", only fixes that advanced the
+     * truck by N metres since the last STORED one are worth a row. The obvious
+     * implementation is `LocationRequest.setMinUpdateDistanceMeters(N)`, and it
+     * is the wrong one for this product: with a displacement filter the fused
+     * client simply stops calling back, so a truck standing at a customer's
+     * gate produces nothing at all, the server sees no telemetry, and the
+     * dashboard reports a healthy parked truck as STALE and then LOST — the one
+     * signal the whole system exists to make trustworthy.
+     *
+     * Filtering here instead keeps the callback stream, so the truck can still
+     * emit a heartbeat on the idle cadence. A dwell is proven, a silence still
+     * means a problem, and the row count for a slow city crawl drops by an
+     * order of magnitude, which is what was actually being asked for.
+     */
+    private fun shouldStore(location: Location): Boolean {
+        val trigger = minDistanceM
+        if (trigger <= 0) return true
+
+        // Never drop the first fix of a session: the map needs something to show
+        // and the dispatcher needs to see the truck leave the yard.
+        val previous = lastStoredLocation ?: return true
+        if (previous.distanceTo(location) >= trigger) return true
+
+        // Heartbeat. Also covers the case where lastStoredElapsedMs is 0 after a
+        // process restart, which reads as "overdue" and stores immediately.
+        return SystemClock.elapsedRealtime() - lastStoredElapsedMs >= idleIntervalMs
     }
 
     /**
@@ -626,6 +692,7 @@ class LocationTrackingService : LifecycleService() {
 
     /** Adopt a policy the dispatcher changed mid-shift (echoed on every ack). */
     private fun applyPolicy(policy: TrackingPolicy) {
+        cachePolicy(policy)
         val target = if (currentMode == Mode.IDLE) policy.idleIntervalMs else policy.pingIntervalMs
         if (target != activeIntervalMs) {
             activeIntervalMs = target
@@ -633,9 +700,19 @@ class LocationTrackingService : LifecycleService() {
         }
     }
 
+    /**
+     * The distance trigger and the heartbeat are read on the hot path, which
+     * runs on the main looper and cannot suspend on DataStore.
+     */
+    private fun cachePolicy(policy: TrackingPolicy) {
+        minDistanceM = policy.minDistanceM
+        idleIntervalMs = policy.idleIntervalMs
+    }
+
     /** Force a re-registration — the watchdog's remedy for a wedged fused client. */
     private suspend fun forceReregister() {
         val policy = store.policy()
+        cachePolicy(policy)
         activeIntervalMs = if (currentMode == Mode.IDLE) policy.idleIntervalMs else policy.pingIntervalMs
         requestLocationUpdates(activeIntervalMs)
     }

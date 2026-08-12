@@ -96,6 +96,20 @@ export class SessionsService {
     const claimTtl = dto.claimTtlMinutes ?? this.config.session.defaultClaimTtlMin;
     const lifetime = dto.maxLifetimeHours ?? this.config.session.defaultMaxLifetimeHours;
 
+    /*
+     * The idle cadence must never be tighter than the moving one — a parked
+     * truck sampled more often than a driving one is backwards, and migration
+     * 0007 enforces it at the database.
+     *
+     * The dashboard only asks for the moving interval, so the default idle of
+     * 60 s silently violated that as soon as a dispatcher chose anything slower
+     * than a minute. Deriving it here means the constraint is satisfied by
+     * construction rather than surfacing as a 500 on a form the dispatcher
+     * filled in correctly.
+     */
+    const ping = dto.pingIntervalSec ?? 10;
+    const idle = Math.max(dto.idleIntervalSec ?? 60, ping);
+
     // Retry on the astronomically unlikely code collision rather than pretending
     // it cannot happen.
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -130,8 +144,8 @@ export class SessionsService {
             dto.driverPhone ?? null,
             dto.vehiclePlate ?? null,
             claimTtl,
-            dto.pingIntervalSec ?? 10,
-            dto.idleIntervalSec ?? 60,
+            ping,
+            idle,
             dto.minDistanceM ?? 0,
             lifetime,
             dto.notes ?? null,

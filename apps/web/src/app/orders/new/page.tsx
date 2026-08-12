@@ -11,7 +11,6 @@ import {
   Card,
   CardHeader,
   ErrorState,
-  Field,
   Input,
   PageHeader,
   Select,
@@ -56,6 +55,14 @@ export default function NewOrderPage() {
   const parsed = parseCoords(coords);
   const coordError = coords.trim() && !parsed ? 'Biçim: enlem, boylam — örn. 38.6191, 27.4289' : null;
 
+  // Mirrors the API's @Min(25) @Max(20000) so a rejected value is explained
+  // here rather than coming back as a 400 after the form is submitted.
+  const radiusNum = Number(radius);
+  const radiusError =
+    parsed && (!Number.isFinite(radiusNum) || radiusNum < 25 || radiusNum > 20000)
+      ? 'Yarıçap 25–20000 metre arasında olmalı.'
+      : null;
+
   const create = useMutation({
     mutationFn: () =>
       api.createOrder({
@@ -81,7 +88,7 @@ export default function NewOrderPage() {
 
   if (!authed) return null;
 
-  const valid = orderNumber.trim().length > 0 && customerId && !coordError;
+  const valid = orderNumber.trim().length > 0 && customerId && !coordError && !radiusError;
 
   return (
     <AppShell>
@@ -210,22 +217,21 @@ export default function NewOrderPage() {
             />
 
             {parsed && (
-              <Field
-                className="mt-4"
-                label={`Varış yarıçapı — ${radius} m`}
-                hint="Araç bu yarıçapa girdiğinde sistem varış olayı üretir."
-              >
-                <input
-                  type="range"
-                  min={50}
-                  max={2000}
-                  step={50}
+              <div className="mt-4 max-w-xs">
+                {/* A free field, not a slider. A city depot gate and a quarry
+                    weighbridge want radii two orders of magnitude apart, and a
+                    slider that stops at 2 km just says "no" to the quarry. */}
+                <Input
+                  label="Varış yarıçapı"
+                  type="text"
+                  inputMode="numeric"
+                  numeric
                   value={radius}
-                  onChange={(e) => setRadius(e.target.value)}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-[rgb(var(--kh-brand))]"
-                  aria-label="Varış yarıçapı, metre"
+                  onChange={(e) => setRadius(e.target.value.replace(/[^\d]/g, ''))}
+                  error={radiusError}
+                  hint="Araç bu yarıçapa girdiğinde sistem varış olayı üretir. Metre."
                 />
-              </Field>
+              </div>
             )}
 
             {!parsed && (

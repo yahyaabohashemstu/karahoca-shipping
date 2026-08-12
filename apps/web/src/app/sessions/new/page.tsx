@@ -10,12 +10,18 @@ import {
   Card,
   EmptyState,
   ErrorState,
-  Field,
   Input,
   PageHeader,
   Select,
   useToast,
 } from '@/components/ui';
+import {
+  CadencePicker,
+  DEFAULT_CADENCE,
+  cadenceToPolicy,
+  validateCadence,
+  type Cadence,
+} from '@/components/CadencePicker';
 
 /**
  * Create a tracking session and print the hand-off.
@@ -33,7 +39,7 @@ export default function NewSessionPage() {
   const [driverName, setDriverName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
-  const [pingIntervalSec, setPingIntervalSec] = useState(10);
+  const [cadence, setCadence] = useState<Cadence>(DEFAULT_CADENCE);
   const [created, setCreated] = useState<SessionDetail | null>(null);
 
   // Only orders that do not already have a live session — creating a second one
@@ -58,7 +64,7 @@ export default function NewSessionPage() {
         driverName: driverName.trim() || undefined,
         driverPhone: driverPhone.trim() || undefined,
         vehiclePlate: vehiclePlate.trim() || undefined,
-        pingIntervalSec,
+        ...cadenceToPolicy(cadence),
       }),
     onSuccess: (s) => {
       setCreated(s);
@@ -186,24 +192,7 @@ export default function NewSessionPage() {
                 numeric
               />
 
-              <Field
-                label={`Konum aralığı — ${pingIntervalSec} saniye`}
-                hint="Sık aralık daha detaylı rota, daha fazla pil tüketimi demektir. Araç durduğunda uygulama otomatik olarak seyrek moda geçer."
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={5}
-                    max={60}
-                    step={5}
-                    value={pingIntervalSec}
-                    onChange={(e) => setPingIntervalSec(Number(e.target.value))}
-                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-[rgb(var(--kh-brand))]"
-                    aria-label="Konum aralığı, saniye"
-                  />
-                  <span className="kh-num w-12 text-right text-sm text-ink-2">{pingIntervalSec} sn</span>
-                </div>
-              </Field>
+              <CadencePicker value={cadence} onChange={setCadence} />
 
               {mutation.isError && (
                 <ErrorState
@@ -219,7 +208,7 @@ export default function NewSessionPage() {
                 size="lg"
                 block
                 loading={mutation.isPending}
-                disabled={!orderId || !shippingCompanyId}
+                disabled={!orderId || !shippingCompanyId || validateCadence(cadence) !== null}
               >
                 {mutation.isPending ? 'Oluşturuluyor…' : 'Oturum oluştur ve kod üret'}
               </Button>

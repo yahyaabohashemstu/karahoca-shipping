@@ -38,13 +38,13 @@ export class CreateSessionDto {
   @IsOptional() @IsString() @MaxLength(24)
   vehiclePlate?: string;
 
-  @IsOptional() @IsInt() @Min(2) @Max(600)
+  @IsOptional() @IsInt() @Min(2) @Max(3600)
   pingIntervalSec?: number;
 
-  @IsOptional() @IsInt() @Min(5) @Max(1800)
+  @IsOptional() @IsInt() @Min(5) @Max(14400)
   idleIntervalSec?: number;
 
-  @IsOptional() @IsInt() @Min(0) @Max(5000)
+  @IsOptional() @IsInt() @Min(0) @Max(20000)
   minDistanceM?: number;
 
   @IsOptional() @IsInt() @Min(1) @Max(240)
@@ -59,13 +59,13 @@ export class CreateSessionDto {
 }
 
 export class UpdateSessionPolicyDto {
-  @IsOptional() @IsInt() @Min(2) @Max(600)
+  @IsOptional() @IsInt() @Min(2) @Max(3600)
   pingIntervalSec?: number;
 
-  @IsOptional() @IsInt() @Min(5) @Max(1800)
+  @IsOptional() @IsInt() @Min(5) @Max(14400)
   idleIntervalSec?: number;
 
-  @IsOptional() @IsInt() @Min(0) @Max(5000)
+  @IsOptional() @IsInt() @Min(0) @Max(20000)
   minDistanceM?: number;
 
   @IsOptional() @IsString() @MaxLength(2000)
