@@ -167,8 +167,13 @@ export class TrackingService {
               avg_distance_km        AS "avgDistanceKm",
               avg_duration_h         AS "avgDurationH",
               avg_largest_gap_sec    AS "avgLargestGapSec",
-              avg_coverage_pct       AS "avgCoveragePct",
-              on_time                AS "onTime"
+              -- Renamed in 0009. It was called "coverage" and presented as a
+              -- driver-behaviour score, while measuring something the driver
+              -- does not control; on_time_measurable is the denominator that
+              -- makes the on-time percentage mean anything.
+              avg_sampling_pct       AS "avgSamplingPct",
+              on_time                AS "onTime",
+              on_time_measurable     AS "onTimeMeasurable"
          FROM kh.v_carrier_performance
         ORDER BY sessions DESC`,
     );

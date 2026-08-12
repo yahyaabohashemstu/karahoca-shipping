@@ -79,13 +79,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    /*
+     * /s/<token> is the one route whose URL *is* a credential.
+     *
+     * A consignee share token in a log line is a live tracking link, and logs
+     * get shipped. The share controller is careful never to log it, but a 429
+     * is raised by RateLimitGuard before the handler runs, so it lands here
+     * instead — and any consignee behind carrier-grade NAT can trip the limit.
+     * The unredacted path still goes back in the response body, which only the
+     * holder of the token can read anyway.
+     */
+    const loggedUrl = request.url.startsWith('/s/') ? '/s/[redacted]' : request.url;
+
     if (status >= 500) {
       this.logger.error(
-        `${request.method} ${request.url} → ${status} ${code}`,
+        `${request.method} ${loggedUrl} → ${status} ${code}`,
         (exception as Error)?.stack,
       );
     } else if (status !== 404) {
-      this.logger.warn(`${request.method} ${request.url} → ${status} ${code}: ${message}`);
+      this.logger.warn(`${request.method} ${loggedUrl} → ${status} ${code}: ${message}`);
     }
 
     void reply.status(status).send({

@@ -8,6 +8,7 @@ import { disconnectRealtime } from '@/lib/useRealtime';
 import { tokens } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { IconButton } from './ui/Button';
+import { AlertCentre } from './AlertCentre';
 
 /* =============================================================================
    Application shell
@@ -113,6 +114,10 @@ function TopBar({ right }: { right?: React.ReactNode }) {
         >
           Sürücü uygulaması
         </a>
+        {/* The exception desk, on every screen. An alert that only reaches
+            the dispatcher who already has that truck's page open reaches
+            nobody at 02:00 on the Habur road. */}
+        <AlertCentre />
         <ThemeToggle />
         <SignOut />
       </div>

@@ -100,7 +100,19 @@ export async function apiFetch<T>(
   retry = true,
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set('Content-Type', 'application/json');
+  /*
+   * Only when there IS a body.
+   *
+   * Setting it unconditionally routes a bodyless POST into Fastify's JSON
+   * parser, which rejects it: 400 "Body cannot be empty when content-type is
+   * set to 'application/json'". Verified against production — that is exactly
+   * why "Yeni kod üret" on the session detail page has never worked, and the
+   * alert acknowledge button would have shipped with the same fault. Both are
+   * bodyless POSTs whose meaning is entirely in the URL.
+   */
+  if (init.body !== undefined && init.body !== null) {
+    headers.set('Content-Type', 'application/json');
+  }
   const access = tokens.access;
   if (access) headers.set('Authorization', `Bearer ${access}`);
 
@@ -266,8 +278,18 @@ export interface CarrierPerformance {
   avgDistanceKm: number | null;
   avgDurationH: number | null;
   avgLargestGapSec: number | null;
-  avgCoveragePct: number | null;
+  /**
+   * Telemetry sampling rate, NOT a driver-behaviour score. Renamed in 0009
+   * because the old formula ignored idle_interval_sec, so a truck legitimately
+   * waiting four hours at a customs gate scored ~58% on a perfect trace — and
+   * the page told the dispatcher that meant the driver had closed the app.
+   */
+  avgSamplingPct: number | null;
   onTime: number;
+  /** Completed sessions whose order actually had a planned delivery time. The
+   *  on-time percentage is meaningless without it, and was previously divided
+   *  by every completed session. */
+  onTimeMeasurable: number;
 }
 
 export interface SessionDetail extends FleetPosition {
@@ -281,6 +303,72 @@ export interface SessionDetail extends FleetPosition {
   handoff: SessionHandoff | null;
   device: Record<string, unknown> | null;
   events: SessionEvent[];
+}
+
+// -----------------------------------------------------------------------------
+// Alerts — the exception desk
+// -----------------------------------------------------------------------------
+
+export type AlertKind =
+  | 'SIGNAL_LOST'
+  | 'ARRIVED'
+  | 'BATTERY_LOW'
+  | 'MOCK_LOCATION'
+  | 'NOT_STARTED'
+  | 'STOPPED_TOO_LONG';
+
+/** Declared INFO < WARNING < CRITICAL in the database, and ranked that way here. */
+export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+
+/**
+ * One row of the exception desk, with the session context already joined on.
+ *
+ * The truck, the order, the consignee and the driver's number travel with the
+ * alert because an exception you have to click through before you can identify
+ * it is an exception nobody works at 02:00. This mirrors the API's projection
+ * in full rather than only the fields today's panel paints — a partial mirror
+ * is how a type stops describing the wire.
+ */
+export interface Alert {
+  id: string;
+  kind: AlertKind;
+  severity: AlertSeverity;
+  /** Written in Turkish by the detector at raise time, ready to display. */
+  title: string;
+  detail: string | null;
+  payload: Record<string, unknown>;
+  raisedAt: string;
+  /** Resolved BY THE WORLD — the signal came back, the truck arrived. */
+  resolvedAt: string | null;
+  /** Acknowledged BY A PERSON. Orthogonal to resolvedAt: both, either, neither. */
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  acknowledgedByName: string | null;
+
+  sessionId: string;
+  sessionReference: string;
+  sessionStatus: string;
+  lat: number | null;
+  lon: number | null;
+  lastPointAt: string | null;
+  signalState: SignalState;
+  secondsSinceFix: number | null;
+  batteryPct: number | null;
+  isCharging: boolean | null;
+
+  orderId: string | null;
+  orderNumber: string | null;
+  orderStatus: string | null;
+  destinationLabel: string | null;
+  remainingKm: number | null;
+  plannedDeliveryAt: string | null;
+
+  customerName: string | null;
+  customerCity: string | null;
+  carrierName: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  vehiclePlate: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -407,6 +495,34 @@ export const api = {
     apiFetch<Driver>('/shipping-companies/drivers', { method: 'POST', body: JSON.stringify(body) }),
 
   carrierPerformance: () => apiFetch<CarrierPerformance[]>('/tracking/carriers/performance'),
+
+  // ---- The exception desk ---------------------------------------------------
+
+  /**
+   * What is wrong right now, plus what the world fixed recently.
+   *
+   * `resolvedWithinHours` is deliberately never sent. The list and the count
+   * both default to the same server-side window, so leaving it alone is what
+   * guarantees the badge cannot count something the panel does not show; pass
+   * it here and you have to remember to pass the identical value there.
+   */
+  alerts: (query: { unacknowledgedOnly?: boolean; sessionId?: string; limit?: number; offset?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (v !== undefined) params.set(k, String(v));
+    return apiFetch<{ items: Alert[]; total: number; limit: number; offset: number }>(`/alerts?${params}`);
+  },
+
+  /**
+   * The badge number, straight off a partial index. Cheap enough to poll, and
+   * unlike the list it is never truncated by a page size.
+   */
+  alertCount: () =>
+    apiFetch<{ unacknowledged: number; critical: number; open: number; windowHours: number }>(
+      '/alerts/count',
+    ),
+
+  /** "I have seen this and I am dealing with it." Returns the updated row. */
+  acknowledgeAlert: (id: string) => apiFetch<Alert>(`/alerts/${id}/acknowledge`, { method: 'POST' }),
 
   stats: () =>
     apiFetch<{

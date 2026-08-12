@@ -4,14 +4,14 @@ import { use, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, API_BASE } from '@/lib/api';
+import { api, type SessionDetail } from '@/lib/api';
+import { downloadAuthed } from '@/lib/download';
 import { useSessionStream } from '@/lib/useRealtime';
 import { displayState, useNow } from '@/lib/signal';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
   Badge,
   Button,
-  ButtonLink,
   ConfirmDialog,
   ConnectionPill,
   ErrorState,
@@ -109,6 +109,29 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     onError: (e) => toast.error('İşlem başarısız', (e as Error).message),
   });
 
+  /*
+   * The raw export was a bare `<a href download>` pointing straight at the API.
+   *
+   * An anchor carries no Authorization header and the guard chain is
+   * fail-closed, so every click since this page shipped fetched a 401 — and
+   * because a failed navigation-download reports nothing, the button looked
+   * merely unresponsive rather than broken. Fetching the body ourselves is the
+   * only way to attach the token; routing it through useMutation is what gives
+   * the failure somewhere to surface.
+   */
+  const exportRaw = useMutation({
+    mutationFn: () =>
+      downloadAuthed(`/tracking/sessions/${id}/export.ndjson`, exportFilename(session, id)),
+    onSuccess: ({ bytes, filename }) =>
+      // An empty file is the worst outcome available here: handed to a lawyer
+      // it reads as proof that the shipment was never tracked, when it in fact
+      // means this session never received a single point. Say which it is.
+      bytes === 0
+        ? toast.error('Dosya boş', 'Bu oturumda kayıtlı konum noktası yok.')
+        : toast.success('Ham veri indirildi', `${filename} · ${formatBytes(bytes)}`),
+    onError: (e) => toast.error('Ham veri indirilemedi', (e as Error).message),
+  });
+
   const regenerate = useMutation({
     mutationFn: () => api.regenerateCode(id),
     onSuccess: () => {
@@ -198,13 +221,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           >
             İptal
           </Button>
-          <ButtonLink
-            size="sm"
-            href={`${API_BASE}/tracking/sessions/${id}/export.ndjson`}
-            download
-          >
+          <Button size="sm" loading={exportRaw.isPending} onClick={() => exportRaw.mutate()}>
             Ham veri
-          </ButtonLink>
+          </Button>
         </div>
       </div>
 
@@ -421,6 +440,31 @@ function empty(): GeoJSON.FeatureCollection {
 
 function fmt(n: number | null | undefined): string {
   return n === null || n === undefined ? '—' : n.toLocaleString('tr-TR');
+}
+
+/**
+ * The browser cannot read the server's Content-Disposition — the API is on a
+ * different origin and only X-KH-Server-Time is exposed — so the name is built
+ * here instead. Reference, plate and the day the shipment ran, because these
+ * files pile up in one folder during a dispute and the server's
+ * `karahoca-session-<uuid>.ndjson` tells nobody which truck it belongs to.
+ */
+function exportFilename(session: SessionDetail | undefined, id: string): string {
+  // The shipment's own day, not today's: the file is evidence about a date.
+  const day = (session?.startedAt ? new Date(session.startedAt) : new Date())
+    .toISOString()
+    .slice(0, 10);
+  return [session?.reference ?? id.slice(0, 8), session?.vehiclePlate, day]
+    .filter(Boolean)
+    .join('-')
+    .concat('.ndjson');
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const [value, unit] =
+    bytes < 1024 * 1024 ? [bytes / 1024, 'KB'] : [bytes / (1024 * 1024), 'MB'];
+  return `${value.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} ${unit}`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

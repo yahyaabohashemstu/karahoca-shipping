@@ -77,6 +77,24 @@ export class TrackingController {
     // reply.raw while Fastify still believes the reply is pending produces
     // "Reply was already sent" errors and skips the onSend lifecycle.
     reply.hijack();
+
+    /*
+     * Replay the headers Fastify had accumulated but not yet flushed.
+     *
+     * hijack() removes this reply from Fastify's send path, and that path is
+     * what writes reply.header() values to the socket — including the
+     * Access-Control-Allow-Origin that @fastify/cors sets in an onRequest
+     * hook. The old download was a plain <a href download> navigation, which
+     * CORS does not govern, so nothing noticed. The dashboard now fetches this
+     * with an Authorization header, and without these lines the browser
+     * returns a 200 it refuses to let JavaScript read on any deployment where
+     * the API is not same-origin with the panel.
+     */
+    for (const [key, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) reply.raw.setHeader(key, value as string | number | string[]);
+    }
+
+    // After the loop, so they win over anything inherited.
     reply.raw.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     reply.raw.setHeader(
       'Content-Disposition',

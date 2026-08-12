@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { AlertsModule } from './alerts/alerts.module';
 import { AppConfigModule } from './config/config.module';
 import { AuthModule } from './auth/auth.module';
 import { UserAuthGuard } from './auth/guards/user-auth.guard';
@@ -12,6 +13,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RedisModule } from './redis/redis.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { ShareModule } from './share/share.module';
 import { TrackingModule } from './tracking/tracking.module';
 
 @Module({
@@ -23,9 +25,12 @@ import { TrackingModule } from './tracking/tracking.module';
     AuthModule,
     RealtimeModule,
     SessionsModule,
+    // The consignee half of the same hand-off story as SessionsModule.
+    ShareModule,
     IngestModule,
     TrackingModule,
     CatalogModule,
+    AlertsModule,
     JobsModule,
   ],
   controllers: [HealthController],

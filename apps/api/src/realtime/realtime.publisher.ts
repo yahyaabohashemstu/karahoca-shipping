@@ -25,7 +25,40 @@ export interface BackfillSegment {
   points: Array<[number, number, string]>; // [lon, lat, isoTime]
 }
 
+/**
+ * A row of kh.alerts on the wire.
+ *
+ * Deliberately smaller than the row: this frame exists to raise a toast and
+ * bump a badge, and `GET /alerts` is the full record with the order, customer
+ * and vehicle context hung off it. Sending the join down every socket would
+ * put the fleet map's coalescing work back on the browser it was taken off.
+ */
+export interface AlertNotification {
+  id: string;
+  sessionId: string;
+  reference: string | null;
+  kind: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  title: string;
+  detail: string | null;
+  raisedAt: string;
+}
+
 export const ROOM_FLEET = 'fleet:live';
+
+/*
+ * Alerts cannot ride ROOM_FLEET.
+ *
+ * That room is joined by an explicit `subscribe:fleet` and left again by the
+ * live map's own `unsubscribe:fleet` on navigation — so the bell would be deaf
+ * on /orders, /sessions, /customers, /carriers and /performance, and would go
+ * deaf on the map itself the moment the page unmounted. It works on the live
+ * map, which is the page anyone tests first, so the failure is silent.
+ *
+ * Every socket that authenticates is a dispatcher and the bell is on every
+ * screen, so this room is joined at connection time and left by disconnecting.
+ */
+export const ROOM_ALERTS = 'alerts';
 export const roomSession = (id: string) => `session:${id}`;
 
 /**
@@ -124,14 +157,71 @@ export class RealtimePublisher implements OnApplicationShutdown {
     this.server.to(ROOM_FLEET).emit('fleet:session-state', payload);
   }
 
+  /**
+   * A timeline event on one session.
+   *
+   * The fleet copy is not symmetry for its own sake. `sessionState` above has
+   * always emitted to both rooms while this method emitted to `roomSession()`
+   * alone, and that asymmetry is the whole reason 74 GPS_LOST events reached
+   * nobody: the silence job — the one whose own comment calls it "the alert
+   * that actually saves shipments" — announced every one of them into
+   * `session:<id>`, a room that is empty unless a dispatcher already has that
+   * exact truck's detail page open. Nobody has that page open at 02:00.
+   *
+   * The fleet copy carries its own event name, matching `fleet:session-state`,
+   * so the overview can bind to it directly. Reusing `session:event` for both
+   * rooms would force every dashboard to receive the chatter of all 250 trucks
+   * and throw away the 249 it is not showing.
+   */
   sessionEvent(sessionId: string, type: string, message: string | null): void {
     if (!this.server) return;
-    this.server.to(roomSession(sessionId)).emit('session:event', {
-      sessionId,
-      type,
-      message,
-      at: new Date().toISOString(),
-    });
+    const payload = { sessionId, type, message, at: new Date().toISOString() };
+    this.server.to(roomSession(sessionId)).emit('session:event', payload);
+    this.server.to(ROOM_FLEET).emit('fleet:session-event', payload);
+  }
+
+  /**
+   * A newly opened kh.alerts row.
+   *
+   * Separate from `sessionEvent` because an alert is a different object from a
+   * timeline entry: it has an id to acknowledge against, a severity that drives
+   * the badge colour, and a lifecycle. A dashboard binding to `fleet:alert`
+   * gets exactly the things a human must act on, with no filtering.
+   *
+   * Callers must only reach here when `kh.raise_alert()` returned an id. It
+   * returns NULL when an alert of that kind is already open, and re-announcing
+   * a six-hour signal loss every five minutes is how a badge becomes wallpaper.
+   */
+  alertRaised(alert: AlertNotification): void {
+    if (!this.server) return;
+    this.server.to(roomSession(alert.sessionId)).emit('session:alert', alert);
+    this.server.to(ROOM_ALERTS).emit('fleet:alert', alert);
+  }
+
+  /**
+   * The world fixed it: the signal came back, the truck moved, the phone went
+   * on charge. Broadcast so an open dashboard can strike the row through
+   * without waiting for its next poll — a dispatcher chasing a truck that
+   * recovered two minutes ago is the same wasted phone call as one who never
+   * heard about the outage.
+   */
+  alertResolved(sessionId: string, alertId: string, kind: string): void {
+    if (!this.server) return;
+    const payload = { id: alertId, sessionId, kind, at: new Date().toISOString() };
+    this.server.to(roomSession(sessionId)).emit('session:alert-resolved', payload);
+    this.server.to(ROOM_ALERTS).emit('fleet:alert-resolved', payload);
+  }
+
+  /**
+   * A person looked. Broadcast because the badge is shared state: without this
+   * every other dispatcher's counter keeps the alert until their next refetch,
+   * and two people ring the same driver about the same truck.
+   */
+  alertAcknowledged(sessionId: string, alertId: string, byUserId: string): void {
+    if (!this.server) return;
+    const payload = { id: alertId, sessionId, by: byUserId, at: new Date().toISOString() };
+    this.server.to(roomSession(sessionId)).emit('session:alert-acknowledged', payload);
+    this.server.to(ROOM_ALERTS).emit('fleet:alert-acknowledged', payload);
   }
 
   /** Per-batch ingest telemetry, useful on the session detail page. */

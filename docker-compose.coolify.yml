@@ -328,7 +328,11 @@ services:
       # 80, and this stack has already lost a certificate once over port-80
       # routing. Android only fetches assetlinks.json over https anyway.
       - traefik.http.routers.kh-api.entryPoints=https
-      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`) || Path(`/.well-known/assetlinks.json`) || Path(`/app`))
+      # /s/ is the consignee's tracking link. Without it here every share link
+      # ever minted resolves to the dashboard's catch-all and 404s — the
+      # customer gets a broken page from their supplier, which is worse than
+      # having sent them nothing.
+      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`) || PathPrefix(`/s/`) || Path(`/.well-known/assetlinks.json`) || Path(`/app`))
       - traefik.http.routers.kh-api.priority=100
       - traefik.http.routers.kh-api.tls=true
       - traefik.http.routers.kh-api.tls.certresolver=letsencrypt

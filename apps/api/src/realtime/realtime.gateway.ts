@@ -13,7 +13,7 @@ import type { Server, Socket } from 'socket.io';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { DatabaseService } from '../database/database.service';
 import { FLEET_COLUMNS } from '../common/fleet-projection';
-import { ROOM_FLEET, RealtimePublisher, roomSession } from './realtime.publisher';
+import { ROOM_ALERTS, ROOM_FLEET, RealtimePublisher, roomSession } from './realtime.publisher';
 import type { UserTokenPayload } from '../auth/auth.types';
 
 interface SocketData {
@@ -77,6 +77,12 @@ export class RealtimeGateway
         email: claims.email,
         role: claims.role,
       };
+      // The alert bell is mounted on every screen, so alert delivery must not
+      // depend on the fleet subscription the live map owns and drops on
+      // navigation. Joined here because every socket that reaches this line is
+      // an authenticated dispatcher; leaving is what disconnecting does.
+      void client.join(ROOM_ALERTS);
+
       this.logger.debug(`Socket ${client.id} authenticated as ${claims.email}`);
     } catch {
       client.emit('error:auth', { code: 'INVALID_TOKEN' });

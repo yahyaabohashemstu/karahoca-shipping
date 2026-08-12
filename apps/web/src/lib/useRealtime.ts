@@ -34,7 +34,12 @@ export interface BackfillEvent {
 
 let shared: Socket | null = null;
 
-function getSocket(): Socket {
+/**
+ * Exported: the alert bell in the top bar listens on this same connection. A
+ * second socket would mean a second authentication, a second reconnect loop
+ * and a second token-refresh race against the same rotating refresh token.
+ */
+export function getSocket(): Socket {
   if (shared?.connected || shared?.active) return shared;
   shared = io(SOCKET_URL, {
     path: '/realtime',

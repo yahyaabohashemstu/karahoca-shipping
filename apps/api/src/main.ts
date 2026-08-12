@@ -116,6 +116,9 @@ async function bootstrap(): Promise<void> {
     // The QR hand-off link has to be short enough to print on a dispatch note.
     exclude: [
       { path: 't/:code', method: RequestMethod.GET },
+      // The consignee's link gets pasted into WhatsApp and read off a phone
+      // screen. /api/v1/s/<43 chars> is a URL nobody would forward.
+      { path: 's/:token', method: RequestMethod.GET },
       { path: 'healthz', method: RequestMethod.GET },
       // Android will only look here. The path is fixed by the platform and
       // cannot carry an /api/v1 prefix.
