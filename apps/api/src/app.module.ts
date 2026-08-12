@@ -4,6 +4,7 @@ import { AppConfigModule } from './config/config.module';
 import { AuthModule } from './auth/auth.module';
 import { UserAuthGuard } from './auth/guards/user-auth.guard';
 import { CatalogModule } from './catalog/catalog.module';
+import { RateLimitGuard } from './common/rate-limit.guard';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
@@ -29,6 +30,16 @@ import { TrackingModule } from './tracking/tracking.module';
   ],
   controllers: [HealthController],
   providers: [
+    {
+      /*
+       * Ordered deliberately. Guards run in registration order, and the rate
+       * limiter must run FIRST — it is the only guard that protects the
+       * unauthenticated endpoints, and a limiter that runs after
+       * authentication protects nothing that needed protecting.
+       */
+      provide: APP_GUARD,
+      useClass: RateLimitGuard,
+    },
     {
       // Fail-closed: every route requires a dispatcher token unless it carries
       // @Public(). Driver routes opt out here and re-guard with

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { DriverSessionGuard } from '../auth/guards/driver-session.guard';
 import { Driver, Public } from '../auth/decorators';
+import { RateLimit } from '../common/rate-limit.guard';
 import { DatabaseService } from '../database/database.service';
 import { SessionsService } from './sessions.service';
 import { ClaimSessionDto, DriverEventDto, DriverRefreshDto } from './dto';
@@ -20,16 +21,30 @@ export class DriverController {
     private readonly db: DatabaseService,
   ) {}
 
-  /** Exchange a claim code for a session-scoped credential set. */
+  /**
+   * Exchange a claim code for a session-scoped credential set.
+   *
+   * 20 attempts per IP per minute is far above what a real driver needs — they
+   * type one code, twice at worst — and far below what makes hammering an
+   * unauthenticated database-touching endpoint worthwhile. The per-code window
+   * is tighter still and cannot be evaded by rotating source addresses.
+   */
   @Public()
+  @RateLimit({ bucket: 'claim', perIp: 20, perSubject: 10, subjectField: 'code', windowSec: 60 })
   @Post('claim')
   @HttpCode(200)
   claim(@Body() dto: ClaimSessionDto, @Req() req: KhRequest) {
     return this.sessions.claim(dto, req.ip);
   }
 
-  /** Silent re-auth when the 24 h access token expires mid-haul. */
+  /**
+   * Silent re-auth when the 24 h access token expires mid-haul.
+   *
+   * Roomier than claim: a truck coming out of a dead zone can legitimately
+   * retry several times in quick succession while the radio settles.
+   */
   @Public()
+  @RateLimit({ bucket: 'drvrefresh', perIp: 60, windowSec: 60 })
   @Post('token/refresh')
   @HttpCode(200)
   refresh(@Body() dto: DriverRefreshDto) {

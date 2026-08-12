@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
+import { RateLimit } from '../common/rate-limit.guard';
 import { CurrentUser, Public } from './decorators';
 import type { AuthenticatedUser, KhRequest } from './auth.types';
 
@@ -22,7 +23,16 @@ class RefreshDto {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  /**
+   * 10 attempts per IP per minute, and 5 per e-mail address.
+   *
+   * The per-email window is the one that matters. Password spraying rotates
+   * source addresses and tries a handful of common passwords against many
+   * accounts; an IP-only limit does nothing about it, and this dashboard has a
+   * small, guessable set of accounts.
+   */
   @Public()
+  @RateLimit({ bucket: 'login', perIp: 10, perSubject: 5, subjectField: 'email', windowSec: 60 })
   @Post('login')
   @HttpCode(200)
   async login(@Body() dto: LoginDto, @Req() req: KhRequest) {
