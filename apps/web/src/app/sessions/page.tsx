@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { freshness, useNow } from '@/lib/signal';
+import { displayState, useNow } from '@/lib/signal';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
   Button,
@@ -169,7 +169,7 @@ export default function SessionsPage() {
                 </TRMessage>
               ) : (
                 items.map((s) => {
-                  const f = freshness(s, now);
+                  const f = displayState(s, now);
                   return (
                     <TR key={s.sessionId} onClick={() => router.push(`/sessions/${s.sessionId}`)}>
                       <TD>
@@ -186,7 +186,9 @@ export default function SessionsPage() {
                       <TD>
                         <div className="flex items-center gap-1.5">
                           <StatusBadge status={s.status} />
-                          {s.status === 'ACTIVE' && <SignalBadge state={f.state} compact />}
+                          {(s.status === 'ACTIVE' || s.status === 'PAUSED') && (
+                            <SignalBadge state={f.state} compact />
+                          )}
                         </div>
                       </TD>
                       <TD numeric>{s.distanceKm ?? 0} km</TD>

@@ -4,9 +4,9 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, type FleetPosition, type SignalState } from '@/lib/api';
+import { api, type FleetPosition } from '@/lib/api';
 import { useFleetStream } from '@/lib/useRealtime';
-import { freshness, isSilent, SIGNAL_RANK, useNow } from '@/lib/signal';
+import { displayState, isSilent, SIGNAL_RANK, useNow, type DisplayState } from '@/lib/signal';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
   Button,
@@ -37,7 +37,7 @@ const FleetMap = dynamic(() => import('@/components/FleetMap'), {
 /** A row plus the freshness we recomputed for it, so nothing downstream re-derives it. */
 interface Row {
   p: FleetPosition;
-  state: SignalState;
+  state: DisplayState;
   secondsSinceFix: number | null;
   speedKmh: number;
 }
@@ -73,8 +73,15 @@ export default function LiveDashboard() {
   const rows: Row[] = useMemo(() => {
     const out = fleet.map((p) => {
       const live = liveUpdates.get(p.sessionId);
-      const f = freshness(
-        live ? { recordedAt: live.recordedAt, secondsSinceFix: null, signalState: p.signalState } : p,
+      const f = displayState(
+        live
+          ? {
+              status: p.status,
+              recordedAt: live.recordedAt,
+              secondsSinceFix: null,
+              signalState: p.signalState,
+            }
+          : p,
         now,
       );
       return {
@@ -245,14 +252,30 @@ export default function LiveDashboard() {
 function FleetRow({ row, selected, onSelect }: { row: Row; selected: boolean; onSelect: () => void }) {
   const { p, state, speedKmh } = row;
   const lowBattery = p.batteryPct !== null && p.batteryPct < 20;
+  const paused = state === 'PAUSED';
 
   return (
     <li>
       <button
         onClick={onSelect}
         aria-current={selected ? 'true' : undefined}
+        /*
+         * A driver who stopped the app gets an orange card, not just an orange
+         * badge. A badge is 60 square pixels at the right-hand edge of a row; a
+         * tinted card with a coloured left edge is what a dispatcher notices
+         * while scanning the column, which is the whole point of flagging it.
+         *
+         * Selection still wins visually — you must be able to see which row you
+         * clicked — but the left edge survives, so the state is never lost.
+         */
         className={`block w-full border-b border-line/70 px-3 py-2.5 text-left transition-colors ${
-          selected ? 'bg-brand-soft' : 'hover:bg-surface-2'
+          paused ? 'border-l-[3px] border-l-paused-ring pl-[9px]' : ''
+        } ${
+          selected
+            ? 'bg-brand-soft'
+            : paused
+              ? 'bg-paused-bg/45 hover:bg-paused-bg/70'
+              : 'hover:bg-surface-2'
         }`}
       >
         <div className="flex items-center justify-between gap-2">

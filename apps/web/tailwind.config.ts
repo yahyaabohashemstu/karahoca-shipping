@@ -53,6 +53,7 @@ export default {
         stale: { DEFAULT: rgb('stale'), bg: rgb('stale-bg'), ring: rgb('stale-ring') },
         lost: { DEFAULT: rgb('lost'), bg: rgb('lost-bg'), ring: rgb('lost-ring') },
         nosignal: { DEFAULT: rgb('nosignal'), ring: rgb('nosignal-ring') },
+        paused: { DEFAULT: rgb('paused'), bg: rgb('paused-bg'), ring: rgb('paused-ring') },
       },
 
       /*

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, API_BASE } from '@/lib/api';
 import { useSessionStream } from '@/lib/useRealtime';
-import { freshness, useNow } from '@/lib/signal';
+import { displayState, useNow } from '@/lib/signal';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
   Badge,
@@ -121,9 +121,14 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const signal = useMemo(
     () =>
       session
-        ? freshness(
+        ? displayState(
             live
-              ? { recordedAt: live.recordedAt, secondsSinceFix: null, signalState: session.signalState }
+              ? {
+                  status: session.status,
+                  recordedAt: live.recordedAt,
+                  secondsSinceFix: null,
+                  signalState: session.signalState,
+                }
               : session,
             now,
           )
@@ -156,7 +161,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           {loading ? <Skeleton className="inline-block h-3.5 w-24 align-middle" /> : session?.reference ?? id.slice(0, 8)}
         </span>
         <StatusBadge status={currentStatus} />
-        {signal && currentStatus === 'ACTIVE' && <SignalBadge state={signal.state} />}
+        {signal && (currentStatus === 'ACTIVE' || currentStatus === 'PAUSED') && (
+          <SignalBadge state={signal.state} />
+        )}
         <ConnectionPill connected={connected} />
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">

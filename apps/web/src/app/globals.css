@@ -81,6 +81,15 @@
     --kh-nosignal-bg: 0 0 0 / 0;
     --kh-nosignal-ring: 190 201 205;
 
+    /* PAUSED — the driver stopped the app.
+       Orange, and a deliberately RED-leaning one. DELAYED is amber, which is
+       yellow-leaning, and the two must not read as the same pill; the pause
+       glyph carries the rest of the distinction. This is a lifecycle state, not
+       a freshness state: it overrides whatever the last fix time would say. */
+    --kh-paused: 154 52 18;
+    --kh-paused-bg: 255 226 205;
+    --kh-paused-ring: 234 88 12;
+
     /* --- Feedback -------------------------------------------------------- */
     --kh-danger: 190 28 28;
     --kh-danger-bg: 254 233 233;
@@ -96,6 +105,7 @@
     --kh-map-stale: 120 139 148;
     --kh-map-lost: 225 45 45;
     --kh-map-nosignal: 148 163 170;
+    --kh-map-paused: 234 88 12;
     --kh-map-route: 20 96 200;
     /* Violet: the one hue that appears nowhere else in the product and nowhere
        on the Positron basemap, so a destination pin can never be mistaken for
@@ -150,6 +160,10 @@
     --kh-nosignal-bg: 0 0 0 / 0;
     --kh-nosignal-ring: 66 84 92;
 
+    --kh-paused: 253 176 118;
+    --kh-paused-bg: 66 32 12;
+    --kh-paused-ring: 224 105 40;
+
     --kh-danger: 255 138 138;
     --kh-danger-bg: 60 18 18;
     --kh-danger-ring: 130 45 45;
@@ -163,6 +177,7 @@
     --kh-map-stale: 150 168 177;
     --kh-map-lost: 255 82 82;
     --kh-map-nosignal: 110 130 139;
+    --kh-map-paused: 251 130 60;
     --kh-map-route: 96 160 255;
     --kh-map-destination: 167 139 250;
 

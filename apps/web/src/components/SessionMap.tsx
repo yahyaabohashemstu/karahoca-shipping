@@ -86,8 +86,14 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
       installLayers(instance);
       setReady(true);
     });
+    // MapLibre measures its container once, at construction, and never recovers
+    // from a zero. See the same guard in FleetMap.
+    const ro = new ResizeObserver(() => instance.resize());
+    ro.observe(container.current);
+
     map.current = instance;
     return () => {
+      ro.disconnect();
       instance.remove();
       map.current = null;
       setReady(false);

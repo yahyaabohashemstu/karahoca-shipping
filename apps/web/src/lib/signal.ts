@@ -63,18 +63,44 @@ export function freshness(
   return { state: signalFrom(secs), secondsSinceFix: secs };
 }
 
+/* -----------------------------------------------------------------------------
+   Lifecycle beats freshness
+   -------------------------------------------------------------------------- */
+
+/**
+ * What the dispatcher sees, which is not the same as how fresh the fix is.
+ *
+ * A driver who taps Stop leaves a session in PAUSED with a perfectly recent
+ * last position. Judged on freshness alone that reads LIVE — green, healthy,
+ * nothing to do — when in fact the truck has stopped reporting and will not
+ * report again until someone acts. Lifecycle therefore overrides freshness.
+ */
+export type DisplayState = SignalState | 'PAUSED';
+
+export function displayState(
+  row: { status?: string | null; recordedAt: string | null; secondsSinceFix: number | null; signalState: SignalState },
+  nowMs: number,
+): { state: DisplayState; secondsSinceFix: number | null } {
+  const f = freshness(row, nowMs);
+  if (row.status === 'PAUSED') return { state: 'PAUSED', secondsSinceFix: f.secondsSinceFix };
+  return f;
+}
+
 /** Rank for sorting: the trucks that need attention float to the top. */
-export const SIGNAL_RANK: Record<SignalState, number> = {
+export const SIGNAL_RANK: Record<DisplayState, number> = {
   LOST: 0,
   STALE: 1,
-  DELAYED: 2,
-  LIVE: 3,
-  NO_SIGNAL: 4,
+  // A driver who stopped tracking outranks a merely delayed one: a delay
+  // resolves itself when the next fix lands, a stop does not.
+  PAUSED: 2,
+  DELAYED: 3,
+  LIVE: 4,
+  NO_SIGNAL: 5,
 };
 
 /** States a dispatcher is expected to act on. */
-export function isSilent(state: SignalState): boolean {
-  return state === 'LOST' || state === 'STALE';
+export function isSilent(state: DisplayState): boolean {
+  return state === 'LOST' || state === 'STALE' || state === 'PAUSED';
 }
 
 /**
@@ -99,20 +125,22 @@ export function useNow(intervalMs = 15_000): number {
 // can never disagree about what a state is called.
 // -----------------------------------------------------------------------------
 
-export const SIGNAL_LABEL: Record<SignalState, string> = {
+export const SIGNAL_LABEL: Record<DisplayState, string> = {
   LIVE: 'Canlı',
   DELAYED: 'Gecikmeli',
   STALE: 'Eski',
   LOST: 'Sinyal yok',
   NO_SIGNAL: 'Başlamadı',
+  PAUSED: 'Durduruldu',
 };
 
-export const SIGNAL_DESCRIPTION: Record<SignalState, string> = {
+export const SIGNAL_DESCRIPTION: Record<DisplayState, string> = {
   LIVE: 'Son 90 saniye içinde konum alındı',
   DELAYED: 'Son konum 90 saniye – 10 dakika önce',
   STALE: 'Son konum 10 dakika – 2 saat önce',
   LOST: 'Son konumun üzerinden 2 saatten fazla geçti',
   NO_SIGNAL: 'Sürücü henüz takibi başlatmadı',
+  PAUSED: 'Sürücü takibi durdurdu — araç konum göndermiyor',
 };
 
 /** Session lifecycle status, distinct from signal freshness. */

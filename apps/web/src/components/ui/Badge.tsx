@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import type { SignalState } from '@/lib/api';
+import type { DisplayState } from '@/lib/signal';
 import { SIGNAL_DESCRIPTION, SIGNAL_LABEL, statusLabel } from '@/lib/signal';
 
 /* =============================================================================
@@ -29,15 +29,18 @@ import { SIGNAL_DESCRIPTION, SIGNAL_LABEL, statusLabel } from '@/lib/signal';
    filled with a saturated colour.
    ========================================================================== */
 
-const SIGNAL_STYLE: Record<SignalState, string> = {
+const SIGNAL_STYLE: Record<DisplayState, string> = {
   LIVE: 'bg-live-bg text-live ring-1 ring-inset ring-live-ring/45',
   DELAYED: 'bg-delayed-bg text-delayed ring-1 ring-inset ring-delayed-ring/50',
   STALE: 'bg-stale-bg text-stale ring-1 ring-inset ring-stale-ring/50',
   LOST: 'bg-lost-bg text-lost ring-1 ring-inset ring-lost-ring font-semibold',
   NO_SIGNAL: 'bg-transparent text-nosignal ring-1 ring-inset ring-nosignal-ring border-dashed',
+  // Lifecycle, not freshness: the driver stopped the app, so the last fix time
+  // is irrelevant and a green LIVE badge would be a lie.
+  PAUSED: 'bg-paused-bg text-paused ring-1 ring-inset ring-paused-ring/60 font-medium',
 };
 
-function Glyph({ state }: { state: SignalState }) {
+function Glyph({ state }: { state: DisplayState }) {
   const common = 'shrink-0';
   switch (state) {
     case 'LIVE':
@@ -66,6 +69,15 @@ function Glyph({ state }: { state: SignalState }) {
           aria-hidden
         />
       );
+    case 'PAUSED':
+      // Two bars — the universal pause mark. It is what separates this from
+      // DELAYED's amber at a glance and under any colour-vision deficiency.
+      return (
+        <span className={clsx(common, 'flex h-2 w-2 items-center justify-between')} aria-hidden>
+          <span className="block h-2 w-[3px] rounded-[1px] bg-current" />
+          <span className="block h-2 w-[3px] rounded-[1px] bg-current" />
+        </span>
+      );
   }
 }
 
@@ -74,7 +86,7 @@ export function SignalBadge({
   className,
   compact,
 }: {
-  state: SignalState;
+  state: DisplayState;
   className?: string;
   compact?: boolean;
 }) {
@@ -100,13 +112,14 @@ export function SignalBadge({
 }
 
 /** Just the glyph, for dense table cells where the label is a column header. */
-export function SignalDot({ state, className }: { state: SignalState; className?: string }) {
-  const tone: Record<SignalState, string> = {
+export function SignalDot({ state, className }: { state: DisplayState; className?: string }) {
+  const tone: Record<DisplayState, string> = {
     LIVE: 'text-live-ring',
     DELAYED: 'text-delayed-ring',
     STALE: 'text-stale-ring',
     LOST: 'text-lost-bg',
     NO_SIGNAL: 'text-nosignal-ring',
+    PAUSED: 'text-paused-ring',
   };
   return (
     <span
@@ -127,7 +140,9 @@ const STATUS_STYLE: Record<string, string> = {
   ASSIGNED: 'bg-brand-soft text-brand-text ring-brand/25',
   CLAIMED: 'bg-brand-soft text-brand-text ring-brand/25',
   ACTIVE: 'bg-live-bg text-live ring-live-ring/40',
-  PAUSED: 'bg-delayed-bg text-delayed ring-delayed-ring/45',
+  // The same orange as the signal badge and the map marker, so "durduruldu"
+  // means one thing everywhere in the product.
+  PAUSED: 'bg-paused-bg text-paused ring-paused-ring/60',
   COMPLETED: 'bg-surface-3 text-ink-2 ring-line-strong',
   CANCELLED: 'bg-surface-3 text-ink-3 ring-line-strong',
   EXPIRED: 'bg-danger-bg text-danger ring-danger-ring',

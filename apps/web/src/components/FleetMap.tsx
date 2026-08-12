@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { FleetPosition, SignalState } from '@/lib/api';
+import type { FleetPosition } from '@/lib/api';
 import type { LivePositionEvent } from '@/lib/useRealtime';
-import { freshness, SIGNAL_LABEL } from '@/lib/signal';
+import { displayState, SIGNAL_LABEL, type DisplayState } from '@/lib/signal';
 import { mapColors, mapStyleFor } from '@/lib/mapStyle';
 import { useTheme } from '@/lib/theme';
 
@@ -36,7 +36,32 @@ interface Props {
 export default function FleetMap({ positions, liveUpdates, selectedId, onSelect, now, stale }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const ready = useRef(false);
+  /*
+   * STATE, not a ref. This is the bug that hid every truck.
+   *
+   * Effects re-run on dependency change, and mutating a ref changes nothing.
+   * Setting ready.current in the load handler therefore never re-ran the
+   * effect that calls setData, so the GeoJSON sources stayed empty. The theme
+   * effect made it permanent: it set the flag false, setStyle discarded every
+   * layer, and the reinstall had no way to say "now draw again".
+   *
+   * SessionMap has always used useState here — which is exactly why the driver
+   * showed up on the detail page and nowhere on the main map.
+   */
+  const [ready, setReady] = useState(false);
+  /*
+   * Which style URL the map is currently showing.
+   *
+   * Needed now that  is state and therefore a dependency: without it the
+   * sequence load → ready → effect → setStyle → ready:false → effect → … is a
+   * loop that reloads the basemap forever. Comparing against the applied URL
+   * makes the effect idempotent, so it fires exactly once per genuine theme
+   * change and is a no-op every other time.
+   *
+   * Seeded in the init effect with the style the map was constructed with.
+   */
+  const appliedStyle = useRef<string | null>(null);
+
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const { resolved } = useTheme();
@@ -151,9 +176,12 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
   useEffect(() => {
     if (map.current || !container.current) return;
 
+    const initialStyle = mapStyleFor(resolved);
+    appliedStyle.current = initialStyle;
+
     const instance = new maplibregl.Map({
       container: container.current,
-      style: mapStyleFor(resolved),
+      style: initialStyle,
       center: HOME,
       zoom: 6.5,
       attributionControl: { compact: true },
@@ -168,7 +196,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
     instance.on('load', () => {
       installLayers(instance);
-      ready.current = true;
+      setReady(true);
 
       instance.on('click', 'truck-dot', (e) => {
         const id = e.features?.[0]?.properties?.sessionId;
@@ -182,11 +210,28 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       });
     });
 
+    /*
+     * MapLibre measures its container exactly once, at construction, and never
+     * recovers if the answer was zero.
+     *
+     * That is a real hazard here and not a theoretical one: this component is
+     * loaded with next/dynamic into a flex column, so there is a frame in which
+     * the container exists with height 0 — and a map built in that frame gets a
+     * 0×0 canvas, renders nothing at all, and never fires `load`. Observed
+     * exactly that while debugging: every ancestor measured 862px while
+     * MapLibre's own canvas container sat at 0.
+     *
+     * The observer costs nothing and removes the whole class of failure.
+     */
+    const ro = new ResizeObserver(() => instance.resize());
+    ro.observe(container.current);
+
     map.current = instance;
     return () => {
+      ro.disconnect();
       instance.remove();
       map.current = null;
-      ready.current = false;
+      setReady(false);
     };
     // Only on mount. Theme changes are handled by the effect below, which swaps
     // the style in place rather than destroying the map and losing the viewport.
@@ -196,29 +241,31 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
   // ---- Theme -----------------------------------------------------------------
   useEffect(() => {
     const instance = map.current;
-    if (!instance || !ready.current) return;
-    ready.current = false;
-    instance.setStyle(mapStyleFor(resolved));
+    if (!instance || !ready) return;
+    const wanted = mapStyleFor(resolved);
+    if (appliedStyle.current === wanted) return;
+    appliedStyle.current = wanted;
+    setReady(false);
+    instance.setStyle(wanted);
     instance.once('styledata', () => {
       installLayers(instance);
-      ready.current = true;
-      // Force the data effect to run again now the sources exist.
-      instance.fire('kh:layers-ready');
+      setReady(true);
     });
-  }, [resolved, installLayers]);
+  }, [resolved, ready, installLayers]);
 
   // ---- Data -----------------------------------------------------------------
   useEffect(() => {
     const instance = map.current;
-    if (!instance || !ready.current) return;
+    if (!instance || !ready) return;
 
     const c = mapColors();
-    const colourFor: Record<SignalState, string> = {
+    const colourFor: Record<DisplayState, string> = {
       LIVE: c.LIVE,
       DELAYED: c.DELAYED,
       STALE: c.STALE,
       LOST: c.LOST,
       NO_SIGNAL: c.NO_SIGNAL,
+      PAUSED: c.PAUSED,
     };
 
     const truckFeatures: GeoJSON.Feature[] = [];
@@ -242,9 +289,14 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
        * a socket outage — the exact moment ageing matters — froze every truck
        * at whatever colour it had when the feed died.
        */
-      const { state } = freshness(
+      const { state } = displayState(
         live
-          ? { recordedAt: live.recordedAt, secondsSinceFix: null, signalState: position.signalState }
+          ? {
+              status: position.status,
+              recordedAt: live.recordedAt,
+              secondsSinceFix: null,
+              signalState: position.signalState,
+            }
           : position,
         now,
       );
@@ -285,7 +337,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
   // ---- Follow the selection --------------------------------------------------
   useEffect(() => {
     const instance = map.current;
-    if (!instance || !ready.current || !selectedId) return;
+    if (!instance || !ready || !selectedId) return;
     const selected = positions.find((p) => p.sessionId === selectedId);
     const live = liveUpdates.get(selectedId);
     const lat = live?.lat ?? selected?.lat;
@@ -314,13 +366,14 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
  * learn what graphite means except by asking someone.
  */
 function MapLegend() {
-  const items: SignalState[] = ['LIVE', 'DELAYED', 'STALE', 'LOST'];
-  const dot: Record<SignalState, string> = {
+  const items: DisplayState[] = ['LIVE', 'DELAYED', 'PAUSED', 'STALE', 'LOST'];
+  const dot: Record<DisplayState, string> = {
     LIVE: 'bg-[rgb(var(--kh-map-live))]',
     DELAYED: 'bg-[rgb(var(--kh-map-delayed))]',
     STALE: 'bg-[rgb(var(--kh-map-stale))]',
     LOST: 'bg-[rgb(var(--kh-map-lost))]',
     NO_SIGNAL: 'bg-[rgb(var(--kh-map-nosignal))]',
+    PAUSED: 'bg-[rgb(var(--kh-map-paused))]',
   };
   return (
     <div className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-3 rounded-md bg-surface/90 px-2.5 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">

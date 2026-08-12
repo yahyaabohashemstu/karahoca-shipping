@@ -27,11 +27,23 @@ const LIGHT = 'https://tiles.openfreemap.org/styles/positron';
 const DARK = 'https://tiles.openfreemap.org/styles/dark';
 
 /**
- * NEXT_PUBLIC_MAP_STYLE, when set, overrides both themes — it is the escape
- * hatch for pointing at a self-hosted tile server, at which point the operator
- * owns the light/dark question too.
+ * NEXT_PUBLIC_MAP_STYLE is the escape hatch for pointing at a self-hosted tile
+ * server, at which point the operator owns the light/dark question too.
+ *
+ * It deliberately does NOT honour an override that merely names one of
+ * OpenFreeMap's own styles. The deployment's environment still carried
+ * `.../styles/liberty` from before this file existed, which silently pinned
+ * both themes to the old colourful basemap — the dark theme kept a white map,
+ * and the whole reason for switching to a desaturated base (amber motorways
+ * under amber truck markers) was undone by a leftover variable. Verified from
+ * production: the browser was fetching `styles/liberty` long after this module
+ * was supposed to have replaced it.
+ *
+ * A self-hosted URL still wins, which is the case the escape hatch is for.
  */
-const OVERRIDE = process.env.NEXT_PUBLIC_MAP_STYLE?.trim() || null;
+const RAW_OVERRIDE = process.env.NEXT_PUBLIC_MAP_STYLE?.trim() || null;
+const OVERRIDE =
+  RAW_OVERRIDE && !/^https:\/\/tiles\.openfreemap\.org\//i.test(RAW_OVERRIDE) ? RAW_OVERRIDE : null;
 
 export function mapStyleFor(theme: 'light' | 'dark'): string {
   if (OVERRIDE) return OVERRIDE;
@@ -58,6 +70,7 @@ export function mapColors() {
     STALE: tok('--kh-map-stale'),
     LOST: tok('--kh-map-lost'),
     NO_SIGNAL: tok('--kh-map-nosignal'),
+    PAUSED: tok('--kh-map-paused'),
     route: tok('--kh-map-route'),
     destination: tok('--kh-map-destination'),
     /** Marker outline — the page surface, so a dot reads as sitting on the map. */
