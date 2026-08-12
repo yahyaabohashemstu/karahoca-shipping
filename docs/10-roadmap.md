@@ -52,17 +52,35 @@ cheap now and expensive to retrofit later.
 | Route deviation and restricted-zone evidence | 3 | 7 | This is the most speculative item on the list. It requires lane corridors derived from lane baselines that cannot be computed (no history), it assumes a systematic unauthorised-detour problem that nothing in the data suggests exists, and the false-positive ... |
 | Load and soak harness at 250 concurrent sessions | 3 | 5 | The three hot-path defects this proposal identified are real and I have promoted them into the storage-and-hot-path pass above — they were found by reading code, which is the point: the harness was not needed to find them and would not be needed to fix them... |
 
-## Open decisions, needing an answer rather than code
+## Open decisions — all four closed 2026-08-13
 
-- **Off-site backups.** `BACKUP_SFTP_*` is plumbed and empty, so today's
-  verified-restorable dumps sit on the same physical disk as the database they
-  protect. A Hetzner Storage Box is about EUR 3.81/month. See
-  [09 — Backup and restore](09-backup-and-restore.md).
-- **SSH accepts root password logins.** 37,824 failed attempts from 217 IPs in
-  three days, no fail2ban — and zero successful password logins ever, so
-  closing it costs nothing operationally.
-- **The Coolify UI answers from the public internet** on port 8000, as does
-  Coolify realtime on 6001/6002. Traefik's 8080 is already firewalled; these
-  should join it.
-- **mail.karahoca.com serves `CN=TRAEFIK DEFAULT CERT`** — a placeholder, not a
-  certificate. Every mail client sees a warning.
+- **SSH password authentication is off.** `PasswordAuthentication no` and
+  `PermitRootLogin prohibit-password`, in `sshd_config.d/00-karahoca-hardening.conf`
+  — named 00 so it beats cloud-init's drop-in, which sorts later and wins
+  otherwise. Verified: a fresh key login succeeds, a password attempt gets
+  `Permission denied (publickey)`. It cost nothing because nothing used it:
+  zero successful password logins in every retained log. fail2ban added too,
+  which banned two addresses within seconds of starting.
+
+- **The Coolify UI is no longer public.** It is fully served over
+  `https://coolify.karahoca.com`, and Traefik reaches it across the docker
+  network rather than the published host port, so closing `:8000` to the
+  internet cannot break it. Blocked in DOCKER-USER with
+  `--ctorigdstport 8000` — the first two attempts silently did nothing, because
+  Docker DNATs host 8000 to container **8080** and a `--dport 8000` rule never
+  matches after that. The administrator's address is whitelisted as a way back
+  in. Ports 6001/6002 are deliberately left open: `coolify-realtime` carries no
+  Traefik labels, so the browser talks to it directly and blocking it would
+  break deployment log streaming.
+
+- **mail.karahoca.com was never a certificate problem.** KaraHoca's mail is
+  Microsoft 365 — MX `karahoca-com.mail.protection.outlook.com` — and this box
+  runs no mail service at all. The hostname was a stale A record pointing at a
+  server that served nothing, so visitors got a self-signed placeholder and a
+  404 from their own supplier's domain. It now has a real Let's Encrypt
+  certificate and a 302 to Outlook webmail, via
+  `/data/coolify/proxy/dynamic/mail-karahoca-redirect.yaml`. **The proper fix
+  is still a DNS change** — delete the A record — which cannot be done from the
+  server.
+
+- **Backups are off-site.** See [09](09-backup-and-restore.md).

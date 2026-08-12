@@ -103,6 +103,37 @@ For the business dump the same sequence applies minus the Timescale steps, but
 the target database must already have the extensions — the dump is
 `--schema=kh` only and carries no `CREATE EXTENSION`.
 
+## Off-site, since 2026-08-13
+
+The dumps still land on the same disk as the database — that has not changed —
+but they no longer only live there.
+
+`D:\karahocaackups\pull-backups.ps1` on the office machine pulls every new
+dump and manifest over SSH, verifies each one by sha256 against the server copy
+before keeping it, and prunes at 90 days (longer than the server's 30: an
+off-site copy is the one you still want when you discover the corruption
+started six weeks ago). It is registered as the Windows scheduled task
+**KaraHoca backup pull**, daily at 06:00 local — three and a half hours after
+the server's 02:30 UTC dump — and it logs to `D:\karahocaackups\pull.log`.
+It warns in that log when the newest off-site dump is more than two days old,
+because a pull that silently stops is the same as no backup at all.
+
+First run: 21 files, all hash-verified.
+
+```powershell
+# run it now
+schtasks /run /tn "KaraHoca backup pull"
+# remove it
+schtasks /delete /tn "KaraHoca backup pull" /f
+```
+
+**This is not as good as a Storage Box and is not meant to be.** It depends on
+a particular computer being switched on. `BACKUP_SFTP_HOST` / `_USER` / `_PATH`
+are still plumbed and still empty, and setting them against a Hetzner Storage
+Box (BX11, ~EUR 3.81/mo, same datacentre network, SFTP out of the box) gives a
+target that does not sleep. What follows is the reasoning for why that is
+worth doing.
+
 ## The gap that is still open
 
 **These dumps sit on the same physical disk as the database they protect.**
