@@ -74,6 +74,10 @@ export class HandoffController {
   @Public()
   @Get('app')
   @Header('Content-Type', 'text/html; charset=utf-8')
+  // Short, not long: the page names no version, but the day it does — or the
+  // day the install steps change — a driver on a cached copy is a driver
+  // following the wrong instructions.
+  @Header('Cache-Control', 'public, max-age=600')
   landingApp(): string {
     const apkUrl = this.apkUrl();
 

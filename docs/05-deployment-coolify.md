@@ -267,29 +267,23 @@ FROM hypertable_compression_stats('kh.location_points');
 
 ### Backups
 
-Enable the sidecar: `docker compose --profile backup up -d`.
+Live since 2026-08-12 and running as a first-class service, not a profile —
+see **[09 — Backup and restore](09-backup-and-restore.md)**, which is the
+single source of truth for schedule, retention, the drill and the exact
+restore procedure.
 
-- Nightly at 02:30 UTC: business data (`kh.*` minus telemetry) — megabytes,
-  restores in seconds, contains every order, carrier, session and audit event.
-- Sundays: full dump including telemetry.
-- Every dump is verified with `pg_restore --list` before old ones are pruned.
-- Optional SFTP push to a Hetzner Storage Box (~€4/mo for 1 TB).
+In brief: nightly at 02:30 UTC into `/opt/karahoca/backups`, one business dump
+(`kh.*` minus telemetry) and one full dump, 30-day retention, and a restore
+drill every Sunday that actually restores the dump and checks the hypertable,
+the continuous aggregate, compression and row counts.
 
-**Restore drill — run this quarterly, on a scratch server, with a stopwatch.**
-An untested backup is not a backup.
-
-```bash
-# 1. Restore business data only — this is the emergency path
-createdb karahoca_restore
-pg_restore -d karahoca_restore --no-owner /backups/karahoca-business-YYYYMMDD-HHMM.dump
-
-# 2. Verify it is actually usable
-psql karahoca_restore -c "SELECT count(*) FROM kh.orders;"
-psql karahoca_restore -c "SELECT count(*) FROM kh.tracking_sessions;"
-psql karahoca_restore -c "SELECT * FROM kh.v_carrier_performance LIMIT 5;"
-
-# 3. Write down how long steps 1–2 took. That number is your real RTO.
-```
+**Do not restore this database with a bare `pg_restore`.** It carries
+TimescaleDB, and a plain restore silently returns `location_points` as an
+ordinary table — no error, no hypertable, no compression, no retention policy.
+The `timescaledb_pre_restore()` / `timescaledb_post_restore()` sequence in
+document 09 is not optional. An earlier version of this section printed the
+bare-`pg_restore` recipe, which would have produced exactly that broken result
+in an emergency.
 
 ### Scaling, in order
 

@@ -75,6 +75,23 @@ class TrackerViewModel @Inject constructor(
     private val _state = MutableStateFlow(TrackerUiState())
     val state: StateFlow<TrackerUiState> = _state.asStateFlow()
 
+    /*
+     * A deep link can arrive before we know what session this phone is already
+     * carrying, and acting on it early is how a driver loses a shift.
+     *
+     * MainActivity hands us the code from its first composition, microseconds
+     * after onCreate. restore() is a suspend read of DataStore that has not
+     * finished by then, so `trackingActive` is still its default false — and
+     * the guard in consumeDeepLink(), whose entire job is to refuse a new code
+     * mid-shift, would wave it through. The code is therefore parked until
+     * restore() has run.
+     *
+     * Both fields are touched only from viewModelScope (Dispatchers.Main
+     * .immediate) and from the UI thread, so no synchronisation is needed.
+     */
+    private var restored = false
+    private var pendingDeepLink: String? = null
+
     init {
         viewModelScope.launch {
             /*
@@ -86,6 +103,12 @@ class TrackerViewModel @Inject constructor(
              */
             runCatching { restore() }
                 .onFailure { Log.e(TAG, "restore() failed", it); reportSoftFailure(it) }
+
+            // Outside the runCatching on purpose: if restore() threw we still
+            // have to release a parked deep link, or a failed DataStore read
+            // strands the driver on a claim screen that ignores their scan.
+            restored = true
+            consumeDeepLink()
 
             // 2 s poll instead of a bound service: the UI is open for seconds at
             // a time and a poll cannot leak a binding when the driver pockets
@@ -159,29 +182,38 @@ class TrackerViewModel @Inject constructor(
     }
 
     /**
-     * A QR scan or hand-off link arrived. Fill the field and, when it is safe,
-     * claim without making the driver press anything.
-     *
-     * "When it is safe" excludes an active shift. A verified App Link opens
-     * this app for *any* /t/ URL on the host, so a driver who scans a colleague's
-     * dispatch note mid-route would otherwise silently reassign their own phone
-     * to the wrong shipment and abandon the one it is carrying.
+     * A QR scan or hand-off link arrived. Park it, then act as soon as we know
+     * what session this phone already holds.
      */
     fun onDeepLinkCode(code: String) {
         val normalised = ClaimCode.normalise(code)
         if (normalised.isEmpty()) return
+        pendingDeepLink = normalised
+        if (restored) consumeDeepLink()
+    }
+
+    /**
+     * Fill the field and, when it is safe, claim without making the driver
+     * press anything.
+     *
+     * "When it is safe" excludes an active shift. A verified App Link opens
+     * this app for *any* /t/ URL on the host, so a driver who scans a
+     * colleague's dispatch note mid-route would otherwise silently reassign
+     * their own phone to the wrong shipment and abandon the one it is carrying.
+     */
+    private fun consumeDeepLink() {
+        val code = pendingDeepLink ?: return
+        pendingDeepLink = null
 
         if (_state.value.trackingActive) {
             _state.update {
-                it.copy(
-                    error = "Takip sürerken yeni kod açılamaz. Önce mevcut takibi durdurun.",
-                )
+                it.copy(error = "Takip sürerken yeni kod açılamaz. Önce mevcut takibi durdurun.")
             }
             return
         }
 
-        _state.update { it.copy(codeInput = normalised, error = null) }
-        if (normalised.length == ClaimCode.LENGTH) claim()
+        _state.update { it.copy(codeInput = code, error = null) }
+        if (code.length == ClaimCode.LENGTH) claim()
     }
 
     fun claim() {

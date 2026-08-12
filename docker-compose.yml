@@ -9,7 +9,10 @@
 #   docker compose up -d --build                     # production
 #   docker compose --profile dev up -d --build       # + exposed DB/Redis ports
 #   docker compose --profile edge up -d --build      # + Caddy TLS terminator
-#   docker compose --profile backup up -d            # + nightly pg_dump sidecar
+#
+# The backup sidecar has no profile. It used to, and that guard is why
+# production ran for months with no backups at all: the service was in the
+# file, looked deployed, and was never started.
 #
 # =============================================================================
 
@@ -266,12 +269,21 @@ services:
     networks: [karahoca]
 
   # ===========================================================================
-  # Backups — nightly logical dump + weekly full, retained locally and pushed
-  # to a Hetzner Storage Box over SFTP.
+  # Backups — nightly logical dump plus a restore drill. Same image and same
+  # script as production (see docker-compose.coolify.yml and
+  # docs/09-backup-and-restore.md), so testing the backup path locally tests
+  # the real one. It had drifted: a different retention default and a
+  # bind-mounted script, which is exactly how a local pass stops predicting a
+  # production result.
+  #
+  # No profile any more. This used to sit behind `profiles: ["backup"]` and
+  # that guard is the reason production ran with no backups at all — the
+  # service existed, looked deployed in the file, and was never started.
   # ===========================================================================
   backup:
-    image: postgres:16-alpine
-    profiles: ["backup"]
+    build:
+      context: ./infra
+      dockerfile: backup.Dockerfile
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -279,11 +291,9 @@ services:
       PGUSER: ${POSTGRES_USER:-karahoca}
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB:-karahoca}
-      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
     volumes:
-      - ./infra/backup.sh:/usr/local/bin/backup.sh:ro
       - backups:/backups
-    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
     depends_on:
       postgres: { condition: service_healthy }
     networks: [karahoca]

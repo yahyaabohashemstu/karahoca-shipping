@@ -73,6 +73,12 @@ do_dump() {
 
   # Counts BEFORE the dump, so the drill can assert restored >= recorded. A
   # count taken afterwards would race every truck currently uploading.
+  #
+  # The assertion direction only holds for tables that never shrink. The
+  # retention policy on location_points is `drop_after: 2 years`, so the first
+  # chunk it can delete is in 2028 — if that interval is ever shortened to
+  # something a dump could straddle, this comparison starts producing false
+  # alarms and needs a tolerance.
   : > "$manifest"
   for t in $VERIFY_TABLES; do
     n=$(q "SELECT count(*) FROM kh.$t" 2>/dev/null || echo skip)
@@ -105,13 +111,15 @@ do_dump() {
 do_drill() {
   [ "$DRILL_DB" != "${PGDATABASE:-}" ] || die "drill database equals the live database — refusing"
 
-  full=$(ls -1t "$BACKUP_DIR"/karahoca-full-*.dump 2>/dev/null | head -1) \
-    || die "no full dump to drill"
+  full=$(ls -1t "$BACKUP_DIR"/karahoca-full-*.dump 2>/dev/null | head -1)
   [ -n "$full" ] || die "no full dump to drill"
   manifest="${full%.dump}.manifest"
   log "drilling $full"
 
-  psql -X -q -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DRILL_DB" > /dev/null
+  # WITH (FORCE): a drill that died mid-run, or a psql session someone left
+  # open against the scratch database, would otherwise make DROP DATABASE fail
+  # and every subsequent drill fail with it.
+  psql -X -q -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DRILL_DB WITH (FORCE)" > /dev/null
   psql -X -q -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DRILL_DB" > /dev/null
 
   # timescaledb must exist BEFORE the restore: pre_restore() is a function in
@@ -137,6 +145,36 @@ do_drill() {
     log "  hypertable location_points restored with $chunks chunk(s)  OK"
   else
     log "  hypertable location_points did NOT come back as a hypertable  FAIL"
+    failures=$((failures + 1))
+  fi
+
+  # The continuous aggregate is a second hypertable plus a catalog entry that
+  # post_restore has to re-register. Verified by hand on 2026-08-12 that it
+  # does survive — this row exists so that if it ever stops surviving, the
+  # drill says so instead of a dispatcher discovering it during a restore.
+  caggs=$(psql -X -q -d "$DRILL_DB" -tAc \
+    "SELECT count(*) FROM timescaledb_information.continuous_aggregates" 2>/dev/null || echo 0)
+  if [ "${caggs:-0}" -ge 1 ]; then
+    log "  continuous aggregate(s) restored: $caggs  OK"
+  else
+    log "  continuous aggregate did not survive the restore  FAIL"
+    failures=$((failures + 1))
+  fi
+
+  # Compression first fires 14 days after a chunk closes, so for the first two
+  # weeks of this database's life every dump contained only uncompressed
+  # chunks. Once it starts, a restore that silently decompressed would balloon
+  # storage and change query plans without failing anything. Compared against
+  # the live side rather than asserted absolutely: "same as production" is the
+  # property that matters, and it holds before and after compression begins.
+  live_comp=$(psql -X -q -tAc \
+    "SELECT count(*) FROM timescaledb_information.chunks WHERE is_compressed" 2>/dev/null || echo -1)
+  drill_comp=$(psql -X -q -d "$DRILL_DB" -tAc \
+    "SELECT count(*) FROM timescaledb_information.chunks WHERE is_compressed" 2>/dev/null || echo -2)
+  if [ "$drill_comp" -ge "$live_comp" ] 2>/dev/null; then
+    log "  compressed chunks restored=$drill_comp live=$live_comp  OK"
+  else
+    log "  compressed chunks restored=$drill_comp live=$live_comp — compression was lost  FAIL"
     failures=$((failures + 1))
   fi
 

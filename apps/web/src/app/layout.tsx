@@ -33,7 +33,19 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'KaraHoca — Sevkiyat Takip Merkezi',
+  /*
+   * A template, so each route can name itself.
+   *
+   * Every screen used to render the same <title>. A dispatcher with the live
+   * map, a session and an order open in three tabs saw three identical tabs,
+   * and browser history was a wall of one repeated line. Every page component
+   * is 'use client' and so cannot export metadata itself, which is why each
+   * route carries a tiny server layout beside it.
+   */
+  title: {
+    default: 'KaraHoca — Sevkiyat Takip Merkezi',
+    template: '%s — KaraHoca',
+  },
   description: 'Üçüncü taraf nakliye araçları için canlı takip ve rota geçmişi',
   robots: { index: false, follow: false },
 };

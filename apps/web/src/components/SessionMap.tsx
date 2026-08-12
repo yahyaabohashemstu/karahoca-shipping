@@ -85,6 +85,11 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
     });
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    // Same third-party sprite gaps as FleetMap; see the comment there.
+    instance.on('styleimagemissing', (e) => {
+      if (instance.hasImage(e.id)) return;
+      instance.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
+    });
     instance.on('load', () => {
       installLayers(instance);
       setReady(true);

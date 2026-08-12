@@ -54,7 +54,22 @@ import java.util.Locale
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private var pendingDeepLinkCode: String? = null
+    /*
+     * mutableStateOf, not a plain var — and this is the difference between the
+     * QR working and not working.
+     *
+     * As a plain field, a write from onNewIntent did not invalidate the
+     * composition, so LaunchedEffect(pendingDeepLinkCode) never saw the new
+     * key and the scan was dropped. It appeared to work only because the
+     * 2-second state poll happened to recompose for some other reason, and
+     * only when that poll produced a StateFlow value that differed from the
+     * last one — on an idle claim screen it usually does not.
+     *
+     * That is exactly the path the App Link made common: this activity is
+     * singleTask, so a driver who already has the app open and then scans the
+     * dispatch note arrives through onNewIntent, not onCreate.
+     */
+    private var pendingDeepLinkCode by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,7 +123,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        pendingDeepLinkCode = extractCode(intent)
+        // Only overwrite on a code. A plain relaunch — the launcher icon, a
+        // notification tap — delivers an intent with no data, and assigning its
+        // null would discard a scan that has not been consumed yet.
+        extractCode(intent)?.let { pendingDeepLinkCode = it }
     }
 
     /**

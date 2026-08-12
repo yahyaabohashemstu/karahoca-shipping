@@ -283,6 +283,22 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
     instance.addControl(new maplibregl.AttributionControl(), 'bottom-left');
 
+    /*
+     * The OpenFreeMap style references sprite images its own sprite sheet does
+     * not contain — `circle-11` and `wood-pattern` were both observed on the
+     * console. MapLibre re-reports each miss as the tiles that need them load,
+     * so the log fills with warnings about a third-party basemap we do not
+     * control, and any real warning is buried underneath.
+     *
+     * Answering with a transparent 1×1 satisfies the lookup and caches it, so
+     * each name is resolved once. Nothing visible changes: these are basemap
+     * decorations that were already not rendering.
+     */
+    instance.on('styleimagemissing', (e) => {
+      if (instance.hasImage(e.id)) return;
+      instance.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
+    });
+
     instance.on('load', () => {
       installLayers(instance);
       setReady(true);
