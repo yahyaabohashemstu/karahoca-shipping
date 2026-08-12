@@ -1,48 +1,151 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { FleetPosition } from '@/lib/api';
+import type { FleetPosition, SignalState } from '@/lib/api';
 import type { LivePositionEvent } from '@/lib/useRealtime';
-
-const MAP_STYLE =
-  process.env.NEXT_PUBLIC_MAP_STYLE ?? 'https://tiles.openfreemap.org/styles/liberty';
+import { freshness, SIGNAL_LABEL } from '@/lib/signal';
+import { mapColors, mapStyleFor } from '@/lib/mapStyle';
+import { useTheme } from '@/lib/theme';
 
 /** Gebze — the KaraHoca plant. Sensible default view before any truck loads. */
 const HOME: [number, number] = [29.4318, 40.7989];
-
-const SIGNAL_COLOURS: Record<string, string> = {
-  LIVE: '#16a34a',
-  DELAYED: '#f59e0b',
-  STALE: '#f97316',
-  LOST: '#dc2626',
-  NO_SIGNAL: '#64748b',
-};
 
 interface Props {
   positions: FleetPosition[];
   liveUpdates: Map<string, LivePositionEvent>;
   selectedId: string | null;
   onSelect: (sessionId: string) => void;
+  /** Shared clock. See lib/signal.ts — freshness must age on a timer, not on data. */
+  now: number;
+  /** Dims the overlay when the feed is frozen, so staleness is visible peripherally. */
+  stale?: boolean;
 }
 
 /**
  * The live fleet map.
  *
- * Rendered with MapLibre GL **symbol layers driven by a GeoJSON source**, not
- * with one DOM Marker per truck. With 40+ vehicles updating every few seconds,
- * DOM markers force a layout pass per update and the tab drops to single-digit
+ * Rendered with MapLibre GL symbol layers driven by a GeoJSON source, not with
+ * one DOM Marker per truck. With 40+ vehicles updating every few seconds, DOM
+ * markers force a layout pass per update and the tab drops to single-digit
  * frame rates; a GeoJSON source is a single `setData` call and the GPU does the
- * rest. It also gives us data-driven styling (colour by signal state, rotation
- * by bearing) for free.
+ * rest. It also gives data-driven styling — colour by signal state, rotation by
+ * bearing — for free.
  */
-export default function FleetMap({ positions, liveUpdates, selectedId, onSelect }: Props) {
+export default function FleetMap({ positions, liveUpdates, selectedId, onSelect, now, stale }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const ready = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const { resolved } = useTheme();
+
+  /*
+   * Layer setup is a named function rather than inline in the load handler
+   * because `setStyle` — which is how the dark theme switches basemaps —
+   * discards every source and layer the application added. They have to be
+   * rebuilt on each style load, or switching theme silently empties the map.
+   */
+  const installLayers = useCallback((instance: MapLibreMap) => {
+    if (instance.getSource('trucks')) return;
+    const c = mapColors();
+
+    instance.addSource('trucks', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    instance.addSource('destinations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
+    // Destination pins sit under the trucks so a truck never hides itself.
+    instance.addLayer({
+      id: 'destination-pins',
+      type: 'circle',
+      source: 'destinations',
+      paint: {
+        'circle-radius': 5,
+        'circle-color': c.destination,
+        'circle-opacity': 0.35,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': c.destination,
+      },
+    });
+
+    // Accuracy halo: honest about how sure we are of a position.
+    instance.addLayer({
+      id: 'truck-accuracy',
+      type: 'circle',
+      source: 'trucks',
+      paint: {
+        'circle-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          8, 4,
+          16, ['/', ['coalesce', ['get', 'accuracyM'], 20], 2],
+        ],
+        'circle-color': ['get', 'colour'],
+        'circle-opacity': 0.12,
+      },
+    });
+
+    instance.addLayer({
+      id: 'truck-halo',
+      type: 'circle',
+      source: 'trucks',
+      paint: {
+        'circle-radius': ['case', ['get', 'selected'], 18, 13],
+        'circle-color': ['get', 'colour'],
+        'circle-opacity': ['case', ['get', 'selected'], 0.34, 0.22],
+      },
+    });
+
+    instance.addLayer({
+      id: 'truck-dot',
+      type: 'circle',
+      source: 'trucks',
+      paint: {
+        'circle-radius': ['case', ['get', 'selected'], 9, 7],
+        'circle-color': ['get', 'colour'],
+        'circle-stroke-width': ['case', ['get', 'selected'], 3, 2],
+        // The ring is the surface colour, not hard white: a white ring on the
+        // dark basemap reads as a second, brighter dot.
+        'circle-stroke-color': c.ring,
+      },
+    });
+
+    // Heading arrow, only when the truck is actually moving — a rotating arrow
+    // on a parked vehicle is noise that reads as movement.
+    instance.addLayer({
+      id: 'truck-heading',
+      type: 'symbol',
+      source: 'trucks',
+      filter: ['>', ['coalesce', ['get', 'speedMps'], 0], 1],
+      layout: {
+        'text-field': '▲',
+        'text-size': 11,
+        'text-rotate': ['coalesce', ['get', 'bearingDeg'], 0],
+        'text-rotation-alignment': 'map',
+        'text-offset': [0, -1.4],
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': ['get', 'colour'] },
+    });
+
+    instance.addLayer({
+      id: 'truck-label',
+      type: 'symbol',
+      source: 'trucks',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-size': 11,
+        'text-offset': [0, 1.6],
+        'text-anchor': 'top',
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': c.label,
+        'text-halo-color': c.labelHalo,
+        'text-halo-width': 1.6,
+      },
+    });
+  }, []);
 
   // ---- Init -----------------------------------------------------------------
   useEffect(() => {
@@ -50,115 +153,22 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
 
     const instance = new maplibregl.Map({
       container: container.current,
-      style: MAP_STYLE,
+      style: mapStyleFor(resolved),
       center: HOME,
       zoom: 6.5,
       attributionControl: { compact: true },
+      // The dashboard is a 2D operations view; disabling rotation removes an
+      // entire class of "the map is sideways and I can't fix it" support calls.
+      pitchWithRotate: false,
+      dragRotate: false,
     });
 
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
     instance.on('load', () => {
-      instance.addSource('trucks', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-
-      instance.addSource('destinations', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-
-      // Destination pins sit under the trucks so a truck never hides itself.
-      instance.addLayer({
-        id: 'destination-pins',
-        type: 'circle',
-        source: 'destinations',
-        paint: {
-          'circle-radius': 5,
-          'circle-color': '#0ea5e9',
-          'circle-opacity': 0.45,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#0ea5e9',
-        },
-      });
-
-      // Accuracy halo: honest about how sure we are of a position.
-      instance.addLayer({
-        id: 'truck-accuracy',
-        type: 'circle',
-        source: 'trucks',
-        paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            8, 4,
-            16, ['/', ['coalesce', ['get', 'accuracyM'], 20], 2],
-          ],
-          'circle-color': ['get', 'colour'],
-          'circle-opacity': 0.12,
-        },
-      });
-
-      instance.addLayer({
-        id: 'truck-halo',
-        type: 'circle',
-        source: 'trucks',
-        paint: {
-          'circle-radius': ['case', ['get', 'selected'], 18, 13],
-          'circle-color': ['get', 'colour'],
-          'circle-opacity': 0.25,
-        },
-      });
-
-      instance.addLayer({
-        id: 'truck-dot',
-        type: 'circle',
-        source: 'trucks',
-        paint: {
-          'circle-radius': ['case', ['get', 'selected'], 9, 7],
-          'circle-color': ['get', 'colour'],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-
-      // Heading arrow, only when the truck is actually moving — a rotating arrow
-      // on a parked vehicle is noise that reads as movement.
-      instance.addLayer({
-        id: 'truck-heading',
-        type: 'symbol',
-        source: 'trucks',
-        filter: ['>', ['coalesce', ['get', 'speedMps'], 0], 1],
-        layout: {
-          'text-field': '▲',
-          'text-size': 11,
-          'text-rotate': ['coalesce', ['get', 'bearingDeg'], 0],
-          'text-rotation-alignment': 'map',
-          'text-offset': [0, -1.4],
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
-        },
-        paint: { 'text-color': ['get', 'colour'] },
-      });
-
-      instance.addLayer({
-        id: 'truck-label',
-        type: 'symbol',
-        source: 'trucks',
-        layout: {
-          'text-field': ['get', 'label'],
-          'text-size': 11,
-          'text-offset': [0, 1.6],
-          'text-anchor': 'top',
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': '#0f172a',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.5,
-        },
-      });
+      installLayers(instance);
+      ready.current = true;
 
       instance.on('click', 'truck-dot', (e) => {
         const id = e.features?.[0]?.properties?.sessionId;
@@ -170,8 +180,6 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
       instance.on('mouseleave', 'truck-dot', () => {
         instance.getCanvas().style.cursor = '';
       });
-
-      ready.current = true;
     });
 
     map.current = instance;
@@ -180,12 +188,38 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
       map.current = null;
       ready.current = false;
     };
+    // Only on mount. Theme changes are handled by the effect below, which swaps
+    // the style in place rather than destroying the map and losing the viewport.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---- Theme -----------------------------------------------------------------
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready.current) return;
+    ready.current = false;
+    instance.setStyle(mapStyleFor(resolved));
+    instance.once('styledata', () => {
+      installLayers(instance);
+      ready.current = true;
+      // Force the data effect to run again now the sources exist.
+      instance.fire('kh:layers-ready');
+    });
+  }, [resolved, installLayers]);
 
   // ---- Data -----------------------------------------------------------------
   useEffect(() => {
     const instance = map.current;
     if (!instance || !ready.current) return;
+
+    const c = mapColors();
+    const colourFor: Record<SignalState, string> = {
+      LIVE: c.LIVE,
+      DELAYED: c.DELAYED,
+      STALE: c.STALE,
+      LOST: c.LOST,
+      NO_SIGNAL: c.NO_SIGNAL,
+    };
 
     const truckFeatures: GeoJSON.Feature[] = [];
     const destinationFeatures: GeoJSON.Feature[] = [];
@@ -197,17 +231,23 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
       const lon = live?.lon ?? position.lon;
       if (lat === null || lon === null) continue;
 
-      const secondsSinceFix = live
-        ? Math.round((Date.now() - new Date(live.recordedAt).getTime()) / 1000)
-        : (position.secondsSinceFix ?? 99999);
-
-      // Recompute freshness client-side so a truck visibly ages between
-      // snapshots instead of staying green until the next poll.
-      const signal =
-        secondsSinceFix < 90 ? 'LIVE'
-        : secondsSinceFix < 600 ? 'DELAYED'
-        : secondsSinceFix < 7200 ? 'STALE'
-        : 'LOST';
+      /*
+       * One freshness function, shared with the sidebar badge, the sort order
+       * and the header counters — and driven by `now`, which ticks on a timer.
+       *
+       * Both halves of that matter. The old code recomputed freshness here with
+       * its own thresholds while the list trusted the server's field, so the
+       * same truck was orange on the map and green in the list. And because the
+       * effect only re-ran when `positions` or `liveUpdates` changed identity,
+       * a socket outage — the exact moment ageing matters — froze every truck
+       * at whatever colour it had when the feed died.
+       */
+      const { state } = freshness(
+        live
+          ? { recordedAt: live.recordedAt, secondsSinceFix: null, signalState: position.signalState }
+          : position,
+        now,
+      );
 
       truckFeatures.push({
         type: 'Feature',
@@ -215,7 +255,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
         properties: {
           sessionId: position.sessionId,
           label: position.vehiclePlate ?? position.reference,
-          colour: SIGNAL_COLOURS[signal],
+          colour: colourFor[state] ?? c.NO_SIGNAL,
           selected: position.sessionId === selectedId,
           speedMps: live?.speedMps ?? position.speedMps ?? 0,
           bearingDeg: live?.bearingDeg ?? position.bearingDeg ?? 0,
@@ -226,10 +266,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
       if (position.destinationLat !== null && position.destinationLon !== null) {
         destinationFeatures.push({
           type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [position.destinationLon, position.destinationLat],
-          },
+          geometry: { type: 'Point', coordinates: [position.destinationLon, position.destinationLat] },
           properties: { sessionId: position.sessionId },
         });
       }
@@ -243,7 +280,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
       type: 'FeatureCollection',
       features: destinationFeatures,
     });
-  }, [positions, liveUpdates, selectedId]);
+  }, [positions, liveUpdates, selectedId, now, resolved]);
 
   // ---- Follow the selection --------------------------------------------------
   useEffect(() => {
@@ -260,5 +297,39 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  return <div ref={container} className="h-full w-full" />;
+  return (
+    <div className="relative h-full w-full">
+      <div
+        ref={container}
+        className={`h-full w-full transition-opacity duration-500 ${stale ? 'opacity-55' : ''}`}
+      />
+      <MapLegend />
+    </div>
+  );
+}
+
+/**
+ * Without this, the colour of a dot is a private convention. With forty trucks
+ * on screen and five states, a dispatcher on their first week has no way to
+ * learn what graphite means except by asking someone.
+ */
+function MapLegend() {
+  const items: SignalState[] = ['LIVE', 'DELAYED', 'STALE', 'LOST'];
+  const dot: Record<SignalState, string> = {
+    LIVE: 'bg-[rgb(var(--kh-map-live))]',
+    DELAYED: 'bg-[rgb(var(--kh-map-delayed))]',
+    STALE: 'bg-[rgb(var(--kh-map-stale))]',
+    LOST: 'bg-[rgb(var(--kh-map-lost))]',
+    NO_SIGNAL: 'bg-[rgb(var(--kh-map-nosignal))]',
+  };
+  return (
+    <div className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-3 rounded-md bg-surface/90 px-2.5 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
+      {items.map((s) => (
+        <span key={s} className="flex items-center gap-1.5">
+          <span className={`h-2 w-2 rounded-full ${dot[s]}`} aria-hidden />
+          {SIGNAL_LABEL[s]}
+        </span>
+      ))}
+    </div>
+  );
 }

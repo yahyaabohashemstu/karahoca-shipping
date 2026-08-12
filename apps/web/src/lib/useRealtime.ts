@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
-import { API_BASE, tokens, type FleetPosition } from './api';
+import { API_BASE, refreshTokens, tokens, type FleetPosition } from './api';
 
 const SOCKET_URL = (process.env.NEXT_PUBLIC_API_URL ?? API_BASE).replace(/\/api\/v1\/?$/, '');
 
@@ -38,7 +39,21 @@ function getSocket(): Socket {
   shared = io(SOCKET_URL, {
     path: '/realtime',
     transports: ['websocket', 'polling'],
-    auth: { token: tokens.access },
+
+    /*
+     * The FUNCTION form, not an object. This is the whole bug.
+     *
+     * socket.io-client evaluates `auth` once when it is an object and resends
+     * that same frozen payload on every reconnect; only the callback form is
+     * re-evaluated per attempt. The socket is a module singleton that outlives
+     * every token rotation, so with `auth: { token: tokens.access }` a laptop
+     * that slept overnight woke up, reconnected with an expired token, was
+     * rejected, and retried forever with the same dead credential. The header
+     * showed a red dot and the map never updated again — the dispatcher spent
+     * the morning looking at a frozen fleet.
+     */
+    auth: (cb: (data: Record<string, unknown>) => void) => cb({ token: tokens.access }),
+
     reconnection: true,
     reconnectionDelay: 500,
     reconnectionDelayMax: 10_000,
@@ -53,25 +68,47 @@ function getSocket(): Socket {
 /**
  * Fleet-wide live positions.
  *
- * The socket is a *patch channel*, not the source of truth. On every (re)connect
- * we take a fresh HTTP snapshot and let socket frames apply deltas on top.
- * Trying to replay missed frames after a disconnect is how live maps end up
- * showing trucks in last Tuesday's positions.
+ * The socket is a *patch channel*, not a parallel store. It writes snapshots
+ * straight into the React Query cache under ['live-fleet'], so there is exactly
+ * one fleet array in the application.
+ *
+ * The previous version kept a second copy in `useState` and read
+ * `snapshot.length > 0 ? snapshot : httpData`, which broke three ways. Once the
+ * socket had connected even once the ternary was permanently pinned to the
+ * socket copy, so the documented HTTP fallback could never engage and a socket
+ * that died left the UI frozen while React Query refetched into a value nobody
+ * read. A legitimately empty snapshot fell through to the stale HTTP array and
+ * resurrected ghost trucks. And "no trucks" was indistinguishable from "no
+ * snapshot yet".
  */
-export function useFleetStream(onSnapshot?: (positions: FleetPosition[]) => void) {
+export function useFleetStream() {
+  const qc = useQueryClient();
   const [connected, setConnected] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
   const [positions, setPositions] = useState<Map<string, LivePositionEvent>>(new Map());
-  const [lastEventAt, setLastEventAt] = useState<number>(0);
-  const onSnapshotRef = useRef(onSnapshot);
-  onSnapshotRef.current = onSnapshot;
+  const [lastEventAt, setLastEventAt] = useState(0);
 
   useEffect(() => {
     const socket = getSocket();
 
+    const writeSnapshot = (list: FleetPosition[] | undefined) => {
+      if (!list) return;
+      qc.setQueryData(['live-fleet'], (old: { at: string; count: number; positions: FleetPosition[] } | undefined) => ({
+        at: new Date().toISOString(),
+        count: list.length,
+        ...(old ?? {}),
+        positions: list,
+      }));
+      // Mark it fresh so a focus event does not immediately refetch over a
+      // snapshot that arrived one second ago.
+      qc.setQueryData(['live-fleet-updatedAt'], Date.now());
+    };
+
     const handleConnect = () => {
       setConnected(true);
+      setAuthFailed(false);
       socket.emit('subscribe:fleet', {}, (ack: { data?: { positions: FleetPosition[] } }) => {
-        if (ack?.data?.positions) onSnapshotRef.current?.(ack.data.positions);
+        writeSnapshot(ack?.data?.positions);
       });
     };
 
@@ -84,25 +121,47 @@ export function useFleetStream(onSnapshot?: (positions: FleetPosition[]) => void
       setLastEventAt(Date.now());
     };
 
+    const handleSnapshot = (payload: { positions: FleetPosition[] }) => writeSnapshot(payload.positions);
+
+    const handleDisconnect = () => setConnected(false);
+
+    /*
+     * There was no connect_error listener at all, so an authentication
+     * rejection was indistinguishable from a network blip and nothing was ever
+     * logged. Refresh once and let the reconnect loop pick up the new token;
+     * if the refresh itself fails the session is genuinely over and the flag
+     * lets the UI say so instead of showing a red dot forever.
+     */
+    const handleConnectError = async (err: Error) => {
+      setConnected(false);
+      const msg = String(err?.message ?? '').toLowerCase();
+      const looksAuth =
+        msg.includes('auth') || msg.includes('unauthor') || msg.includes('token') || msg.includes('jwt');
+      if (!looksAuth) return;
+      const ok = await refreshTokens();
+      setAuthFailed(!ok);
+    };
+
     socket.on('connect', handleConnect);
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
     socket.on('fleet:positions', handleFleet);
-    socket.on('fleet:snapshot', (payload: { positions: FleetPosition[] }) =>
-      onSnapshotRef.current?.(payload.positions),
-    );
+    socket.on('fleet:snapshot', handleSnapshot);
 
     if (socket.connected) handleConnect();
     else socket.connect();
 
     return () => {
       socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
       socket.off('fleet:positions', handleFleet);
-      socket.off('fleet:snapshot');
+      socket.off('fleet:snapshot', handleSnapshot);
       socket.emit('unsubscribe:fleet');
     };
-  }, []);
+  }, [qc]);
 
-  return { connected, positions, lastEventAt };
+  return { connected, authFailed, positions, lastEventAt };
 }
 
 /**
@@ -121,9 +180,21 @@ export function useSessionStream(sessionId: string | null) {
   const [status, setStatus] = useState<string | null>(null);
   const [needsRefetch, setNeedsRefetch] = useState(0);
 
+  // Backfills accumulate for the lifetime of the page. A truck that spends a
+  // day crossing Anatolia with patchy coverage can produce hundreds, and every
+  // one of them was retained forever — on a screen that stays open all day
+  // that is an unbounded array feeding an unbounded number of map sources.
+  const clearBackfills = useCallback(() => setBackfills([]), []);
+
   useEffect(() => {
     if (!sessionId) return;
     const socket = getSocket();
+
+    // A different session means none of the previous session's state applies.
+    setLive(null);
+    setBackfills([]);
+    setEvents([]);
+    setStatus(null);
 
     const subscribe = () => {
       setConnected(true);
@@ -140,7 +211,15 @@ export function useSessionStream(sessionId: string | null) {
         // Too big to stream — pull the server-simplified route over HTTP.
         setNeedsRefetch((n) => n + 1);
       } else {
-        setBackfills((prev) => [...prev, payload]);
+        setBackfills((prev) => {
+          // Past 60 segments the accumulated geometry is larger than a single
+          // simplified refetch, so stop growing and ask for the whole route.
+          if (prev.length >= 60) {
+            setNeedsRefetch((n) => n + 1);
+            return [];
+          }
+          return [...prev, payload];
+        });
       }
     };
 
@@ -148,9 +227,10 @@ export function useSessionStream(sessionId: string | null) {
       setEvents((prev) => [payload, ...prev].slice(0, 100));
 
     const onState = (payload: { status: string }) => setStatus(payload.status);
+    const onDisconnect = () => setConnected(false);
 
     socket.on('connect', subscribe);
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('disconnect', onDisconnect);
     socket.on('position:update', onPosition);
     socket.on('route:backfill', onBackfill);
     socket.on('session:event', onEvent);
@@ -162,6 +242,7 @@ export function useSessionStream(sessionId: string | null) {
     return () => {
       socket.emit('unsubscribe:session', { sessionId });
       socket.off('connect', subscribe);
+      socket.off('disconnect', onDisconnect);
       socket.off('position:update', onPosition);
       socket.off('route:backfill', onBackfill);
       socket.off('session:event', onEvent);
@@ -169,7 +250,7 @@ export function useSessionStream(sessionId: string | null) {
     };
   }, [sessionId]);
 
-  return { connected, live, backfills, events, status, needsRefetch };
+  return { connected, live, backfills, events, status, needsRefetch, clearBackfills };
 }
 
 export function disconnectRealtime() {

@@ -1,9 +1,30 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { freshness, useNow } from '@/lib/signal';
+import { AppShell, useRequireAuth } from '@/components/AppShell';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  Pagination,
+  PageHeader,
+  SearchInput,
+  SegmentedControl,
+  SignalBadge,
+  StatusBadge,
+  Table,
+  TableSkeletonRows,
+  TD,
+  TH,
+  THead,
+  TR,
+  TRMessage,
+} from '@/components/ui';
 
 const STATUS_FILTERS = [
   { value: 'LIVE', label: 'Yolda' },
@@ -11,115 +32,193 @@ const STATUS_FILTERS = [
   { value: 'COMPLETED', label: 'Tamamlanan' },
   { value: 'EXPIRED', label: 'Süresi dolan' },
   { value: '', label: 'Tümü' },
-];
+] as const;
+
+const LIMIT = 50;
+const COLS = 8;
 
 export default function SessionsPage() {
-  const [status, setStatus] = useState('LIVE');
-  const [search, setSearch] = useState('');
+  const authed = useRequireAuth();
+  const router = useRouter();
+  const now = useNow(30_000);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['sessions', status, search],
-    queryFn: () => api.sessions({ status: status || undefined, search: search || undefined, limit: 100 }),
+  const [status, setStatus] = useState<string>('LIVE');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(0);
+
+  // Debounced: the old page fired a request on every keystroke, so typing a
+  // six-character plate meant six queries and six renders of a table that was
+  // already scrolled.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      setOffset(0);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
+    queryKey: ['sessions', status, search, offset],
+    queryFn: () =>
+      api.sessions({
+        status: status || undefined,
+        search: search || undefined,
+        limit: LIMIT,
+        offset,
+      }),
+    enabled: authed,
+    // Keeps the previous page on screen while the next one loads, instead of
+    // collapsing the table to a spinner on every filter change.
+    placeholderData: keepPreviousData,
   });
 
-  return (
-    <div className="mx-auto max-w-7xl p-6">
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <Link href="/" className="text-sm text-blue-700 hover:underline">
-            ← Canlı harita
-          </Link>
-          <h1 className="mt-1 text-2xl font-semibold">Takip Oturumları</h1>
-        </div>
-        <Link
-          href="/sessions/new"
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          + Yeni oturum
-        </Link>
-      </header>
+  const items = useMemo(() => data?.items ?? [], [data]);
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {STATUS_FILTERS.map((filter) => (
-          <button
-            key={filter.value}
-            onClick={() => setStatus(filter.value)}
-            className={`rounded-full px-3 py-1 text-sm ${
-              status === filter.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {filter.label}
-          </button>
-        ))}
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+  if (!authed) return null;
+
+  return (
+    <AppShell>
+      <PageHeader
+        title="Takip oturumları"
+        subtitle="Her sevkiyat için açılan takip kaydı ve son bilinen durumu"
+        actions={
+          <Link href="/sessions/new">
+            <Button variant="primary">+ Yeni oturum</Button>
+          </Link>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-3 px-5 py-3">
+        <SegmentedControl
+          label="Durum filtresi"
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            setOffset(0);
+          }}
+          options={STATUS_FILTERS.map((f) => ({ value: f.value as string, label: f.label }))}
+        />
+        <SearchInput
+          value={searchInput}
+          onValueChange={setSearchInput}
           placeholder="Sipariş, plaka, müşteri…"
-          className="ml-auto w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
+          className="ml-auto w-72"
         />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Oturum</th>
-              <th className="px-4 py-3">Sipariş</th>
-              <th className="px-4 py-3">Müşteri</th>
-              <th className="px-4 py-3">Nakliyeci</th>
-              <th className="px-4 py-3">Araç</th>
-              <th className="px-4 py-3">Durum</th>
-              <th className="px-4 py-3 text-right">Mesafe</th>
-              <th className="px-4 py-3 text-right">Son sinyal</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {isLoading && (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                  Yükleniyor…
-                </td>
-              </tr>
-            )}
-            {data?.items.map((session) => (
-              <tr key={session.sessionId} className="hover:bg-slate-50">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/sessions/${session.sessionId}`}
-                    className="font-medium text-blue-700 hover:underline"
-                  >
-                    {session.reference}
-                  </Link>
-                </td>
-                <td className="px-4 py-3">{session.orderNumber}</td>
-                <td className="px-4 py-3">{session.customerName}</td>
-                <td className="px-4 py-3 text-slate-500">{session.carrierName}</td>
-                <td className="px-4 py-3">{session.vehiclePlate ?? '—'}</td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">
-                    {session.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">{session.distanceKm ?? 0} km</td>
-                <td className="px-4 py-3 text-right text-slate-500">
-                  {session.recordedAt
-                    ? new Date(session.recordedAt).toLocaleString('tr-TR')
-                    : '—'}
-                </td>
-              </tr>
-            ))}
-            {data?.items.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                  Kayıt bulunamadı.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="min-h-0 flex-1 px-5 pb-5">
+        <div className="overflow-hidden rounded-md bg-surface ring-1 ring-line">
+          <Table>
+            <THead>
+              <TR>
+                <TH>Oturum</TH>
+                <TH>Sipariş</TH>
+                <TH>Müşteri</TH>
+                <TH>Nakliyeci</TH>
+                <TH>Araç</TH>
+                <TH>Durum</TH>
+                <TH numeric>Mesafe</TH>
+                <TH numeric>Son sinyal</TH>
+              </TR>
+            </THead>
+            <tbody>
+              {isLoading ? (
+                <TableSkeletonRows rows={10} cols={COLS} />
+              ) : isError ? (
+                /* A 500 used to render as "Kayıt bulunamadı." — which is the
+                   exact claim a carrier makes when a shipment goes missing. */
+                <TRMessage colSpan={COLS} tone="danger">
+                  <ErrorState
+                    className="mx-auto max-w-md text-left"
+                    title="Liste yüklenemedi"
+                    message={(error as Error)?.message}
+                    onRetry={() => refetch()}
+                    retrying={isFetching}
+                  />
+                </TRMessage>
+              ) : items.length === 0 ? (
+                <TRMessage colSpan={COLS}>
+                  <EmptyState
+                    title={search || status ? 'Eşleşen oturum yok' : 'Henüz oturum açılmadı'}
+                    description={
+                      search || status
+                        ? 'Filtreleri değiştirip tekrar deneyin.'
+                        : 'Bir siparişe takip oturumu açtığınızda burada listelenir.'
+                    }
+                    action={
+                      search || status ? (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setSearchInput('');
+                            setStatus('');
+                          }}
+                        >
+                          Filtreleri temizle
+                        </Button>
+                      ) : (
+                        <Link href="/sessions/new">
+                          <Button variant="primary" size="sm">
+                            Takip oturumu aç
+                          </Button>
+                        </Link>
+                      )
+                    }
+                  />
+                </TRMessage>
+              ) : (
+                items.map((s) => {
+                  const f = freshness(s, now);
+                  return (
+                    <TR key={s.sessionId} onClick={() => router.push(`/sessions/${s.sessionId}`)}>
+                      <TD>
+                        <span className="kh-num font-medium text-brand-text">{s.reference}</span>
+                      </TD>
+                      <TD>
+                        <span className="kh-num">{s.orderNumber}</span>
+                      </TD>
+                      <TD>{s.customerName}</TD>
+                      <TD muted>{s.carrierName}</TD>
+                      <TD>
+                        <span className="kh-num">{s.vehiclePlate ?? '—'}</span>
+                      </TD>
+                      <TD>
+                        <div className="flex items-center gap-1.5">
+                          <StatusBadge status={s.status} />
+                          {s.status === 'ACTIVE' && <SignalBadge state={f.state} compact />}
+                        </div>
+                      </TD>
+                      <TD numeric>{s.distanceKm ?? 0} km</TD>
+                      <TD numeric muted>
+                        {s.recordedAt ? formatWhen(s.recordedAt) : '—'}
+                      </TD>
+                    </TR>
+                  );
+                })
+              )}
+            </tbody>
+          </Table>
+
+          {!isLoading && !isError && (
+            <Pagination total={data?.total ?? 0} limit={LIMIT} offset={offset} onOffset={setOffset} />
+          )}
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
+}
+
+/**
+ * Absolute timestamps for anything older than today, relative for anything
+ * recent. "3 dk" answers the question a dispatcher is actually asking on a live
+ * row; "11.08.2026 22:14" is what they need on a row from last week.
+ */
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'az önce';
+  if (diff < 3600) return `${Math.floor(diff / 60)} dk önce`;
+  if (diff < 86_400) return `${Math.floor(diff / 3600)} sa önce`;
+  return d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }

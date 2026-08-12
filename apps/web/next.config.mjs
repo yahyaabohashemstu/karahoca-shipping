@@ -11,6 +11,27 @@ const nextConfig = {
 
   eslint: { ignoreDuringBuilds: true },
 
+  /*
+   * Local development against a deployed API.
+   *
+   * Set KH_DEV_API_PROXY=https://track.karahoca.com and NEXT_PUBLIC_API_URL=/api/v1
+   * and the browser talks to localhost only, so the deployed CORS_ORIGINS list
+   * does not have to be widened to include a developer's laptop — which is a
+   * production config change made for a local convenience, and the kind that
+   * gets left behind.
+   *
+   * WebSockets are not proxied by rewrites, so the realtime feed will show as
+   * disconnected. That is honest: it exercises the stale-data banner.
+   */
+  async rewrites() {
+    const target = process.env.KH_DEV_API_PROXY;
+    if (!target) return [];
+    return [
+      { source: '/api/:path*', destination: `${target}/api/:path*` },
+      { source: '/t/:path*', destination: `${target}/t/:path*` },
+    ];
+  },
+
   async headers() {
     return [
       {

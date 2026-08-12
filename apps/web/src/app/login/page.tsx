@@ -1,75 +1,100 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api, tokens } from '@/lib/api';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Form';
+import { ErrorState } from '@/components/ui/Feedback';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Someone with a live session who lands here — from a bookmark, or from the
+  // old redirect — should not be asked to sign in again.
+  useEffect(() => {
+    if (tokens.access) router.replace('/');
+  }, [router]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const result = await api.login(email, password);
+      const result = await api.login(email.trim(), password);
       tokens.set(result.accessToken, result.refreshToken);
+      // A hard navigation, not router.push: it guarantees the socket singleton
+      // and every query cache start clean under the new identity.
       window.location.href = '/';
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Giriş başarısız');
-    } finally {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Giriş başarısız. E-posta ve parolanızı kontrol edin.',
+      );
       setBusy(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 px-4">
+    <div className="relative grid min-h-screen place-items-center overflow-hidden bg-bg px-4">
+      {/* A quiet grid, the kind printed on a logistics planning sheet. It gives
+          the page a subject without a stock photograph or a gradient. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.045]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgb(var(--kh-text)) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--kh-text)) 1px, transparent 1px)',
+          backgroundSize: '28px 28px',
+        }}
+      />
+
       <form
         onSubmit={submit}
-        className="w-full max-w-sm rounded-xl bg-white p-8 shadow-xl"
+        className="relative w-full max-w-[22rem] rounded-lg bg-surface p-7 shadow-panel ring-1 ring-line"
       >
-        <div className="mb-1 text-xs font-extrabold tracking-[0.25em] text-blue-700">
-          KARAHOCA
+        <div className="mb-6">
+          <div className="text-2xs font-bold uppercase tracking-[0.22em] text-brand">KaraHoca</div>
+          <h1 className="mt-1.5 text-lg font-semibold tracking-tight">Sevkiyat Takip Merkezi</h1>
+          <p className="mt-1 text-sm text-ink-2">
+            Üçüncü taraf nakliye araçlarının canlı takibi
+          </p>
         </div>
-        <h1 className="mb-6 text-xl font-semibold">Sevkiyat Takip Merkezi</h1>
 
-        <label className="mb-1 block text-sm text-slate-600" htmlFor="email">
-          E-posta
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="mb-4 w-full rounded border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-        />
+        <div className="space-y-3.5">
+          <Input
+            label="E-posta"
+            id="email"
+            type="email"
+            autoComplete="username"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="h-10"
+          />
+          <Input
+            label="Parola"
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="h-10"
+          />
+        </div>
 
-        <label className="mb-1 block text-sm text-slate-600" htmlFor="password">
-          Parola
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="mb-4 w-full rounded border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-        />
+        {error && <ErrorState className="mt-4" title="Giriş yapılamadı" message={error} compact />}
 
-        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded bg-blue-600 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" size="lg" block loading={busy} className="mt-5">
           {busy ? 'Giriş yapılıyor…' : 'Giriş yap'}
-        </button>
+        </Button>
       </form>
     </div>
   );

@@ -2,30 +2,356 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --kh-live: #16a34a;
-  --kh-delayed: #f59e0b;
-  --kh-stale: #f97316;
-  --kh-lost: #dc2626;
+/* =============================================================================
+   KaraHoca dispatcher — design tokens
+   =============================================================================
+   Every colour is a space-separated RGB triplet rather than a hex string, so
+   Tailwind's `rgb(var(--x) / <alpha-value>)` can still apply opacity modifiers.
+   A hex here would silently break every `/50` in the codebase.
+
+   Two themes, switched by `data-theme` on <html>. The dark theme is not a
+   filter over the light one — a dispatcher watches a map for eight hours, and
+   the surfaces that read as "quiet grey" on white read as "muddy" when
+   inverted, so the dark ramp is authored separately.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    /* --- Surfaces -------------------------------------------------------- */
+    /* A cool neutral, deliberately not Tailwind's stock slate: slate is the
+       most recognisable palette on the web and makes any product built from it
+       look like a template. These carry a touch more cyan and less blue. */
+    --kh-bg: 247 249 249;
+    --kh-surface: 255 255 255;
+    --kh-surface-2: 240 243 244;
+    --kh-surface-3: 231 236 237;
+
+    /* --- Lines ----------------------------------------------------------- */
+    --kh-border: 222 228 229;
+    --kh-border-strong: 193 202 204;
+
+    /* --- Text ------------------------------------------------------------ */
+    --kh-text: 14 23 27;
+    --kh-text-2: 84 100 107;
+    /* 5.45:1 on --kh-surface and 4.89:1 on --kh-surface-2. The obvious choice
+       here is a lighter grey, and it measures 3.11:1 — a clear WCAG AA failure
+       on exactly the text this interface uses it for: table headers, hints and
+       timestamps. Tertiary text still has to be readable. */
+    --kh-text-3: 92 108 115;
+    --kh-text-inverse: 255 255 255;
+
+    /* --- Brand ----------------------------------------------------------- */
+    /* One accent, used for interactive affordances only. It is a blue far
+       enough from the LIVE green that a colour-blind dispatcher never reads a
+       button as a status. */
+    --kh-brand: 20 96 200;
+    --kh-brand-hover: 16 80 170;
+    --kh-brand-soft: 226 237 253;
+    --kh-brand-text: 18 76 160;
+
+    /* --- Signal states ---------------------------------------------------
+       Hue alone is not the encoding. Each state also carries a distinct dot
+       glyph and fill weight (see SignalBadge), because roughly 8% of men have
+       a red-green deficiency and the two middle states used to be a pair of
+       near-identical tans.
+
+       STALE is graphite, not orange. "Ageing out" reads correctly as a fading
+       grey, and it can never be confused with DELAYED's amber under any form
+       of colour-vision deficiency — which orange absolutely could.
+
+       LOST is the only solid, inverted badge in the system. That is what makes
+       it findable while scrolling a list of forty rows.                      */
+    --kh-live: 5 122 85;
+    --kh-live-bg: 214 245 232;
+    --kh-live-ring: 16 150 105;
+
+    --kh-delayed: 146 64 14;
+    --kh-delayed-bg: 253 240 205;
+    --kh-delayed-ring: 202 138 4;
+
+    --kh-stale: 51 65 74;
+    --kh-stale-bg: 226 232 234;
+    --kh-stale-ring: 113 130 138;
+
+    --kh-lost: 255 255 255;
+    --kh-lost-bg: 205 32 32;
+    --kh-lost-ring: 168 24 24;
+
+    --kh-nosignal: 118 134 141;
+    --kh-nosignal-bg: 0 0 0 / 0;
+    --kh-nosignal-ring: 190 201 205;
+
+    /* --- Feedback -------------------------------------------------------- */
+    --kh-danger: 190 28 28;
+    --kh-danger-bg: 254 233 233;
+    --kh-danger-ring: 240 170 170;
+    --kh-success: 5 122 85;
+    --kh-success-bg: 214 245 232;
+    --kh-warn: 146 64 14;
+    --kh-warn-bg: 253 240 205;
+
+    /* --- Map marker fills (saturated; they sit on a desaturated basemap) -- */
+    --kh-map-live: 16 163 110;
+    --kh-map-delayed: 217 145 6;
+    --kh-map-stale: 120 139 148;
+    --kh-map-lost: 225 45 45;
+    --kh-map-nosignal: 148 163 170;
+    --kh-map-route: 20 96 200;
+    /* Violet: the one hue that appears nowhere else in the product and nowhere
+       on the Positron basemap, so a destination pin can never be mistaken for
+       a truck, a road, or water. */
+    --kh-map-destination: 139 92 246;
+
+    --kh-ring-focus: 20 96 200;
+    --kh-shadow: 14 23 27;
+
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    --kh-bg: 11 16 18;
+    --kh-surface: 18 25 28;
+    --kh-surface-2: 25 34 38;
+    --kh-surface-3: 33 44 49;
+
+    --kh-border: 38 50 55;
+    --kh-border-strong: 57 74 81;
+
+    --kh-text: 232 239 241;
+    --kh-text-2: 158 176 183;
+    /* 5.51:1 on --kh-surface, 5.01:1 on --kh-surface-2. */
+    --kh-text-3: 128 146 154;
+    --kh-text-inverse: 11 16 18;
+
+    --kh-brand: 82 152 255;
+    --kh-brand-hover: 120 175 255;
+    --kh-brand-soft: 20 39 66;
+    --kh-brand-text: 138 184 255;
+
+    /* Dark-theme signal colours are lifted in lightness and dropped in
+       saturation. The light-theme values on a dark surface would vibrate. */
+    --kh-live: 94 226 173;
+    --kh-live-bg: 10 51 39;
+    --kh-live-ring: 34 160 118;
+
+    --kh-delayed: 250 204 108;
+    --kh-delayed-bg: 62 43 8;
+    --kh-delayed-ring: 190 132 20;
+
+    --kh-stale: 186 200 207;
+    --kh-stale-bg: 38 50 55;
+    --kh-stale-ring: 100 118 127;
+
+    --kh-lost: 255 255 255;
+    --kh-lost-bg: 200 36 36;
+    --kh-lost-ring: 235 90 90;
+
+    --kh-nosignal: 130 148 156;
+    --kh-nosignal-bg: 0 0 0 / 0;
+    --kh-nosignal-ring: 66 84 92;
+
+    --kh-danger: 255 138 138;
+    --kh-danger-bg: 60 18 18;
+    --kh-danger-ring: 130 45 45;
+    --kh-success: 94 226 173;
+    --kh-success-bg: 10 51 39;
+    --kh-warn: 250 204 108;
+    --kh-warn-bg: 62 43 8;
+
+    --kh-map-live: 45 200 145;
+    --kh-map-delayed: 245 185 60;
+    --kh-map-stale: 150 168 177;
+    --kh-map-lost: 255 82 82;
+    --kh-map-nosignal: 110 130 139;
+    --kh-map-route: 96 160 255;
+    --kh-map-destination: 167 139 250;
+
+    --kh-ring-focus: 110 170 255;
+    --kh-shadow: 0 0 0;
+
+    color-scheme: dark;
+  }
+
+  html {
+    /* 14px root. Every rem in this app is therefore denser than a marketing
+       site — deliberate, because a dispatcher needs forty rows visible without
+       scrolling, not comfortable reading measure. */
+    font-size: 14px;
+  }
+
+  body {
+    background-color: rgb(var(--kh-bg));
+    color: rgb(var(--kh-text));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* cv11 gives Inter a single-storey 'a'-free, unambiguous 'l'; ss01 fixes
+       the Turkish dotted/dotless i pair, which this interface is full of. */
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Every focusable thing gets the same visible ring. The previous build had
+     none, which made the dashboard unusable without a mouse. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--kh-ring-focus));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Telemetry must align in columns. Applied to the digits themselves rather
+     than globally, so prose keeps proportional figures. */
+  .kh-num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum', 'cv11';
+  }
 }
 
-/* MapLibre's default attribution is oversized for a dashboard sidebar layout. */
+@layer components {
+  /* Scrollbars: the default Windows scrollbar is 17px of bright grey against a
+     dark sidebar. */
+  .kh-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--kh-border-strong)) transparent;
+  }
+  .kh-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .kh-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .kh-scroll::-webkit-scrollbar-thumb {
+    background: rgb(var(--kh-border-strong));
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  .kh-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--kh-text-3));
+    background-clip: content-box;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   MapLibre overrides
+   -------------------------------------------------------------------------- */
+
 .maplibregl-ctrl-attrib {
   font-size: 10px;
+  background: rgb(var(--kh-surface) / 0.82) !important;
+  color: rgb(var(--kh-text-3)) !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: rgb(var(--kh-text-2)) !important;
+}
+.maplibregl-ctrl-group {
+  background: rgb(var(--kh-surface)) !important;
+  border: 1px solid rgb(var(--kh-border)) !important;
+  box-shadow: 0 1px 2px rgb(var(--kh-shadow) / 0.08) !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid rgb(var(--kh-border)) !important;
+}
+/* The default control glyphs are black PNG-era SVGs; invert them in dark mode
+   rather than shipping a second icon set. */
+:root[data-theme='dark'] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(1.6);
+}
+.maplibregl-popup-content {
+  background: rgb(var(--kh-surface)) !important;
+  color: rgb(var(--kh-text)) !important;
+  border: 1px solid rgb(var(--kh-border)) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 6px 20px rgb(var(--kh-shadow) / 0.18) !important;
+  padding: 10px 12px !important;
+}
+.maplibregl-popup-tip {
+  border-top-color: rgb(var(--kh-surface)) !important;
+  border-bottom-color: rgb(var(--kh-surface)) !important;
 }
 
-.kh-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-.kh-scroll::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
+/* -----------------------------------------------------------------------------
+   Motion
+   -------------------------------------------------------------------------- */
 
 @keyframes kh-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  50% { opacity: 0.3; }
 }
 .kh-pulse {
   animation: kh-pulse 2s ease-in-out infinite;
+}
+
+@keyframes kh-shimmer {
+  100% { transform: translateX(100%); }
+}
+/* A moving highlight rather than a fading block: a pulsing grey rectangle is
+   easy to mistake for a real empty field, a travelling sheen is not. */
+.kh-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgb(var(--kh-surface-3));
+}
+.kh-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--kh-surface) / 0.6),
+    transparent
+  );
+  animation: kh-shimmer 1.6s infinite;
+}
+
+@keyframes kh-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.kh-enter {
+  animation: kh-slide-up 0.16s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kh-pulse,
+  .kh-skeleton::after,
+  .kh-enter {
+    animation: none !important;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Print
+   -------------------------------------------------------------------------- */
+/* One thing in this application gets printed: the driver hand-off slip, which
+   is physically carried to a truck at the loading dock. Everything else on the
+   page is chrome that wastes the sheet and the toner. Forcing the light theme
+   matters too — a dark-mode dispatcher would otherwise print a black page. */
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    --kh-bg: 255 255 255;
+    --kh-surface: 255 255 255;
+    --kh-surface-2: 255 255 255;
+    --kh-surface-3: 255 255 255;
+    --kh-text: 0 0 0;
+    --kh-text-2: 40 40 40;
+    --kh-text-3: 90 90 90;
+    --kh-border: 170 170 170;
+    color-scheme: light;
+  }
+  header,
+  nav,
+  .maplibregl-ctrl,
+  .kh-no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  * {
+    box-shadow: none !important;
+  }
 }

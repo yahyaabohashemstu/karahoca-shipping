@@ -147,8 +147,31 @@ export class TrackingService {
     );
   }
 
+  /**
+   * `SELECT *` off the view leaked the database's snake_case straight to the
+   * browser — sessions_with_mock_gps, avg_distance_km — while every other
+   * endpoint returns camelCase. The dashboard then had to know which
+   * convention each endpoint happened to use, which is exactly how the fleet
+   * list once rendered a column of blanks.
+   *
+   * Columns are named explicitly here so a change to the view cannot silently
+   * alter the wire contract either.
+   */
   async carrierPerformance() {
-    return this.db.query(`SELECT * FROM kh.v_carrier_performance ORDER BY sessions DESC`);
+    return this.db.query(
+      `SELECT id,
+              name,
+              sessions,
+              completed,
+              sessions_with_mock_gps AS "sessionsWithMockGps",
+              avg_distance_km        AS "avgDistanceKm",
+              avg_duration_h         AS "avgDurationH",
+              avg_largest_gap_sec    AS "avgLargestGapSec",
+              avg_coverage_pct       AS "avgCoveragePct",
+              on_time                AS "onTime"
+         FROM kh.v_carrier_performance
+        ORDER BY sessions DESC`,
+    );
   }
 
   /** Raw export for disputes. Streamed as NDJSON by the controller. */

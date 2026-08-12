@@ -1,15 +1,46 @@
 'use client';
 
-import { use, useEffect, useRef, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { api } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, API_BASE } from '@/lib/api';
 import { useSessionStream } from '@/lib/useRealtime';
+import { freshness, useNow } from '@/lib/signal';
+import { AppShell, useRequireAuth } from '@/components/AppShell';
+import {
+  Badge,
+  Button,
+  ButtonLink,
+  ConfirmDialog,
+  ConnectionPill,
+  ErrorState,
+  Row,
+  SignalBadge,
+  Skeleton,
+  StatusBadge,
+  useToast,
+} from '@/components/ui';
 
-const MAP_STYLE =
-  process.env.NEXT_PUBLIC_MAP_STYLE ?? 'https://tiles.openfreemap.org/styles/liberty';
+// MapLibre is ~215 kB. Loading it on demand keeps this route's first-load JS in
+// line with every other screen instead of nearly tripling it.
+const SessionMap = dynamic(() => import('@/components/SessionMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="grid h-full place-items-center bg-surface-2 text-sm text-ink-3">
+      Harita yükleniyor…
+    </div>
+  ),
+});
+
+type Action = 'pause' | 'resume' | 'complete' | 'cancel';
+
+const ACTION_COPY: Record<Action, { title: string; verb: string; tone: 'primary' | 'danger' | 'success' }> = {
+  pause: { title: 'Takibi duraklat', verb: 'Duraklat', tone: 'primary' },
+  resume: { title: 'Takibi sürdür', verb: 'Devam et', tone: 'primary' },
+  complete: { title: 'Sevkiyatı teslim edildi olarak kapat', verb: 'Teslim edildi', tone: 'success' },
+  cancel: { title: 'Sevkiyatı iptal et', verb: 'İptal et', tone: 'danger' },
+};
 
 /**
  * Session detail: live position, full route, coverage gaps, and the audit trail.
@@ -21,242 +52,247 @@ const MAP_STYLE =
  */
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const queryClient = useQueryClient();
-  const container = useRef<HTMLDivElement>(null);
-  const map = useRef<MapLibreMap | null>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const authed = useRequireAuth();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const now = useNow();
 
-  const { live, backfills, events, status, connected, needsRefetch } = useSessionStream(id);
+  const [confirming, setConfirming] = useState<Action | null>(null);
 
-  const { data: session } = useQuery({
+  const { live, backfills, events, status, connected, needsRefetch } = useSessionStream(
+    authed ? id : null,
+  );
+
+  const sessionQ = useQuery({
     queryKey: ['session', id],
     queryFn: () => api.session(id),
+    enabled: authed,
     refetchInterval: 30_000,
   });
+  const session = sessionQ.data;
+  const loading = sessionQ.isLoading;
 
-  const { data: route } = useQuery({
+  const routeQ = useQuery({
     queryKey: ['route', id, needsRefetch],
     queryFn: () => api.route(id, { toleranceM: 8 }),
+    enabled: authed,
   });
 
-  const { data: gaps } = useQuery({
+  const gapsQ = useQuery({
     queryKey: ['gaps', id],
     queryFn: () => api.gaps(id, 120),
+    enabled: authed,
   });
 
   // A server-side state change (completed, expired) invalidates the detail read.
   useEffect(() => {
-    if (status) queryClient.invalidateQueries({ queryKey: ['session', id] });
-  }, [status, id, queryClient]);
+    if (status) qc.invalidateQueries({ queryKey: ['session', id] });
+  }, [status, id, qc]);
 
-  // ---- Map init -------------------------------------------------------------
-  useEffect(() => {
-    if (map.current || !container.current) return;
-    const instance = new maplibregl.Map({
-      container: container.current,
-      style: MAP_STYLE,
-      center: [29.43, 40.8],
-      zoom: 6,
-    });
-    instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    instance.on('load', () => {
-      instance.addSource('route', { type: 'geojson', data: emptyCollection() });
-      instance.addSource('backfill', { type: 'geojson', data: emptyCollection() });
-      instance.addSource('current', { type: 'geojson', data: emptyCollection() });
+  /*
+   * Every mutation goes through useMutation, so there is a pending state, an
+   * error, and a disabled button.
+   *
+   * Before this, `act()` was a bare async function whose rejection went
+   * nowhere: a 409 on an already-completed session, or an offline laptop,
+   * rendered exactly like success. The dispatcher believed the shipment was
+   * closed and moved on.
+   */
+  const action = useMutation({
+    mutationFn: (a: Action) => api.sessionAction(id, a),
+    onSuccess: (_res, a) => {
+      setConfirming(null);
+      qc.invalidateQueries({ queryKey: ['session', id] });
+      qc.invalidateQueries({ queryKey: ['live-fleet'] });
+      toast.success(`${ACTION_COPY[a].verb} uygulandı`, session?.reference);
+    },
+    onError: (e) => toast.error('İşlem başarısız', (e as Error).message),
+  });
 
-      instance.addLayer({
-        id: 'route-line',
-        type: 'line',
-        source: 'route',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#2563eb', 'line-width': 4, 'line-opacity': 0.85 },
-      });
+  const regenerate = useMutation({
+    mutationFn: () => api.regenerateCode(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session', id] });
+      toast.success('Yeni kod üretildi', 'Önceki cihazın bağlantısı kesildi.');
+    },
+    onError: (e) => toast.error('Kod üretilemedi', (e as Error).message),
+  });
 
-      // Backfilled geometry is drawn in a distinct colour so a dispatcher can
-      // see at a glance which part of the route came in late from a dead zone.
-      instance.addLayer({
-        id: 'backfill-line',
-        type: 'line',
-        source: 'backfill',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#f59e0b', 'line-width': 4, 'line-dasharray': [2, 1] },
-      });
+  const signal = useMemo(
+    () =>
+      session
+        ? freshness(
+            live
+              ? { recordedAt: live.recordedAt, secondsSinceFix: null, signalState: session.signalState }
+              : session,
+            now,
+          )
+        : null,
+    [session, live, now],
+  );
 
-      instance.addLayer({
-        id: 'current-dot',
-        type: 'circle',
-        source: 'current',
-        paint: {
-          'circle-radius': 8,
-          'circle-color': '#16a34a',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
+  const timeline = useMemo(
+    () =>
+      [
+        ...events,
+        ...(session?.events ?? []).map((e) => ({ type: e.type, message: e.message, at: e.occurred_at })),
+      ].slice(0, 40),
+    [events, session?.events],
+  );
 
-      setMapReady(true);
-    });
-    map.current = instance;
-    return () => {
-      instance.remove();
-      map.current = null;
-    };
-  }, []);
+  const currentStatus = status ?? session?.status ?? null;
+  const closed = currentStatus === 'COMPLETED' || currentStatus === 'CANCELLED' || currentStatus === 'EXPIRED';
 
-  // ---- Route geometry --------------------------------------------------------
-  useEffect(() => {
-    if (!mapReady || !route?.features?.length) return;
-    const source = map.current?.getSource('route') as maplibregl.GeoJSONSource | undefined;
-    source?.setData(route as GeoJSON.FeatureCollection);
-
-    const coordinates = (route.features[0]?.geometry as GeoJSON.LineString)?.coordinates ?? [];
-    if (coordinates.length > 1) {
-      const bounds = coordinates.reduce(
-        (acc, c) => acc.extend(c as [number, number]),
-        new maplibregl.LngLatBounds(
-          coordinates[0] as [number, number],
-          coordinates[0] as [number, number],
-        ),
-      );
-      map.current?.fitBounds(bounds, { padding: 60, duration: 600 });
-    }
-  }, [mapReady, route]);
-
-  // ---- Late-arriving segments ------------------------------------------------
-  useEffect(() => {
-    if (!mapReady || backfills.length === 0) return;
-    const source = map.current?.getSource('backfill') as maplibregl.GeoJSONSource | undefined;
-    source?.setData({
-      type: 'FeatureCollection',
-      features: backfills
-        .filter((b) => b.points.length > 1)
-        .map((b) => ({
-          type: 'Feature',
-          properties: { batchId: b.batchId },
-          geometry: {
-            type: 'LineString',
-            coordinates: b.points.map(([lon, lat]) => [lon, lat]),
-          },
-        })),
-    });
-  }, [mapReady, backfills]);
-
-  // ---- Live marker ------------------------------------------------------------
-  useEffect(() => {
-    if (!mapReady) return;
-    const lat = live?.lat ?? session?.lat;
-    const lon = live?.lon ?? session?.lon;
-    if (lat == null || lon == null) return;
-    const source = map.current?.getSource('current') as maplibregl.GeoJSONSource | undefined;
-    source?.setData({
-      type: 'FeatureCollection',
-      features: [
-        { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [lon, lat] } },
-      ],
-    });
-  }, [mapReady, live, session]);
-
-  async function act(action: 'pause' | 'resume' | 'complete' | 'cancel') {
-    await api.sessionAction(id, action);
-    queryClient.invalidateQueries({ queryKey: ['session', id] });
-  }
+  if (!authed) return null;
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-sm text-blue-700 hover:underline">
-            ← Canlı harita
-          </Link>
-          <span className="font-semibold">{session?.reference ?? id.slice(0, 8)}</span>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">
-            {status ?? session?.status}
-          </span>
-          <span className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-slate-300'}`} />
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => act('pause')} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+    <AppShell fill>
+      {/* --------------------------------------------------------- toolbar -- */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2">
+        <Link href="/" className="text-sm text-brand-text hover:underline">
+          ← Canlı harita
+        </Link>
+        <span className="kh-num ml-2 font-semibold tracking-tight">
+          {loading ? <Skeleton className="inline-block h-3.5 w-24 align-middle" /> : session?.reference ?? id.slice(0, 8)}
+        </span>
+        <StatusBadge status={currentStatus} />
+        {signal && currentStatus === 'ACTIVE' && <SignalBadge state={signal.state} />}
+        <ConnectionPill connected={connected} />
+
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            onClick={() => setConfirming('pause')}
+            disabled={closed || currentStatus === 'PAUSED' || action.isPending}
+          >
             Duraklat
-          </button>
-          <button onClick={() => act('resume')} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setConfirming('resume')}
+            disabled={closed || currentStatus !== 'PAUSED' || action.isPending}
+          >
             Devam
-          </button>
-          <button
-            onClick={() => act('complete')}
-            className="rounded bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700"
+          </Button>
+          <Button
+            size="sm"
+            variant="success"
+            onClick={() => setConfirming('complete')}
+            disabled={closed || action.isPending}
           >
             Teslim edildi
-          </button>
-          <a
-            href={`${process.env.NEXT_PUBLIC_API_URL}/tracking/sessions/${id}/export.ndjson`}
-            className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setConfirming('cancel')}
+            disabled={closed || action.isPending}
+            className="text-danger hover:bg-danger-bg"
+          >
+            İptal
+          </Button>
+          <ButtonLink
+            size="sm"
+            href={`${API_BASE}/tracking/sessions/${id}/export.ndjson`}
+            download
           >
             Ham veri
-          </a>
+          </ButtonLink>
         </div>
-      </header>
+      </div>
+
+      {sessionQ.isError && (
+        <ErrorState
+          className="m-4"
+          title="Oturum bilgileri alınamadı"
+          message={(sessionQ.error as Error)?.message}
+          onRetry={() => sessionQ.refetch()}
+          retrying={sessionQ.isFetching}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
-        <div ref={container} className="min-w-0 flex-1" />
+        <div className="min-w-0 flex-1">
+          <SessionMap
+            route={routeQ.data}
+            backfills={backfills}
+            live={live}
+            fallbackLat={session?.lat}
+            fallbackLon={session?.lon}
+          />
+        </div>
 
-        <aside className="kh-scroll w-96 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
+        {/* ------------------------------------------------------ sidebar -- */}
+        <aside className="kh-scroll w-[23rem] shrink-0 overflow-y-auto border-l border-line bg-surface">
           {session?.handoff && (
-            <section className="mb-6 rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 p-4 text-center">
-              <p className="text-xs font-medium uppercase tracking-wide text-blue-800">
+            <section className="m-3 rounded-md border-2 border-dashed border-brand/40 bg-brand-soft/60 p-3.5 text-center">
+              <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand-text">
                 Sürücüye verilecek kod
               </p>
-              <p className="my-2 font-mono text-3xl font-bold tracking-widest">
+              <p className="my-2 select-all font-mono text-[1.9rem] font-bold leading-none tracking-[0.16em]">
                 {session.handoff.prettyCode}
               </p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={session.handoff.qrDataUrl}
                 alt="Oturum QR kodu"
-                className="mx-auto h-40 w-40"
+                className="mx-auto h-36 w-36 rounded bg-white p-1"
               />
-              <button
-                onClick={async () => {
-                  await api.regenerateCode(id);
-                  queryClient.invalidateQueries({ queryKey: ['session', id] });
-                }}
-                className="mt-3 text-xs text-blue-700 hover:underline"
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-2"
+                loading={regenerate.isPending}
+                onClick={() => regenerate.mutate()}
               >
                 Yeni kod üret (mevcut cihazı iptal eder)
-              </button>
+              </Button>
             </section>
           )}
 
           <Section title="Sevkiyat">
-            <Row label="Sipariş" value={session?.orderNumber ?? '—'} />
-            <Row label="Müşteri" value={session?.customerName ?? '—'} />
-            <Row label="Nakliyeci" value={session?.carrierName ?? '—'} />
-            <Row label="Araç" value={session?.vehiclePlate ?? '—'} />
-            <Row label="Sürücü" value={session?.driverName ?? '—'} />
-            <Row label="Telefon" value={session?.driverPhone ?? '—'} />
+            <Row label="Sipariş" value={session?.orderNumber ?? '—'} loading={loading} mono />
+            <Row label="Müşteri" value={session?.customerName ?? '—'} loading={loading} />
+            <Row label="Nakliyeci" value={session?.carrierName ?? '—'} loading={loading} />
+            <Row label="Araç" value={session?.vehiclePlate ?? '—'} loading={loading} mono />
+            <Row label="Sürücü" value={session?.driverName ?? '—'} loading={loading} />
+            <Row
+              label="Telefon"
+              loading={loading}
+              value={
+                session?.driverPhone ? (
+                  <a href={`tel:${session.driverPhone}`} className="kh-num text-brand-text hover:underline">
+                    {session.driverPhone}
+                  </a>
+                ) : (
+                  '—'
+                )
+              }
+            />
           </Section>
 
           <Section title="Telemetri">
-            <Row label="Toplam nokta" value={String(session?.pointsTotal ?? 0)} />
-            <Row label="Mesafe" value={`${session?.distanceKm ?? 0} km`} />
-            <Row
-              label="Çevrimdışı senkron"
-              value={String(session?.offlineBatches ?? 0)}
-            />
-            <Row label="Reddedilen nokta" value={String(session?.pointsRejected ?? 0)} />
+            <Row label="Toplam nokta" value={fmt(session?.pointsTotal)} loading={loading} mono />
+            <Row label="Mesafe" value={`${session?.distanceKm ?? 0} km`} loading={loading} mono />
+            <Row label="Çevrimdışı senkron" value={fmt(session?.offlineBatches)} loading={loading} mono />
+            <Row label="Reddedilen nokta" value={fmt(session?.pointsRejected)} loading={loading} mono />
             <Row
               label="Rota noktası"
+              loading={routeQ.isLoading}
+              mono
               value={
-                route
-                  ? `${route.renderedPointCount} / ${route.pointCount} (sadeleştirilmiş)`
+                routeQ.data
+                  ? `${routeQ.data.renderedPointCount} / ${routeQ.data.pointCount}`
                   : '—'
               }
             />
             {(session?.mockLocationCount ?? 0) > 0 && (
-              <Row
-                label="⚠ Sahte konum"
-                value={String(session?.mockLocationCount)}
-                danger
-              />
+              <div className="mt-2 flex items-center justify-between gap-2 rounded bg-danger-bg px-2 py-1.5 ring-1 ring-inset ring-danger-ring">
+                <span className="text-sm font-medium text-danger">Sahte konum tespit edildi</span>
+                <span className="kh-num text-sm font-semibold text-danger">
+                  {session?.mockLocationCount}
+                </span>
+              </div>
             )}
           </Section>
 
@@ -264,80 +300,151 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             <Section title="Cihaz">
               <Row
                 label="Model"
-                value={`${session.device.manufacturer ?? ''} ${session.device.model ?? ''}`.trim() || '—'}
+                value={
+                  `${session.device.manufacturer ?? ''} ${session.device.model ?? ''}`.trim() || '—'
+                }
               />
-              <Row label="Android" value={String(session.device.os_version ?? '—')} />
-              <Row
+              <Row label="Android" value={String(session.device.os_version ?? '—')} mono />
+              <DeviceFlag
                 label="Pil optimizasyonu"
-                value={session.device.battery_optimisation_ignored ? 'Muaf ✓' : 'AÇIK ⚠'}
-                danger={!session.device.battery_optimisation_ignored}
+                ok={Boolean(session.device.battery_optimisation_ignored)}
+                okText="Muaf"
+                badText="Açık — takip durabilir"
               />
-              <Row
+              <DeviceFlag
                 label="Arka plan konumu"
-                value={session.device.has_background_location ? 'Var ✓' : 'YOK ⚠'}
-                danger={!session.device.has_background_location}
+                ok={Boolean(session.device.has_background_location)}
+                okText="İzin var"
+                badText="İzin yok — takip durabilir"
               />
             </Section>
           )}
 
-          {gaps && gaps.length > 0 && (
-            <Section title={`Kapsama boşlukları (${gaps.length})`}>
-              {gaps.slice(0, 10).map((gap) => (
-                <div key={gap.from} className="mb-2 rounded bg-amber-50 p-2 text-xs">
-                  <div className="font-medium">
-                    {Math.round(gap.durationSec / 60)} dakika sinyalsiz
+          {gapsQ.data && gapsQ.data.length > 0 && (
+            <Section title={`Kapsama boşlukları (${gapsQ.data.length})`}>
+              <div className="space-y-1.5">
+                {gapsQ.data.slice(0, 10).map((gap) => (
+                  <div
+                    key={gap.from}
+                    className="rounded bg-warn-bg px-2 py-1.5 text-sm ring-1 ring-inset ring-delayed-ring/35"
+                  >
+                    <div className="kh-num font-medium text-warn">
+                      {Math.round(gap.durationSec / 60)} dakika sinyalsiz
+                    </div>
+                    <div className="kh-num mt-0.5 text-sm text-ink-2">
+                      {new Date(gap.from).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                      {' → '}
+                      {new Date(gap.to).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                      {' · '}
+                      {Math.round(gap.straightLineM / 1000)} km yol
+                    </div>
                   </div>
-                  <div className="text-slate-500">
-                    {new Date(gap.from).toLocaleTimeString('tr-TR')} →{' '}
-                    {new Date(gap.to).toLocaleTimeString('tr-TR')} ·{' '}
-                    {Math.round(gap.straightLineM / 1000)} km yol
-                  </div>
-                </div>
-              ))}
+                ))}
+                {gapsQ.data.length > 10 && (
+                  <p className="text-sm text-ink-3">+{gapsQ.data.length - 10} boşluk daha</p>
+                )}
+              </div>
             </Section>
           )}
 
           <Section title="Olay geçmişi">
-            {[...events, ...(session?.events ?? []).map((e) => ({
-              type: e.type,
-              message: e.message,
-              at: e.occurred_at,
-            }))]
-              .slice(0, 40)
-              .map((event, index) => (
-                <div key={`${event.at}-${index}`} className="mb-2 text-xs">
-                  <span className="font-mono text-slate-400">
-                    {new Date(event.at).toLocaleTimeString('tr-TR')}
-                  </span>{' '}
-                  <span className="font-medium">{event.type}</span>
-                  {event.message && <div className="text-slate-500">{event.message}</div>}
-                </div>
-              ))}
+            {timeline.length === 0 ? (
+              <p className="text-sm text-ink-3">Henüz olay yok.</p>
+            ) : (
+              <ol className="space-y-1.5">
+                {timeline.map((event, i) => (
+                  <li key={`${event.at}-${i}`} className="flex gap-2 text-sm">
+                    <span className="kh-num shrink-0 text-ink-3">
+                      {new Date(event.at).toLocaleTimeString('tr-TR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <span className="min-w-0">
+                      <Badge tone="neutral">{event.type}</Badge>
+                      {event.message && <div className="mt-0.5 text-ink-2">{event.message}</div>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </Section>
         </aside>
       </div>
-    </div>
+
+      {/* Naming the plate and the order number is the safeguard. "Emin misiniz?"
+          is not. */}
+      <ConfirmDialog
+        open={confirming !== null}
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => confirming && action.mutate(confirming)}
+        title={confirming ? ACTION_COPY[confirming].title : ''}
+        confirmLabel={confirming ? ACTION_COPY[confirming].verb : ''}
+        tone={confirming ? ACTION_COPY[confirming].tone : 'primary'}
+        loading={action.isPending}
+        error={action.isError ? (action.error as Error).message : null}
+        detail={
+          <div className="space-y-1">
+            <p>
+              <span className="kh-num font-medium text-ink">{session?.vehiclePlate ?? session?.reference}</span>
+              {' — '}
+              <span className="kh-num">{session?.orderNumber}</span>
+              {session?.customerName ? ` · ${session.customerName}` : ''}
+            </p>
+            {(confirming === 'complete' || confirming === 'cancel') && (
+              <p className="text-danger">
+                Bu işlem geri alınamaz. Oturum kapanır ve sürücünün cihazı konum göndermeyi durdurur.
+              </p>
+            )}
+            {confirming === 'resume' && currentStatus !== 'PAUSED' && (
+              <p className="text-warn">Bu oturum duraklatılmış değil.</p>
+            )}
+          </div>
+        }
+      />
+    </AppShell>
   );
 }
 
-function emptyCollection(): GeoJSON.FeatureCollection {
+/* -------------------------------------------------------------------------- */
+
+function empty(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] };
+}
+
+function fmt(n: number | null | undefined): string {
+  return n === null || n === undefined ? '—' : n.toLocaleString('tr-TR');
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mb-6">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</h2>
+    <section className="border-b border-line px-3.5 py-3 last:border-b-0">
+      <h2 className="mb-1.5 text-2xs font-semibold uppercase tracking-wider text-ink-3">{title}</h2>
       {children}
     </section>
   );
 }
 
-function Row({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
+/**
+ * A device permission is either fine or it is a live risk to the shipment. The
+ * old version wrote "Muaf ✓" and "AÇIK ⚠" into a value string, which meant the
+ * severity was carried by an emoji at the end of a sentence.
+ */
+function DeviceFlag({
+  label,
+  ok,
+  okText,
+  badText,
+}: {
+  label: string;
+  ok: boolean;
+  okText: string;
+  badText: string;
+}) {
   return (
-    <div className="flex justify-between gap-4 py-0.5 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className={`text-right font-medium ${danger ? 'text-red-600' : ''}`}>{value}</span>
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="shrink-0 text-sm text-ink-2">{label}</span>
+      <Badge tone={ok ? 'success' : 'danger'}>{ok ? okText : badText}</Badge>
     </div>
   );
 }

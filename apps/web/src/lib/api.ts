@@ -59,7 +59,13 @@ export const tokens = {
  */
 let refreshInFlight: Promise<boolean> | null = null;
 
-async function refreshTokens(): Promise<boolean> {
+/**
+ * Exported because the WebSocket needs it too. When the socket is rejected for
+ * an expired token it must refresh before retrying, or `reconnectionAttempts:
+ * Infinity` becomes an infinite loop against a credential that will never work
+ * again — which is exactly what happened to a laptop that slept overnight.
+ */
+export async function refreshTokens(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
@@ -172,6 +178,86 @@ export interface SessionEvent {
   payload: Record<string, unknown>;
 }
 
+export interface Customer {
+  id: string;
+  code: string;
+  name: string;
+  city: string | null;
+  region: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  lat: number | null;
+  lon: number | null;
+  isActive: boolean;
+}
+
+export interface ShippingCompany {
+  id: string;
+  code: string;
+  name: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  slaHours: number | null;
+  isActive: boolean;
+  vehicleCount: number;
+  driverCount: number;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  status: string;
+  destinationLabel: string | null;
+  destinationAddress: string | null;
+  destinationLat: number | null;
+  destinationLon: number | null;
+  destinationRadiusM: number | null;
+  totalWeightKg: number | null;
+  palletCount: number | null;
+  cargoSummary: string | null;
+  plannedDispatchAt: string | null;
+  plannedDeliveryAt: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  customerId: string;
+  customerName: string;
+  customerCity: string | null;
+  activeSessionId: string | null;
+  activeSessionRef: string | null;
+  activeSessionStatus: string | null;
+}
+
+export interface Vehicle {
+  id: string;
+  shippingCompanyId: string;
+  plate: string;
+  makeModel: string | null;
+  capacityKg: number | null;
+}
+
+export interface Driver {
+  id: string;
+  shippingCompanyId: string;
+  fullName: string;
+  phone: string;
+  nationalIdLast4: string | null;
+}
+
+export interface CarrierPerformance {
+  id: string;
+  name: string;
+  sessions: number;
+  completed: number;
+  sessionsWithMockGps: number;
+  avgDistanceKm: number | null;
+  avgDurationH: number | null;
+  avgLargestGapSec: number | null;
+  avgCoveragePct: number | null;
+  onTime: number;
+}
+
 export interface SessionDetail extends FleetPosition {
   policy: { pingIntervalSec: number; idleIntervalSec: number; minDistanceM: number };
   expiresAt: string;
@@ -241,15 +327,61 @@ export const api = {
       Array<{ from: string; to: string; durationSec: number; straightLineM: number }>
     >(`/tracking/sessions/${id}/gaps?minGapSec=${minGapSec}`),
 
+  // ---- Catalogue ------------------------------------------------------------
+  // Every one of these endpoints existed on the API from the first release and
+  // had no screen behind it, which meant a dispatcher could not enter a
+  // customer, an order or a carrier without someone running curl for them.
+
   orders: (query: Record<string, string | number | boolean | undefined> = {}) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v !== undefined) params.set(k, String(v));
-    return apiFetch<{ items: Array<Record<string, unknown>>; total: number }>(`/orders?${params}`);
+    return apiFetch<{ items: Order[]; total: number; limit: number; offset: number }>(`/orders?${params}`);
   },
 
-  companies: () => apiFetch<Array<Record<string, unknown>>>('/shipping-companies'),
+  order: (id: string) => apiFetch<Order>(`/orders/${id}`),
 
-  carrierPerformance: () => apiFetch<Array<Record<string, unknown>>>('/tracking/carriers/performance'),
+  createOrder: (body: Record<string, unknown>) =>
+    apiFetch<Order>('/orders', { method: 'POST', body: JSON.stringify(body) }),
 
-  stats: () => apiFetch<Record<string, number>>('/health/stats'),
+  customers: (query: Record<string, string | number | undefined> = {}) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (v !== undefined) params.set(k, String(v));
+    return apiFetch<Customer[]>(`/customers?${params}`);
+  },
+
+  createCustomer: (body: Record<string, unknown>) =>
+    apiFetch<Customer>('/customers', { method: 'POST', body: JSON.stringify(body) }),
+
+  companies: () => apiFetch<ShippingCompany[]>('/shipping-companies'),
+
+  createCompany: (body: Record<string, unknown>) =>
+    apiFetch<ShippingCompany>('/shipping-companies', { method: 'POST', body: JSON.stringify(body) }),
+
+  vehicles: (shippingCompanyId?: string) =>
+    apiFetch<Vehicle[]>(
+      `/shipping-companies/vehicles${shippingCompanyId ? `?shippingCompanyId=${shippingCompanyId}` : ''}`,
+    ),
+
+  createVehicle: (body: Record<string, unknown>) =>
+    apiFetch<Vehicle>('/shipping-companies/vehicles', { method: 'POST', body: JSON.stringify(body) }),
+
+  drivers: (shippingCompanyId?: string) =>
+    apiFetch<Driver[]>(
+      `/shipping-companies/drivers${shippingCompanyId ? `?shippingCompanyId=${shippingCompanyId}` : ''}`,
+    ),
+
+  createDriver: (body: Record<string, unknown>) =>
+    apiFetch<Driver>('/shipping-companies/drivers', { method: 'POST', body: JSON.stringify(body) }),
+
+  carrierPerformance: () => apiFetch<CarrierPerformance[]>('/tracking/carriers/performance'),
+
+  stats: () =>
+    apiFetch<{
+      activeSessions: number;
+      awaitingClaim: number;
+      silentSessions: number;
+      batchesLastHour: number;
+      pointsLastHour: number;
+      offlineSyncsLastHour: number;
+    }>('/health/stats'),
 };
