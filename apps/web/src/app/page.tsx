@@ -237,7 +237,17 @@ export default function LiveDashboard() {
             stale={!connected && !isLoading}
           />
           {selected && (
-            <div className="kh-enter absolute bottom-3 right-3 w-[19rem]">
+            /*
+             * bottom-12, not bottom-3: the status legend sits at bottom-3 and
+             * is 25 px tall, so it tops out 37 px from the bottom edge. This
+             * clears it by 11 px — the same gap as the right margin — instead
+             * of covering it, which is what the panel used to do.
+             *
+             * The map credit is no longer part of this arithmetic; FleetMap
+             * moved it to the opposite corner so that a taller panel can never
+             * hide it again.
+             */
+            <div className="kh-enter absolute bottom-12 right-3 w-[19rem]">
               <SelectedPanel row={selected} onClose={() => setSelectedId(null)} />
             </div>
           )}

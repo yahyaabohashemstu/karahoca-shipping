@@ -250,7 +250,29 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       style: initialStyle,
       center: HOME,
       zoom: 6.5,
-      attributionControl: { compact: true },
+      /*
+       * The default attribution control is disabled here and re-added at
+       * bottom-LEFT below.
+       *
+       * MapLibre puts it bottom-right, which is also where the status legend
+       * and the selected-vehicle panel live. Measured on production: the
+       * legend covered the attribution by 298 × 21 px with nothing selected,
+       * and the panel covered all 24 px of its height on top of that. The
+       * OpenFreeMap / OpenMapTiles / OpenStreetMap credit was never visible on
+       * this screen, which is a licence term and not a cosmetic detail.
+       *
+       * Moving it — rather than nudging the panel up by a magic number — is
+       * what makes it stay fixed: the right edge is application UI whose
+       * height changes with content, the left edge holds map furniture. The
+       * scale control is already there and MapLibre stacks same-corner
+       * controls in a column, so the two coexist without arithmetic.
+       *
+       * `compact` is left unset on purpose. MapLibre then collapses it to an
+       * ⓘ button below 640 px of map width and shows it in full above that,
+       * which is the behaviour we want; passing compact:true here did not even
+       * achieve it, as the measurement showed.
+       */
+      attributionControl: false,
       // The dashboard is a 2D operations view; disabling rotation removes an
       // entire class of "the map is sideways and I can't fix it" support calls.
       pitchWithRotate: false,
@@ -259,6 +281,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    instance.addControl(new maplibregl.AttributionControl(), 'bottom-left');
 
     instance.on('load', () => {
       installLayers(instance);
@@ -528,7 +551,9 @@ function MapLegend() {
     PAUSED: 'bg-[rgb(var(--kh-map-paused))]',
   };
   return (
-    <div className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-3 rounded-md bg-surface/90 px-2.5 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
+    // right-3 to share an edge with the selected-vehicle panel, which sits
+    // directly above this and is measured against its height.
+    <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-3 rounded-md bg-surface/90 px-2.5 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
       {items.map((s) => (
         <span key={s} className="flex items-center gap-1.5">
           <span className={`h-2 w-2 rounded-full ${dot[s]}`} aria-hidden />
