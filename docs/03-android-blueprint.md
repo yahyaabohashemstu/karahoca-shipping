@@ -219,6 +219,64 @@ of the wasted wake-ups.
 
 ---
 
+## 4b. Cadence — time or distance
+
+The dispatcher chooses, per session, how often a truck reports:
+
+| Mode | Meaning | `min_distance_m` |
+|---|---|---|
+| Time | a fix every N seconds | `0` |
+| Distance | a fix every N metres travelled | `> 0` |
+
+**There is no mode column.** Distance mode *is* `min_distance_m > 0`. Deriving
+it keeps the wire format unchanged, keeps every already-issued session valid,
+and removes a second source of truth that could disagree with the first.
+
+Bounds, enforced identically in the DTO and in `ck_session_intervals`: ping
+2 s – 1 h, idle 5 s – 4 h, distance 0 – 20 km, and **`idle >= ping`**. That last
+one is not decorative — a parked truck sampled more often than a driving one is
+backwards. The API derives `idle = max(requested, ping)` so a dispatcher asking
+for a slow cadence cannot produce a constraint violation from a form they filled
+in correctly.
+
+### Why the distance filter is not `setMinUpdateDistanceMeters`
+
+The obvious implementation is to hand the figure to `LocationRequest`. It is the
+wrong one for this product.
+
+A displacement filter makes the fused client stop calling back. A truck standing
+at a customer's gate would then produce **nothing at all** — the server would see
+no telemetry, and the dashboard would report a healthy parked truck as `STALE`
+and then `LOST`. That is the one signal the entire system exists to make
+trustworthy, and a legitimate three-hour dwell is indistinguishable from a phone
+in a drawer.
+
+`LocationTrackingService.shouldStore()` filters in the callback instead:
+
+```
+store this fix if:
+    distance mode is off                                  (every fix counts)
+ OR it is the first fix of the session                    (the map needs a start)
+ OR distance from the last STORED fix >= min_distance_m   (the trigger)
+ OR time since the last STORED fix >= idle_interval       (the heartbeat)
+```
+
+The heartbeat is what makes distance mode safe: a dwell is proven, silence still
+means a problem, and a slow city leg stops writing a thousand rows of the same
+junction.
+
+`lastFixAtMs` — what the watchdog reads to decide whether the location engine
+has wedged — is updated on every **received** fix, not every stored one. Gating
+it on storage would make the watchdog tear down a perfectly healthy parked truck
+once per idle interval.
+
+**What distance mode does and does not save.** It cuts stored rows, uploads and
+therefore radio time. It does *not* turn the GNSS receiver off: the device still
+samples at `ping_interval_sec`, because that is what a receiver does. Expect a
+large reduction in data volume and a modest one in battery.
+
+---
+
 ## 5. Problem 4 — security
 
 Per ADR-009 the device never holds a durable identity. At claim time it receives
