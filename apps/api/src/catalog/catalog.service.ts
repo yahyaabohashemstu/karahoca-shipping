@@ -357,7 +357,15 @@ export class CatalogService {
                          )::geography END,
                $12)
        ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, is_active = true
-       RETURNING id, code::text AS code, name`,
+       -- Shaped like a row from listCustomers, not a three-column stub. The
+       -- dashboard drops the customer it just created straight into a form,
+       -- and a response with no countryCode made a freshly added German
+       -- consignee render with a blank country until the list refetched.
+       RETURNING id, code::text AS code, name, city, region,
+                 country_code::text AS "countryCode",
+                 contact_name AS "contactName", contact_phone AS "contactPhone",
+                 ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
+                 is_active AS "isActive"`,
       [
         dto.code, dto.name, dto.contactName ?? null, dto.contactPhone ?? null,
         dto.contactEmail ?? null, dto.addressLine ?? null, dto.city ?? null,
