@@ -180,6 +180,12 @@ export interface SessionHandoff {
   deepLink: string;
   webLink: string;
   qrDataUrl: string;
+  /*
+   * The consignee's tracking link, minted with the session and returned ONCE.
+   * Only its sha256 is stored, so this is null on every later read of the
+   * session — a dispatcher who needs it again mints a fresh one.
+   */
+  shareUrl?: string | null;
 }
 
 export interface SessionEvent {

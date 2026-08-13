@@ -334,6 +334,62 @@ function Handoff({ session }: { session: SessionDetail }) {
           </p>
         </div>
 
+        {/*
+          The consignee's link, alongside the driver's code rather than behind a
+          button on another screen.
+
+          These are the two hand-offs a dispatcher makes at the same moment —
+          the code goes to the driver, the link goes to the agent — and
+          separating them is why the agent kept phoning. The link is minted with
+          the session and shown ONLY here: the server keeps just its sha256, so
+          it cannot be read back later, and needing it again means minting a
+          fresh one from the session page.
+        */}
+        {handoff.shareUrl && (
+          <div className="mt-5 rounded-lg border border-line bg-surface-2 p-4 print:hidden">
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
+              Alıcıya gönderilecek takip bağlantısı
+            </p>
+            <p className="mt-2 select-all break-all font-mono text-xs text-ink-2">
+              {handoff.shareUrl}
+            </p>
+            <p className="mt-2 text-2xs text-ink-3">
+              Alıcı bu bağlantıdan aracı haritada canlı görür; panele erişemez.
+              Bu bağlantı yalnızca şimdi görüntülenir.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const text = `${session.customerName} — ${session.orderNumber} sevkiyatınızı buradan canlı takip edebilirsiniz:\n${handoff.shareUrl}`;
+                  // wa.me with no number: WhatsApp opens its own contact
+                  // picker. Prefilling a number would need the consignee's
+                  // mobile in E.164, which the customer record does not
+                  // guarantee, and a malformed one silently opens an empty chat.
+                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noreferrer');
+                }}
+              >
+                WhatsApp ile gönder
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard
+                    ?.writeText(handoff.shareUrl!)
+                    .then(() => toast.success('Takip bağlantısı kopyalandı', 'Alıcıya gönderebilirsiniz.'))
+                    .catch(() => toast.error('Kopyalanamadı', 'Bağlantıyı elle seçip kopyalayın.'));
+                }}
+              >
+                Kopyala
+              </Button>
+              <a href={handoff.shareUrl} target="_blank" rel="noreferrer">
+                <Button size="sm" variant="ghost">Önizle</Button>
+              </a>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-center gap-2 print:hidden">
           <Button
             onClick={() => {

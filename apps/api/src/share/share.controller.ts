@@ -250,6 +250,43 @@ function shipmentPage(view: ConsigneeView): string {
     facts.push({ label: 'Planlanan teslimat', value: esc(TR_DATETIME.format(view.plannedDeliveryAt)) });
   }
 
+  /*
+   * What is on the lorry.
+   *
+   * "Where is it" is the first question an agent asks and the only one this
+   * page used to answer. The second is "is this the consignment I ordered" —
+   * they are reconciling against their own purchase order — and leaving it out
+   * meant the page saved them one phone call and cost them another.
+   *
+   * Weight and pallet count are what a receiving yard plans around: whether a
+   * forklift is needed, how many hands, how long the bay is blocked.
+   */
+  if (view.cargoSummary) {
+    facts.push({ label: 'Yük', value: esc(view.cargoSummary) });
+  }
+  if (view.itemList) {
+    facts.push({ label: 'Ürünler', value: esc(view.itemList) });
+  }
+
+  const load: string[] = [];
+  if (view.palletCount) load.push(`${view.palletCount} palet`);
+  if (view.totalWeightKg) {
+    // Tonnes above 1000 kg: a receiving clerk reads "12,4 ton" instantly and
+    // has to stop and count digits on "12400 kg".
+    load.push(
+      view.totalWeightKg >= 1000
+        ? `${(view.totalWeightKg / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} ton`
+        : `${view.totalWeightKg} kg`,
+    );
+  }
+  if (load.length) {
+    facts.push({ label: 'Miktar', value: esc(load.join(' · ')) });
+  }
+
+  if (view.carrierName) {
+    facts.push({ label: 'Nakliyeci', value: esc(view.carrierName) });
+  }
+
   facts.push({
     label: 'Son konum güncellemesi',
     value: view.recordedAt

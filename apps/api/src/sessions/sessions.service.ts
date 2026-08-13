@@ -12,6 +12,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import { CONFIG, type AppConfig } from '../config/configuration';
+import { ShareService } from '../share/share.service';
 import { DatabaseService } from '../database/database.service';
 import { RedisService } from '../redis/redis.service';
 import { RealtimePublisher } from '../realtime/realtime.publisher';
@@ -64,6 +65,7 @@ export class SessionsService {
     private readonly db: DatabaseService,
     private readonly redis: RedisService,
     private readonly publisher: RealtimePublisher,
+    private readonly share: ShareService,
   ) {}
 
   // ===========================================================================
@@ -165,7 +167,36 @@ export class SessionsService {
         );
 
         await this.publisher.sessionState(row.id, 'ASSIGNED');
-        return this.getDetail(row.id);
+
+        /*
+         * Mint the consignee link here, not behind a button.
+         *
+         * The moment a dispatcher needs it is the moment they create the
+         * session and message the agent — a link that depends on remembering
+         * to press something does not get sent. This is also the only point at
+         * which the raw token can be handed back, because only its sha256 is
+         * stored; ask again later and a fresh link has to be minted. That is
+         * the right trade: the token is a live credential, and a database dump
+         * must not yield working tracking links.
+         *
+         * Non-fatal. A session without a share link is a shipment you can
+         * still track from the desk; a session that failed to be created is a
+         * truck that leaves untracked.
+         */
+        const detail = await this.getDetail(row.id);
+        const shareUrl = await this.share
+          .mint(row.id, {}, userId)
+          .then((link) => link.url)
+          .catch((err: Error) => {
+            this.logger.warn(
+              `Session ${row.id} created, consignee link was not: ${err.message}`,
+            );
+            return null;
+          });
+
+        return detail.handoff
+          ? { ...detail, handoff: { ...detail.handoff, shareUrl } }
+          : detail;
       } catch (err) {
         const code = (err as { code?: string; constraint?: string }).code;
         const constraint = (err as { constraint?: string }).constraint;

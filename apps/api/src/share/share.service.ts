@@ -48,6 +48,18 @@ export interface ConsigneeView {
   driverName: string | null;
   driverPhone: string | null;
   vehiclePlate: string | null;
+  /*
+   * What is actually on the lorry. An agent checking a shipment is reconciling
+   * it against their own purchase order, so "is this the 22 pallets I ordered"
+   * is the second question they ask after "where is it" — and the one that
+   * otherwise becomes a phone call to the desk.
+   */
+  carrierName: string | null;
+  totalWeightKg: number | null;
+  palletCount: number | null;
+  cargoSummary: string | null;
+  /** Order lines pre-aggregated by the query: "SKU x12 koli, SKU x4 koli". */
+  itemList: string | null;
   /** GeoJSON FeatureCollection. Null unless show_route is set. */
   route: unknown | null;
 }
@@ -149,7 +161,21 @@ export class ShareService {
         sessionId,
         sha256(token),
         dto.showRoute ?? false,
-        dto.showDriver ?? false,
+        /*
+         * Driver and plate default ON; the route trace defaults OFF.
+         *
+         * They are different things. A consignee waiting at a gate in Erbil
+         * needs the plate to recognise the lorry and the driver's number to
+         * call when it is outside — withholding that just moves the phone call
+         * to the dispatcher, which is the cost this whole feature exists to
+         * remove. The full movement trace is the sensitive one: it is a log of
+         * where a third party's employee has been all day, and no consignee
+         * needs it to know when their goods arrive.
+         *
+         * Still a flag, so a dispatcher can close it for a shipment where it
+         * matters.
+         */
+        dto.showDriver ?? true,
         dto.label ?? null,
         userId,
         dto.expiresInHours ?? null,
@@ -255,6 +281,11 @@ export class ShareService {
       driver_name: string | null;
       driver_phone: string | null;
       vehicle_plate: string | null;
+      carrier_name: string | null;
+      total_weight_kg: number | null;
+      pallet_count: number | null;
+      cargo_summary: string | null;
+      item_list: string | null;
     }>(
       /*
        * The driver columns are gated in SQL rather than dropped in TypeScript.
@@ -286,9 +317,27 @@ export class ShareService {
               f.remaining_km,
               CASE WHEN l.show_driver THEN f.driver_name   END AS driver_name,
               CASE WHEN l.show_driver THEN f.driver_phone  END AS driver_phone,
-              CASE WHEN l.show_driver THEN f.vehicle_plate END AS vehicle_plate
+              CASE WHEN l.show_driver THEN f.vehicle_plate END AS vehicle_plate,
+              f.carrier_name,
+              o.total_weight_kg,
+              o.pallet_count,
+              o.cargo_summary,
+              /*
+               * Aggregated in SQL rather than fetched as a second query: this
+               * is the one request a consignee's phone makes, quite possibly
+               * over 2G, and a round trip per shipment line is the difference
+               * between a page that renders and one they close.
+               */
+              (SELECT string_agg(
+                        i.sku || CASE WHEN i.quantity IS NOT NULL
+                                      THEN ' x' || i.quantity::text || ' ' || i.unit
+                                      ELSE '' END,
+                        ', ' ORDER BY i.sku)
+                 FROM kh.order_items i
+                WHERE i.order_id = f.order_id)          AS item_list
        FROM kh.share_links l
        JOIN kh.v_live_fleet f ON f.session_id = l.session_id
+       JOIN kh.orders       o ON o.id = f.order_id
        WHERE l.token_hash = $1`,
       [sha256(rawToken)],
     );
@@ -323,6 +372,11 @@ export class ShareService {
         driverName: row.driver_name,
         driverPhone: row.driver_phone,
         vehiclePlate: row.vehicle_plate,
+        carrierName: row.carrier_name,
+        totalWeightKg: row.total_weight_kg,
+        palletCount: row.pallet_count,
+        cargoSummary: row.cargo_summary,
+        itemList: row.item_list,
         route,
       },
     };
