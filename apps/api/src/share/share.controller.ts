@@ -445,6 +445,13 @@ function page(title: string, body: string, tail: string): string {
     --ink-3:     #6a7f99;
     --brand:     #6cc6f5;
 
+    /* Layout geometry. The map's bleed is derived from these three numbers
+     * rather than hard-coded, so changing the gutter or the column cannot
+     * silently leave the map off-centre. */
+    --gutter:    16px;   /* body side padding */
+    --wrap:      520px;  /* reading column */
+    --map-max:   760px;  /* how wide the map is allowed to grow */
+
     /* Semantic, and deliberately not the dispatcher's palette.
      *
      * On the fleet map green means "the GPS is reporting". Here it has to mean
@@ -463,9 +470,9 @@ function page(title: string, body: string, tail: string): string {
     margin: 0; min-height: 100dvh;
     font: 16px/1.5 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    background: var(--bg); color: var(--ink); padding: 18px 16px 40px;
+    background: var(--bg); color: var(--ink); padding: 18px var(--gutter) 40px;
   }
-  .wrap { width: 100%; max-width: 520px; margin: 0 auto; }
+  .wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .logo { font-weight: 800; letter-spacing: .16em; font-size: 12px; color: var(--brand); }
   .refresh {
@@ -525,11 +532,45 @@ function page(title: string, body: string, tail: string): string {
    * border colour plus a slight inset shadow lands it in the panel instead of
    * on top of it. No glow: that would be decoration, and the map is content.
    */
+  /*
+   * The map is wider than the column it sits in, and the amount is derived,
+   * not guessed.
+   *
+   * PHONE — edge to edge. 100% + gutter*2 with -gutter side margins cancels
+   * exactly the body padding, so the map spans the full viewport and nothing
+   * else moves. Deliberately not 100vw: on a desktop window with a classic
+   * scrollbar, 100vw is wider than the client area and would add a horizontal
+   * scrollbar to the whole page. Rounded corners and side borders come off,
+   * because a rounded rectangle touching the screen edge reads as broken.
+   *
+   * The gain is 32px of map on a 412px phone — about 8% more ground, all of it
+   * along the axis a road actually runs.
+   */
   .map {
-    margin-top: 18px; height: 46vh; min-height: 250px; border-radius: 12px; overflow: hidden;
-    border: 1px solid var(--line); background: #e8eaed;
+    margin-top: 18px; height: 46vh; min-height: 250px; overflow: hidden;
+    width: calc(100% + var(--gutter) * 2);
+    margin-inline: calc(var(--gutter) * -1);
+    border-block: 1px solid var(--line);
+    background: #e8eaed;
     box-shadow: inset 0 0 0 1px rgba(10,16,24,.35);
     display: grid; place-items: center;
+  }
+
+  /*
+   * 792px is not a round number: it is --map-max + both gutters, the narrowest
+   * viewport at which the wide map fits without touching the edge. Below it the
+   * phone rule still applies, so there is no width at which the map overflows.
+   *
+   * The side margins are (wrap - map-max) / 2 = -120px, which centres a 760px
+   * map on a 520px column exactly.
+   */
+  @media (min-width: 792px) {
+    .map {
+      width: var(--map-max);
+      margin-inline: calc((var(--wrap) - var(--map-max)) / 2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
   }
   .map--empty { height: 92px; min-height: 0; }
   /* Sits on the light placeholder now, not on the dark panel. */
@@ -681,6 +722,22 @@ ${agoScript()}
     // overlays the bottom-right corner, so it stays visible either way.
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+  /*
+   * MapLibre measures its container once, at construction, and never notices it
+   * changed. The map is now edge-to-edge and its width follows the viewport, so
+   * a phone turned sideways — which is exactly what someone does to look at a
+   * map — left the canvas at portrait width with grey down one side.
+   *
+   * ResizeObserver rather than a window resize listener: it also catches the
+   * browser URL bar collapsing on scroll, which changes the 46vh height without
+   * ever firing a resize event.
+   */
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(function () { map.resize(); }).observe(el);
+  } else {
+    window.addEventListener('resize', function () { map.resize(); });
+  }
 
   // The OpenFreeMap style asks for sprite images its own sheet does not carry
   // (\`circle-11\`, \`wood-pattern\`). A transparent 1x1 resolves each name once
