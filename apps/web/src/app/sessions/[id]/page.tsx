@@ -8,6 +8,7 @@ import { api, type SessionDetail } from '@/lib/api';
 import { downloadAuthed } from '@/lib/download';
 import { useSessionStream } from '@/lib/useRealtime';
 import { displayState, useNow } from '@/lib/signal';
+import { ShareLinks } from '@/components/ShareLinks';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
   Badge,
@@ -274,6 +275,46 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 Yeni kod üret (mevcut cihazı iptal eder)
               </Button>
             </section>
+          )}
+
+          {/*
+            The claim code is NULLed the moment a driver claims the session, so
+            the block above disappears and there is nothing here to show. That
+            is correct — the code is spent and reprinting it would be a lie —
+            but leaving the space blank reads like the panel broke. Say what
+            happened, and offer the one action that still makes sense.
+          */}
+          {session && !session.handoff && (
+            <section className="m-3 rounded-md border border-line bg-surface-2 p-3.5 text-center">
+              <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
+                Sürücü kodu
+              </p>
+              <p className="mt-1.5 text-sm text-ink-2">
+                Kod kullanıldı ve geçersiz kılındı. Sürücü bu oturuma bağlandı.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-2"
+                loading={regenerate.isPending}
+                onClick={() => regenerate.mutate()}
+              >
+                Yeni kod üret (mevcut cihazı iptal eder)
+              </Button>
+            </section>
+          )}
+
+          {/*
+            The consignee's link, on the page a dispatcher opens when the
+            customer rings — not only on the screen that flashes past once
+            after the session is created.
+          */}
+          {session && (
+            <ShareLinks
+              sessionId={id}
+              orderNumber={session.orderNumber}
+              customerName={session.customerName}
+            />
           )}
 
           <Section title="Sevkiyat">

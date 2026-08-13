@@ -1,7 +1,7 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { DatabaseService } from '../database/database.service';
-import { randomToken, sha256 } from '../common/crypto.util';
+import { decryptSecret, encryptSecret, randomToken, sha256 } from '../common/crypto.util';
 import type { CreateShareLinkDto } from './dto';
 
 /**
@@ -130,9 +130,9 @@ export class ShareService {
       label: string | null;
     }>(
       `INSERT INTO kh.share_links (
-         session_id, token_hash, show_route, show_driver, label, created_by, expires_at
+         session_id, token_hash, token_enc, show_route, show_driver, label, created_by, expires_at
        )
-       SELECT $1, $2, $3, $4, $5, $6,
+       SELECT $1, $2, $8, $3, $4, $5, $6,
               CASE
                 WHEN $7::int IS NOT NULL THEN now() + make_interval(hours => $7::int)
                 /*
@@ -179,6 +179,13 @@ export class ShareService {
         dto.label ?? null,
         userId,
         dto.expiresInHours ?? null,
+        /*
+         * $8 — the token, encrypted under the same key and helper the driver
+         * ingest keys already use. This is what lets a dispatcher read the
+         * link back later; see migration 0010 for why hashing alone was the
+         * wrong call for a capability of this risk class.
+         */
+        encryptSecret(Buffer.from(token, 'utf8'), this.config.auth.ingestKeyEncryptionKey),
       ],
     );
     if (!row) {
@@ -206,7 +213,7 @@ export class ShareService {
    * would let an attacker confirm a guessed token offline.
    */
   async list(sessionId: string) {
-    return this.db.query(
+    const rows = await this.db.query<Record<string, unknown> & { id: string; token_enc: Buffer | null }>(
       `SELECT id,
               label,
               show_route     AS "showRoute",
@@ -216,12 +223,34 @@ export class ShareService {
               revoked_at     AS "revokedAt",
               last_viewed_at AS "lastViewedAt",
               view_count     AS "viewCount",
-              (revoked_at IS NULL AND expires_at > now()) AS "active"
+              (revoked_at IS NULL AND expires_at > now()) AS "active",
+              token_enc
        FROM kh.share_links
        WHERE session_id = $1
        ORDER BY created_at DESC`,
       [sessionId],
     );
+
+    return rows.map(({ token_enc: enc, ...row }) => ({
+      ...row,
+      /*
+       * Null for links minted before 0010, and for any ciphertext that will
+       * not open — a rotated INGEST_KEY_SECRET, a truncated column. Those show
+       * in the dashboard as un-recallable rather than throwing: one unreadable
+       * historical row must not take down the panel listing the working ones.
+       */
+      url: enc ? this.decodeToken(row.id, enc) : null,
+    }));
+  }
+
+  private decodeToken(linkId: string, enc: Buffer): string | null {
+    try {
+      const token = decryptSecret(enc, this.config.auth.ingestKeyEncryptionKey).toString('utf8');
+      return `${this.config.publicApiUrl}/s/${token}`;
+    } catch {
+      this.logger.warn(`share link ${linkId}: token_enc could not be decrypted`);
+      return null;
+    }
   }
 
   /**

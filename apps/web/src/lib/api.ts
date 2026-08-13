@@ -188,6 +188,21 @@ export interface SessionHandoff {
   shareUrl?: string | null;
 }
 
+export interface ShareLinkRow {
+  id: string;
+  label: string | null;
+  /** Null for links minted before migration 0010; those cannot be recovered. */
+  url: string | null;
+  showRoute: boolean;
+  showDriver: boolean;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastViewedAt: string | null;
+  viewCount: number;
+  active: boolean;
+}
+
 export interface SessionEvent {
   type: string;
   occurred_at: string;
@@ -404,6 +419,22 @@ export const api = {
 
   regenerateCode: (id: string) =>
     apiFetch<SessionHandoff>(`/sessions/${id}/claim-code`, { method: 'POST' }),
+
+  /*
+   * Consignee links. `url` comes back populated on list() since migration
+   * 0010 — before that the token was only ever hashed, so a link could be
+   * read exactly once and then never again.
+   */
+  listShareLinks: (sessionId: string) =>
+    apiFetch<ShareLinkRow[]>(`/sessions/${sessionId}/share`),
+
+  createShareLink: (sessionId: string, body: { label?: string; showRoute?: boolean; showDriver?: boolean }) =>
+    apiFetch<ShareLinkRow>(`/sessions/${sessionId}/share`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  revokeShareLink: (id: string) => apiFetch<void>(`/share/${id}`, { method: 'DELETE' }),
 
   sessionAction: (id: string, action: 'pause' | 'resume' | 'complete' | 'cancel', reason?: string) =>
     apiFetch<unknown>(`/sessions/${id}/${action}`, {
