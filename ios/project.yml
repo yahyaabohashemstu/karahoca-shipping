@@ -43,10 +43,25 @@ targets:
     platform: iOS
     sources:
       - path: KaraHocaTracker
+        excludes:
+          # Both are build inputs referenced by setting, not files to copy into
+          # the bundle. XcodeGen would otherwise add them as resources, and a
+          # stray entitlements file inside the .app is at best noise and at
+          # worst a signing warning.
+          - "Info.plist"
+          - "KaraHocaTracker.entitlements"
+    dependencies:
+      # SQLite is the buffer. Swift's SQLite3 module auto-links on iOS, but
+      # naming it here means a link failure surfaces as a missing dependency
+      # rather than as two hundred undefined C symbols.
+      - sdk: libsqlite3.tbd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.karahoca.tracker
         INFOPLIST_FILE: KaraHocaTracker/Info.plist
+        # Declared even though signing is off in CI: an unsigned build ignores
+        # it, and a distribution build must not have to remember to add it.
+        CODE_SIGN_ENTITLEMENTS: KaraHocaTracker/KaraHocaTracker.entitlements
         # Unsigned by default so CI can compile without an Apple Developer
         # account. Signing is configured at distribution time, not here.
         CODE_SIGNING_ALLOWED: NO

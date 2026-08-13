@@ -233,6 +233,29 @@ actor ApiClient {
         return URL(string: "https://track.karahoca.com/api/v1/")!
     }()
 
+    /// The host a Universal Link must be on to be ours.
+    ///
+    /// Derived from `defaultBaseURL` rather than written out again: the two
+    /// must always agree, and a debug build pointed at a laptop that still only
+    /// accepts links from the production host would reject its own QR codes.
+    /// The entitlement in `KaraHocaTracker.entitlements` names the production
+    /// host statically — iOS requires a literal there — so a debug override
+    /// changes what this code accepts, not what iOS routes.
+    static let linkHost: String = {
+        defaultBaseURL.host ?? "track.karahoca.com"
+    }()
+
+    /// The custom-scheme fallback, matching `CFBundleURLSchemes` in Info.plist
+    /// and the `karahoca://track?c=…` links the API's `/app` landing page and
+    /// the dispatcher's SMS both emit.
+    ///
+    /// Universal Links are the primary route and the only one that cannot be
+    /// hijacked by another app; this exists because a Universal Link that has
+    /// not yet been verified — the first launch after installing, on a phone
+    /// with no signal — silently opens Safari instead, and the landing page
+    /// bounces the driver back through the scheme.
+    static let linkScheme = "karahoca"
+
     /// Generous timeouts, on purpose.
     ///
     /// A truck on a 2 G edge cell pushing a 250 kB gzipped backlog needs the

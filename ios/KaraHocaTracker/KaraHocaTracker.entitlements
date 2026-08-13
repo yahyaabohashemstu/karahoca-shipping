@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Universal Links, and nothing else.
+
+    `applinks:` is the iOS counterpart to Android's `autoVerify` intent filter,
+    and it works the same way: on install, iOS fetches
+    https://track.karahoca.com/.well-known/apple-app-site-association over TLS
+    and checks that this app's identifier is listed. If it is, the QR code on a
+    dispatch note opens the app directly. If it is not, the same QR opens Safari
+    — which is the failure mode the custom `karahoca://` scheme exists to catch.
+
+    Two things this file cannot do on its own:
+
+      * The AASA file must exist and must name this app as
+        <TeamID>.com.karahoca.tracker. The Team ID does not exist yet — it comes
+        with an Apple Developer account — so the API's endpoint is not written
+        and the link route is not live. Everything else in the app works; the QR
+        falls back to the scheme.
+
+      * The host is a literal. It cannot be derived from `KHApiBaseURL`, so a
+        debug build pointed at a laptop gets no Universal Links. That is correct
+        rather than unfortunate: link verification is a production concern.
+
+    Deliberately absent: `aps-environment` (no push), `com.apple.developer.
+    healthkit` and friends (obviously), and background modes, which live in
+    Info.plist under UIBackgroundModes rather than here.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:track.karahoca.com</string>
+	</array>
+</dict>
+</plist>
