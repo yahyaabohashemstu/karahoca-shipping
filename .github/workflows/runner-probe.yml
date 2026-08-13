@@ -1,0 +1,15 @@
+# Temporary. Determines whether Actions works at all on this repo and whether a
+# macOS runner can be allocated — the iOS job has been failing in seconds with
+# zero steps executed, which is the signature of a runner that was never
+# assigned rather than a build that broke.
+name: runner probe
+on: { workflow_dispatch: {} }
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ubuntu runner OK"
+  mac:
+    runs-on: macos-latest
+    steps:
+      - run: sw_vers && xcodebuild -version
