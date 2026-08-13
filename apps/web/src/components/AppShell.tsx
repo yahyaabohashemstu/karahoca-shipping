@@ -9,6 +9,7 @@ import { tokens } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { IconButton } from './ui/Button';
 import { AlertCentre } from './AlertCentre';
+import { DiagnosticsLog } from './DiagnosticsLog';
 
 /* =============================================================================
    Application shell
@@ -118,6 +119,8 @@ function TopBar({ right }: { right?: React.ReactNode }) {
             the dispatcher who already has that truck's page open reaches
             nobody at 02:00 on the Habur road. */}
         <AlertCentre />
+        {/* Renders nothing until a request actually fails. */}
+        <DiagnosticsLog />
         <ThemeToggle />
         <SignOut />
       </div>

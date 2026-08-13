@@ -8,6 +8,8 @@
  * part) in one readable place.
  */
 
+import { describeHttp, recordFailure } from './diagnostics';
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -116,7 +118,29 @@ export async function apiFetch<T>(
   const access = tokens.access;
   if (access) headers.set('Authorization', `Bearer ${access}`);
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const method = (init.method ?? 'GET').toUpperCase();
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  } catch (cause) {
+    /*
+     * The request never got a response: offline, DNS, a CORS rejection, the
+     * proxy dropping the connection mid-deploy. fetch rejects with a bare
+     * "Failed to fetch", which is both untranslated and useless, and until now
+     * nothing anywhere recorded that it happened.
+     */
+    const message = describeHttp(0);
+    recordFailure({
+      at: new Date().toISOString(),
+      method,
+      path,
+      status: 0,
+      code: 'NETWORK',
+      message: `${message} (${(cause as Error).message})`,
+    });
+    throw new ApiError(0, 'NETWORK', message);
+  }
 
   if (res.status === 401 && retry) {
     if (await refreshTokens()) return apiFetch<T>(path, init, false);
@@ -125,9 +149,34 @@ export async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const error = (body?.error ?? {}) as ApiErrorShape;
-    throw new ApiError(res.status, error.code ?? 'ERROR', error.message ?? res.statusText);
+    /*
+     * The message must never come out blank, and it used to.
+     *
+     * `error.message ?? res.statusText` fails twice over: `??` passes an empty
+     * string straight through, and res.statusText is ALWAYS empty over HTTP/2
+     * — RFC 9113 removed the reason phrase, and h2 is what the browser
+     * negotiates against this API. So a 502 from the proxy during a deploy,
+     * whose HTML body json() cannot parse, rendered as a red box with a title
+     * and nothing underneath it. That is the report that started this.
+     */
+    const body = (await res.json().catch(() => null)) as
+      | { error?: ApiErrorShape; message?: string }
+      | null;
+    const shape = body?.error;
+    const code = shape?.code?.trim() || `HTTP_${res.status}`;
+    const message = describeHttp(res.status, shape?.message ?? body?.message);
+
+    recordFailure({
+      at: new Date().toISOString(),
+      method,
+      path,
+      status: res.status,
+      code,
+      message,
+      requestId: res.headers.get('x-request-id') ?? undefined,
+    });
+
+    throw new ApiError(res.status, code, message);
   }
 
   if (res.status === 204) return undefined as T;
