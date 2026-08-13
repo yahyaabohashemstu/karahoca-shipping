@@ -30,6 +30,9 @@ const STATUS_FILTERS = [
   { value: 'LIVE', label: 'Yolda' },
   { value: 'ASSIGNED', label: 'Kod bekliyor' },
   { value: 'COMPLETED', label: 'Tamamlanan' },
+  // CANCELLED had no option at all, so a stopped shipment was reachable only by
+  // switching to "Tümü" and reading past everything else.
+  { value: 'CANCELLED', label: 'İptal edilen' },
   { value: 'EXPIRED', label: 'Süresi dolan' },
   { value: '', label: 'Tümü' },
 ] as const;

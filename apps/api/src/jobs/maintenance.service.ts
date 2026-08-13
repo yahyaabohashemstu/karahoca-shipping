@@ -478,6 +478,35 @@ export class MaintenanceService {
     });
   }
 
+  /**
+   * Fold finished shipments' routes into the permanent archive.
+   *
+   * The retention policy on kh.location_points drops raw fixes after two years,
+   * on its own schedule, with no application involvement. Everything else about
+   * a closed shipment survives forever — the session, the events, the distance —
+   * so the only thing that silently disappears is the one thing an archive is
+   * for: the road the lorry actually took.
+   *
+   * Hourly and bounded to 50 at a time. There is no urgency — the deadline is
+   * two years away — and a batch cap keeps the ST_MakeLine work off the same
+   * two vCPUs the live ingest is using.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async archiveRoutes(): Promise<void> {
+    await this.withLeaderLock('archive-routes', 3500, async () => {
+      const rows = await this.db.query<{ session_id: string; archived: boolean }>(
+        `SELECT * FROM kh.archive_finished_routes(50)`,
+      );
+      const done = rows.filter((r) => r.archived).length;
+      // Sessions that produced no line are logged too: a closed shipment with
+      // fewer than two fixes is a phone that never really reported, and that is
+      // worth being able to see in the log rather than silently skipping.
+      if (rows.length) {
+        this.logger.log(`Archived ${done}/${rows.length} finished route(s)`);
+      }
+    });
+  }
+
   /** Housekeeping on the auth tables. Cheap, but unbounded growth is a bug. */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async pruneTokens(): Promise<void> {
