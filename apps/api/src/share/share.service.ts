@@ -318,7 +318,8 @@ export class ShareService {
               CASE WHEN l.show_driver THEN f.driver_name   END AS driver_name,
               CASE WHEN l.show_driver THEN f.driver_phone  END AS driver_phone,
               CASE WHEN l.show_driver THEN f.vehicle_plate END AS vehicle_plate,
-              f.carrier_name,
+              -- The view calls it shipping_company_name; there is no carrier_name.
+              f.shipping_company_name AS carrier_name,
               o.total_weight_kg,
               o.pallet_count,
               o.cargo_summary,
