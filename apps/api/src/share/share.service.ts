@@ -360,7 +360,13 @@ export class ShareService {
                */
               (SELECT string_agg(
                         i.sku || CASE WHEN i.quantity IS NOT NULL
-                                      THEN ' x' || i.quantity::text || ' ' || i.unit
+                                      -- trim_scale, or a numeric(_,3) column
+                                      -- renders 500 as "500.000" and the page
+                                      -- reads it as half a million. lower()
+                                      -- because the unit is a stored enum and
+                                      -- "PALET" shouts on a customer's page.
+                                      THEN ' × ' || trim_scale(i.quantity)::text
+                                                 || ' ' || lower(i.unit)
                                       ELSE '' END,
                         ', ' ORDER BY i.sku)
                  FROM kh.order_items i

@@ -216,10 +216,43 @@ const TR_DATETIME = new Intl.DateTimeFormat('tr-TR', {
 
 type StatusTone = 'live' | 'wait' | 'done' | 'stop';
 
+type FactGroup = 'now' | 'shipment' | 'cargo' | 'carrier';
+
 interface Fact {
   label: string;
   /** Already-escaped HTML. */
   value: string;
+  group: FactGroup;
+}
+
+/*
+ * Ordered by what the reader wants first.
+ *
+ * "Where is it and when does it land" is the question; everything else is
+ * reconciliation they do afterwards. The headings exist so the eye can skip
+ * two thirds of the page rather than reading eleven identical rows to find
+ * one.
+ */
+const GROUP_LABELS: Array<[FactGroup, string]> = [
+  ['now', 'Durum'],
+  ['shipment', 'Sevkiyat'],
+  ['cargo', 'Yük'],
+  ['carrier', 'Taşıma'],
+];
+
+function renderGroups(facts: Fact[]): string {
+  return GROUP_LABELS.map(([key, heading]) => {
+    const rows = facts.filter((f) => f.group === key);
+    if (!rows.length) return '';
+    return `<section class="group">
+      <p class="group__label">${heading}</p>
+      <dl class="facts">
+        ${rows
+          .map((f) => `<div class="fact"><dt>${esc(f.label)}</dt><dd>${f.value}</dd></div>`)
+          .join('\n        ')}
+      </dl>
+    </section>`;
+  }).join('\n    ');
 }
 
 function shipmentPage(view: ConsigneeView): string {
@@ -227,12 +260,12 @@ function shipmentPage(view: ConsigneeView): string {
   const hasPosition = view.lat !== null && view.lon !== null;
 
   const facts: Fact[] = [
-    { label: 'Sipariş No', value: esc(view.orderNumber) },
-    { label: 'Alıcı', value: esc(view.customerName) },
+    { label: 'Sipariş No', value: esc(view.orderNumber), group: 'shipment' },
+    { label: 'Alıcı', value: esc(view.customerName), group: 'shipment' },
   ];
 
   if (view.destinationLabel) {
-    facts.push({ label: 'Varış', value: esc(view.destinationLabel) });
+    facts.push({ label: 'Varış', value: esc(view.destinationLabel), group: 'shipment' });
   }
 
   const remaining = formatKm(view.remainingKm);
@@ -242,12 +275,13 @@ function shipmentPage(view: ConsigneeView): string {
     // forklift crew around a number that is 20% short would rightly be annoyed.
     facts.push({
       label: 'Kalan mesafe',
+      group: 'now',
       value: `${esc(remaining)} <span class="sub">kuş uçuşu</span>`,
     });
   }
 
   if (view.plannedDeliveryAt) {
-    facts.push({ label: 'Planlanan teslimat', value: esc(TR_DATETIME.format(view.plannedDeliveryAt)) });
+    facts.push({ label: 'Planlanan teslimat', value: esc(TR_DATETIME.format(view.plannedDeliveryAt)), group: 'now' });
   }
 
   /*
@@ -262,10 +296,10 @@ function shipmentPage(view: ConsigneeView): string {
    * forklift is needed, how many hands, how long the bay is blocked.
    */
   if (view.cargoSummary) {
-    facts.push({ label: 'Yük', value: esc(view.cargoSummary) });
+    facts.push({ label: 'Yük', value: esc(view.cargoSummary), group: 'cargo' });
   }
   if (view.itemList) {
-    facts.push({ label: 'Ürünler', value: esc(view.itemList) });
+    facts.push({ label: 'Ürünler', value: esc(view.itemList), group: 'cargo' });
   }
 
   const load: string[] = [];
@@ -280,15 +314,16 @@ function shipmentPage(view: ConsigneeView): string {
     );
   }
   if (load.length) {
-    facts.push({ label: 'Miktar', value: esc(load.join(' · ')) });
+    facts.push({ label: 'Miktar', value: esc(load.join(' · ')), group: 'cargo' });
   }
 
   if (view.carrierName) {
-    facts.push({ label: 'Nakliyeci', value: esc(view.carrierName) });
+    facts.push({ label: 'Nakliyeci', value: esc(view.carrierName), group: 'carrier' });
   }
 
   facts.push({
     label: 'Son konum güncellemesi',
+    group: 'now',
     value: view.recordedAt
       ? `<span id="ago" data-at="${view.recordedAt.getTime()}">—</span>` +
         `<span class="sub">${esc(TR_DATETIME.format(view.recordedAt))}</span>`
@@ -298,17 +333,18 @@ function shipmentPage(view: ConsigneeView): string {
   // Only reachable when the link was minted with show_driver; the service does
   // not even select these columns otherwise.
   if (view.driverName) {
-    facts.push({ label: 'Sürücü', value: esc(view.driverName) });
+    facts.push({ label: 'Sürücü', value: esc(view.driverName), group: 'carrier' });
   }
   if (view.driverPhone) {
     const dialable = view.driverPhone.replace(/[^\d+]/g, '');
     facts.push({
       label: 'Sürücü telefonu',
+      group: 'carrier',
       value: `<a href="tel:${esc(dialable)}">${esc(view.driverPhone)}</a>`,
     });
   }
   if (view.vehiclePlate) {
-    facts.push({ label: 'Plaka', value: esc(view.vehiclePlate) });
+    facts.push({ label: 'Plaka', value: esc(view.vehiclePlate), group: 'carrier' });
   }
 
   const mapData = {
@@ -329,12 +365,11 @@ function shipmentPage(view: ConsigneeView): string {
       <button class="refresh" type="button" onclick="location.reload()">Yenile</button>
     </header>
 
-    <h1>Sevkiyat Takibi</h1>
-
-    <div class="status status--${state.tone}">
-      <div class="status__title">${esc(state.title)}</div>
+    <section class="status status--${state.tone}">
+      <p class="status__ref">${esc(view.orderNumber)}</p>
+      <h1 class="status__title"><span class="status__dot" aria-hidden="true"></span>${esc(state.title)}</h1>
       <p class="status__detail">${esc(state.detail)}</p>
-    </div>
+    </section>
 
     ${
       hasPosition
@@ -342,11 +377,7 @@ function shipmentPage(view: ConsigneeView): string {
         : `<div class="map map--empty"><span class="map__note">Araç henüz konum bildirmedi.</span></div>`
     }
 
-    <dl class="facts">
-      ${facts
-        .map((f) => `<div class="fact"><dt>${esc(f.label)}</dt><dd>${f.value}</dd></div>`)
-        .join('\n      ')}
-    </dl>
+    ${renderGroups(facts)}
 
     <p class="fine">
       Bu sayfa yalnızca bu sevkiyat için oluşturulmuş özel bir bağlantıdır ve süresi dolduğunda
@@ -388,51 +419,161 @@ function page(title: string, body: string, tail: string): string {
 <meta name="robots" content="noindex,nofollow">
 <title>${title}</title>
 <style>
-  :root { color-scheme: dark; }
+  /*
+   * Dark, and not by default.
+   *
+   * The scene: an agent at a yard gate in Erbil, or in a warehouse office, on
+   * a cheap Android phone, checking whether the lorry is close. More than half
+   * this page is a dark basemap. Light chrome wrapped around a dark map is two
+   * designs arguing, and the map cannot go light without losing the contrast
+   * the vehicle marker depends on. The map decides; everything else follows.
+   */
+  :root {
+    color-scheme: dark;
+    --bg:        #0a1018;
+    --surface:   #111a28;
+    --line:      #1d2b3f;
+    --ink:       #eef3fa;
+    --ink-2:     #9fb0c6;
+    --ink-3:     #6a7f99;
+    --brand:     #6cc6f5;
+
+    /* Semantic, and deliberately not the dispatcher's palette.
+     *
+     * On the fleet map green means "the GPS is reporting". Here it has to mean
+     * "your goods arrived" — the only outcome this reader is waiting for, and
+     * the colour every parcel tracker they have used says it in. Delivery was
+     * rendering in the same sky blue as the logo, so the best possible news
+     * looked like a footnote while *waiting* got amber. In transit is blue:
+     * progressing, not finished. */
+    --done:      #34d399;
+    --live:      #60b8f8;
+    --wait:      #f2b23c;
+    --stop:      #f87171;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100dvh;
     font: 16px/1.5 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
-    background: #0b1220; color: #e8eef9; padding: 20px 16px 32px;
+    -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--ink); padding: 18px 16px 40px;
   }
   .wrap { width: 100%; max-width: 520px; margin: 0 auto; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .logo { font-weight: 800; letter-spacing: .14em; font-size: 13px; color: #7dd3fc; }
+  .logo { font-weight: 800; letter-spacing: .16em; font-size: 12px; color: var(--brand); }
   .refresh {
     font: inherit; font-size: 13px; padding: 7px 13px; border-radius: 9px; cursor: pointer;
-    background: transparent; color: #94a3b8; border: 1px solid #1e3a5f;
+    background: transparent; color: var(--ink-2); border: 1px solid var(--line);
+    transition: color .18s cubic-bezier(.22,1,.36,1), border-color .18s cubic-bezier(.22,1,.36,1);
   }
-  h1 { font-size: 20px; font-weight: 600; margin: 20px 0 14px; }
-  .status { border-radius: 14px; padding: 15px 17px; border: 1px solid #1e3a5f; background: #111c33; }
-  .status__title { font-size: 19px; font-weight: 700; margin-bottom: 4px; }
-  .status__detail { margin: 0; color: #94a3b8; font-size: 14.5px; }
-  .status--live { border-color: #14532d; background: #0d1f1a; }
-  .status--live .status__title { color: #4ade80; }
-  .status--wait { border-color: #4a3610; background: #1c1608; }
-  .status--wait .status__title { color: #fbbf24; }
-  .status--done { border-color: #1e3a5f; }
-  .status--done .status__title { color: #7dd3fc; }
-  .status--stop { border-color: #5b1d1d; background: #200f0f; }
-  .status--stop .status__title { color: #f87171; }
+  .refresh:hover { color: var(--ink); border-color: var(--ink-3); }
+  .refresh:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /*
+   * The status IS the page.
+   *
+   * It used to sit inside a bordered card underneath an <h1> reading "Sevkiyat
+   * Takibi" — so the loudest element on screen told the reader something they
+   * already knew, having just clicked a tracking link, while the one fact they
+   * came for was quieter than the heading above it. No card here: a card fences
+   * the answer off as one item among several. Colour and scale carry it.
+   */
+  .status { margin: 22px 0 4px; }
+  .status__ref {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 8px;
+  }
+  .status__title {
+    font-size: clamp(28px, 8vw, 36px); font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.02em; margin: 0; text-wrap: balance;
+  }
+  .status__detail { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; text-wrap: pretty; }
+  .status__dot {
+    display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+    margin-right: 11px; vertical-align: middle; position: relative; top: -3px;
+  }
+  .status--done .status__title { color: var(--done); }
+  .status--done .status__dot   { background: var(--done); }
+  .status--live .status__title { color: var(--live); }
+  .status--live .status__dot   { background: var(--live); animation: pulse 2.4s ease-out infinite; }
+  .status--wait .status__title { color: var(--wait); }
+  .status--wait .status__dot   { background: var(--wait); }
+  .status--stop .status__title { color: var(--stop); }
+  .status--stop .status__dot   { background: var(--stop); }
+
+  /* Only the live state pulses, because only it is still changing. */
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(96,184,248,.5); }
+    70%  { box-shadow: 0 0 0 9px rgba(96,184,248,0); }
+    100% { box-shadow: 0 0 0 0 rgba(96,184,248,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status--live .status__dot { animation: none; }
+    .refresh { transition: none; }
+  }
+
   .map {
-    margin-top: 16px; height: 44vh; min-height: 230px; border-radius: 14px; overflow: hidden;
-    border: 1px solid #1e3a5f; background: #111c33; display: grid; place-items: center;
+    margin-top: 18px; height: 46vh; min-height: 250px; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center;
   }
-  .map--empty { height: 96px; min-height: 0; }
-  .map__note { color: #64748b; font-size: 13.5px; padding: 0 16px; text-align: center; }
+  .map--empty { height: 92px; min-height: 0; }
+  .map__note { color: var(--ink-3); font-size: 13.5px; padding: 0 16px; text-align: center; }
   /* MapLibre paints into a child canvas; the placeholder grid must not centre it. */
   .map.is-ready { display: block; }
-  .facts { margin: 18px 0 0; padding: 0; }
-  .fact {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
-    padding: 11px 0; border-bottom: 1px solid #16233c;
+
+  /*
+   * Grouped, not one flat run of rows.
+   *
+   * Six rows of identical weight make the reader scan all six to find the one
+   * they want. They answer three different questions — which shipment, what is
+   * on it, who is carrying it — and labelling the groups lets the eye skip two
+   * thirds of the page.
+   */
+  .group { margin: 22px 0 0; }
+  .group__label {
+    font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 2px; font-weight: 600;
   }
-  .fact:last-child { border-bottom: 0; }
-  dt { color: #94a3b8; font-size: 14px; flex: 0 0 auto; }
-  dd { margin: 0; text-align: right; font-weight: 600; }
-  dd a { color: #7dd3fc; }
-  .sub { display: block; font-weight: 400; font-size: 12.5px; color: #64748b; margin-top: 2px; }
-  .fine { color: #64748b; font-size: 12.5px; margin: 18px 0 0; }
+  .facts { margin: 0; padding: 0; }
+  .fact {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 18px;
+    padding: 11px 0; border-bottom: 1px solid var(--line);
+  }
+  .group:last-of-type .fact:last-child { border-bottom: 0; }
+  dt { color: var(--ink-2); font-size: 14px; flex: 0 0 auto; }
+  dd {
+    margin: 0; text-align: right; font-weight: 600; min-width: 0;
+    /* Plates, distances, dates and quantities are all columns of digits;
+     * proportional figures make them jitter from row to row. */
+    font-variant-numeric: tabular-nums;
+  }
+  dd a { color: var(--brand); text-underline-offset: 3px; }
+  .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .fine { color: var(--ink-3); font-size: 12.5px; margin: 22px 0 0; text-wrap: pretty; }
+
+  /*
+   * MapLibre ships a white attribution bar and white zoom buttons. On a dark
+   * basemap they are the brightest thing on the page — brighter than the
+   * status — and the credit block spanned two lines across the bottom third of
+   * the map. Restyled to sit in the map rather than on top of it. The credit
+   * stays legible and clickable: it is a licence term, not decoration.
+   */
+  .maplibregl-ctrl-attrib.maplibregl-compact {
+    background: rgba(10,16,24,.82) !important;
+    backdrop-filter: blur(2px);
+    border-radius: 8px;
+  }
+  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a {
+    color: var(--ink-3) !important; font-size: 10.5px !important;
+  }
+  .maplibregl-ctrl-attrib a { text-decoration: none; }
+  .maplibregl-ctrl-attrib-button { filter: invert(1) opacity(.55); }
+  .maplibregl-ctrl-group {
+    background: rgba(17,26,40,.9) !important;
+    border: 1px solid var(--line) !important; box-shadow: none !important;
+  }
+  .maplibregl-ctrl-group button + button { border-top-color: var(--line) !important; }
+  .maplibregl-ctrl-group button span { filter: invert(1) opacity(.7); }
 </style>
 </head>
 <body>
