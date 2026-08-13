@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>          <string>KaraHoca Takip</string>
+  <key>CFBundleShortVersionString</key>   <string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key>              <string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>UILaunchScreen</key>               <dict/>
+
+  <!-- Portrait only. A driver props the phone on a dashboard mount; a rotating
+       UI in a moving cab is motion nobody asked for. -->
+  <key>UISupportedInterfaceOrientations</key>
+  <array><string>UIInterfaceOrientationPortrait</string></array>
+
+  <!--
+    THE THREE STRINGS APP REVIEW ACTUALLY READS.
+
+    Apple rejects vague location justifications under 5.1.1, and "Always" needs
+    to explain what happens while the app is not on screen. These say the real
+    thing: the phone is the shipment's tracker for the length of one delivery,
+    the recipient is waiting on it, and it stops when the driver stops it.
+  -->
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Sevkiyat süresince aracın konumu sevkiyat merkezine ve alıcıya iletilir. Takibi istediğiniz an durdurabilirsiniz.</string>
+
+  <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+  <string>Takip, telefon kilitliyken ve uygulama kapalıyken de sürmelidir; aksi halde sevkiyat yolun ortasında görünmez olur. Konum yalnızca aktif sevkiyat boyunca kaydedilir.</string>
+
+  <key>NSMotionUsageDescription</key>
+  <string>Aracın durduğunu anlayıp konum gönderme sıklığını düşürerek pil tüketimini azaltmak için kullanılır.</string>
+
+  <!--
+    `location` alone. Not `fetch`, not `processing`.
+
+    Declaring background modes the app does not use is a documented rejection
+    reason, and the upload runs inside the location wake-up anyway: iOS hands us
+    CPU when a fix arrives, which is exactly when there is something to send.
+  -->
+  <key>UIBackgroundModes</key>
+  <array><string>location</string></array>
+
+  <!-- The web fallback and SMS hand-off, matching Android's karahoca://track.
+       Universal Links are the primary path and live in the entitlements. -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>    <string>com.karahoca.tracker</string>
+      <key>CFBundleURLSchemes</key> <array><string>karahoca</string></array>
+    </dict>
+  </array>
+
+  <!-- ATS left at its default: everything talks to https://track.karahoca.com,
+       which has a real certificate. No exception is needed and adding one is a
+       review question we would have to answer. -->
+</dict>
+</plist>

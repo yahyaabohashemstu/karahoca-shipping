@@ -1,0 +1,76 @@
+# =============================================================================
+# XcodeGen spec — the iOS driver app
+# =============================================================================
+# A generated project, not a committed .xcodeproj.
+#
+# A .pbxproj is a 2,000-line machine-written file that nobody can review, that
+# conflicts on every branch, and that silently drifts from what the build
+# actually does. This spec is the whole project in fifty readable lines, and
+# `xcodegen generate` reproduces the rest. It also means the project can be
+# built by CI on a machine that has never opened Xcode — which is how this app
+# is verified at all, since it is written on Windows.
+#
+#   brew install xcodegen && cd ios && xcodegen generate && open KaraHoca.xcodeproj
+# =============================================================================
+name: KaraHoca
+options:
+  bundleIdPrefix: com.karahoca
+  deploymentTarget:
+    # iOS 16, not 15 or 17.
+    #
+    # 16 gives CLLocationUpdate.liveUpdates and the modern Swift concurrency
+    # location APIs, and it is on essentially every iPhone still in service —
+    # it reaches the iPhone 8 (2017). Going to 17 would drop the 8 and X for
+    # nothing this app needs; staying on 15 would mean hand-rolling the async
+    # location stream.
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    # Warnings are errors in CI or they are not warnings. This app runs
+    # unattended for fourteen hours in a lorry cab; an unused-result warning on
+    # a location call is exactly the kind of thing that becomes a silent gap.
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  KaraHocaTracker:
+    type: application
+    platform: iOS
+    sources:
+      - path: KaraHocaTracker
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.karahoca.tracker
+        INFOPLIST_FILE: KaraHocaTracker/Info.plist
+        # Unsigned by default so CI can compile without an Apple Developer
+        # account. Signing is configured at distribution time, not here.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        TARGETED_DEVICE_FAMILY: "1"        # iPhone only. A driver has a phone.
+        SUPPORTS_MACCATALYST: NO
+
+  KaraHocaTrackerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: KaraHocaTrackerTests
+    dependencies:
+      - target: KaraHocaTracker
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  KaraHocaTracker:
+    build:
+      targets:
+        KaraHocaTracker: all
+        KaraHocaTrackerTests: [test]
+    test:
+      targets:
+        - KaraHocaTrackerTests

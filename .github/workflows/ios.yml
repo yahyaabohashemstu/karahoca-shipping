@@ -1,0 +1,77 @@
+# =============================================================================
+# iOS build and test
+# =============================================================================
+# This workflow is not a nicety, it is the only verification this app has.
+#
+# The rest of this repository is written and checked on a Windows machine: the
+# Android app compiles there, the API and dashboard build there, the migrations
+# are applied to a restored copy of production there. None of that is possible
+# for iOS — Xcode is macOS-only — so without a macOS runner every line of Swift
+# in this repo would be unverified, and "it compiles" would be an assumption.
+#
+# Scoped to ios/ on purpose. macOS runner minutes bill at 10x on private repos,
+# so a dashboard CSS change must not spend them.
+# =============================================================================
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+concurrency:
+  # A push during a run cancels it. The interesting answer is always about the
+  # newest commit, and a queued macOS job is expensive to leave running.
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        # Pinned rather than "latest-stable": a runner image update that moves
+        # the default Xcode should fail loudly here, not silently change what
+        # the app is compiled against.
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
+      - name: Install XcodeGen
+        # The project is generated from ios/project.yml; there is no .pbxproj in
+        # the repo. See the comment at the top of that file for why.
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build and test
+        working-directory: ios
+        # A simulator destination, not a device: unsigned code cannot run on
+        # hardware, and the logic under test — the claim-code normaliser, the
+        # cadence gate, the fix filter — is pure and device-independent. What a
+        # simulator cannot exercise is background location itself, and no CI
+        # can; that needs a real phone in a real lorry.
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project KaraHoca.xcodeproj \
+            -scheme KaraHocaTracker \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty && exit ${PIPESTATUS[0]}
+
+      - name: Upload the result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: ios/TestResults.xcresult
+          retention-days: 7
