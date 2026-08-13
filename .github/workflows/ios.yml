@@ -63,13 +63,19 @@ jobs:
         # simulator cannot exercise is background location itself, and no CI
         # can; that needs a real phone in a real lorry.
         run: |
-          set -o pipefail
+          set -euo pipefail
+          # The newest available iPhone simulator, discovered rather than named.
+          # Hard-coding "iPhone 16" breaks the moment an image ships iPhone 17
+          # and drops it, which is a yearly event.
+          SIM=$(xcrun simctl list devices available \
+                | grep -oE 'iPhone [0-9]+[a-zA-Z ]*' | tail -1 | xargs)
+          echo "Testing on: ${SIM:?no iPhone simulator on this runner}"
           xcodebuild test \
             -project KaraHoca.xcodeproj \
             -scheme KaraHocaTracker \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "platform=iOS Simulator,name=$SIM" \
             -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Upload the result bundle
         if: always()
