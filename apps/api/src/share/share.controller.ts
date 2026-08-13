@@ -182,15 +182,22 @@ function render(resolved: ShareResolution): { status: number; html: string } {
 }
 
 /**
- * The dark basemap, not positron.
+ * Positron — the light basemap.
  *
- * apps/web/src/lib/mapStyle.ts carries both and explains why either beats the
- * colourful `liberty` default: they are desaturated, so the only saturated
- * pixels on the screen are the vehicle and its route. This page is dark like
- * the rest of the public surface (`/t/:code`, `/app`), and dropping a white map
- * slab into it would be the same mistake in the other direction.
+ * Both it and `dark` beat the colourful `liberty` default for the same reason
+ * (see apps/web/src/lib/mapStyle.ts): they are desaturated, so the only
+ * saturated pixels on screen are the vehicle and its route.
+ *
+ * Light wins here on the one thing that actually decides it: where the page is
+ * read. An agent checks it standing in a yard in Erbil or Karkuk — outdoors,
+ * on a cheap phone, at whatever brightness the battery has left. A dark map in
+ * direct sun is a grey rectangle.
+ *
+ * Everything painted ON the map has to move with it. The route line and both
+ * markers were picked against a dark ground, and MapLibre's own controls go
+ * back to their defaults, which were built for exactly this background.
  */
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/dark';
+const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
 /**
  * Pinned to the exact version the dashboard bundles, so a consignee and a
@@ -512,12 +519,24 @@ function page(title: string, body: string, tail: string): string {
     .refresh { transition: none; }
   }
 
+  /*
+   * A light map inside a dark page needs a seam, or the tiles read as a raw
+   * white slab cut out of the background. A one-pixel line at the page's own
+   * border colour plus a slight inset shadow lands it in the panel instead of
+   * on top of it. No glow: that would be decoration, and the map is content.
+   */
   .map {
     margin-top: 18px; height: 46vh; min-height: 250px; border-radius: 12px; overflow: hidden;
-    border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center;
+    border: 1px solid var(--line); background: #e8eaed;
+    box-shadow: inset 0 0 0 1px rgba(10,16,24,.35);
+    display: grid; place-items: center;
   }
   .map--empty { height: 92px; min-height: 0; }
-  .map__note { color: var(--ink-3); font-size: 13.5px; padding: 0 16px; text-align: center; }
+  /* Sits on the light placeholder now, not on the dark panel. */
+  .map__note { color: #5b6875; font-size: 13.5px; padding: 0 16px; text-align: center; }
+  /* The "no position yet" box never loads tiles, so it keeps the dark panel. */
+  .map--empty { background: var(--surface); box-shadow: none; }
+  .map--empty .map__note { color: var(--ink-3); }
   /* MapLibre paints into a child canvas; the placeholder grid must not centre it. */
   .map.is-ready { display: block; }
 
@@ -552,28 +571,19 @@ function page(title: string, body: string, tail: string): string {
   .fine { color: var(--ink-3); font-size: 12.5px; margin: 22px 0 0; text-wrap: pretty; }
 
   /*
-   * MapLibre ships a white attribution bar and white zoom buttons. On a dark
-   * basemap they are the brightest thing on the page — brighter than the
-   * status — and the credit block spanned two lines across the bottom third of
-   * the map. Restyled to sit in the map rather than on top of it. The credit
-   * stays legible and clickable: it is a licence term, not decoration.
+   * MapLibre's own control styling is built for a light basemap, so on
+   * positron it is left almost alone — the inverted dark treatment this page
+   * carried while the map was dark would now paint dark icons on dark buttons
+   * against white tiles, i.e. invisible.
+   *
+   * Only two things change: the attribution shrinks (it was spanning two lines
+   * across the bottom of the map) and the controls pick up this page's corner
+   * radius so they read as part of the panel. The credit stays legible and
+   * clickable; it is a licence term, not decoration.
    */
-  .maplibregl-ctrl-attrib.maplibregl-compact {
-    background: rgba(10,16,24,.82) !important;
-    backdrop-filter: blur(2px);
-    border-radius: 8px;
-  }
-  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a {
-    color: var(--ink-3) !important; font-size: 10.5px !important;
-  }
-  .maplibregl-ctrl-attrib a { text-decoration: none; }
-  .maplibregl-ctrl-attrib-button { filter: invert(1) opacity(.55); }
-  .maplibregl-ctrl-group {
-    background: rgba(17,26,40,.9) !important;
-    border: 1px solid var(--line) !important; box-shadow: none !important;
-  }
-  .maplibregl-ctrl-group button + button { border-top-color: var(--line) !important; }
-  .maplibregl-ctrl-group button span { filter: invert(1) opacity(.7); }
+  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a { font-size: 10.5px !important; }
+  .maplibregl-ctrl-attrib.maplibregl-compact { border-radius: 8px; }
+  .maplibregl-ctrl-group { border-radius: 8px !important; }
 </style>
 </head>
 <body>
@@ -694,7 +704,7 @@ ${agoScript()}
         map.addLayer({
           id: 'route-line', type: 'line', source: 'route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#38bdf8', 'line-width': 4, 'line-opacity': 0.85 }
+          paint: { 'line-color': '#0b6fa4', 'line-width': 4, 'line-opacity': 0.9 }
         });
         geom.coordinates.forEach(function (c) { bounds.extend(c); extended = true; });
       }
@@ -708,8 +718,8 @@ ${agoScript()}
       map.addLayer({
         id: 'dest-dot', type: 'circle', source: 'dest',
         paint: {
-          'circle-radius': 7, 'circle-color': '#0b1220',
-          'circle-stroke-width': 3, 'circle-stroke-color': '#7dd3fc'
+          'circle-radius': 7, 'circle-color': '#ffffff',
+          'circle-stroke-width': 3, 'circle-stroke-color': '#0b6fa4'
         }
       });
       bounds.extend(d.dest);
@@ -723,8 +733,8 @@ ${agoScript()}
     map.addLayer({
       id: 'truck-dot', type: 'circle', source: 'truck',
       paint: {
-        'circle-radius': 9, 'circle-color': '#22c55e',
-        'circle-stroke-width': 3, 'circle-stroke-color': '#0b1220'
+        'circle-radius': 9, 'circle-color': '#15803d',
+        'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff'
       }
     });
 
