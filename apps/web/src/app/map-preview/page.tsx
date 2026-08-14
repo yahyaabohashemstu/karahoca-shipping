@@ -230,11 +230,52 @@ export default function MapPreviewPage() {
              * the only honest signal that the map is still alive.
              */
             let frames = 0;
+            let lastRenderAt = 0;
+            /*
+             * Inter-frame gaps, worst-first.
+             *
+             * "Freezing" is not a boolean. A map that draws every 900 ms is
+             * alive by any liveness check and unusable to a dispatcher, so
+             * counting frames finds nothing — the first harness did exactly
+             * that and reported the map healthy while a user was watching it
+             * stall. What matters is the distribution of the gap between
+             * consecutive renders WHILE THE CAMERA IS MOVING: a smooth map
+             * sits near 16 ms, and a stutter is a 300 ms outlier among
+             * hundreds of good frames, which an average would hide completely.
+             */
+            const gaps: number[] = [];
             instance.on('render', () => {
               frames++;
+              const at = performance.now();
+              if (lastRenderAt) {
+                gaps.push(at - lastRenderAt);
+                if (gaps.length > 4000) gaps.splice(0, 2000);
+              }
+              lastRenderAt = at;
               const el = document.getElementById('kh-render-count');
               if (el) el.textContent = String(frames);
             });
+
+            // Read by the frame-time harness over CDP. Deliberately a plain
+            // global: it is a measurement tap, not application state.
+            (window as unknown as Record<string, unknown>).__khFrames = {
+              reset: () => { gaps.length = 0; },
+              stats: () => {
+                if (gaps.length === 0) return null;
+                const sorted = [...gaps].sort((a, b) => a - b);
+                const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+                return {
+                  frames: sorted.length,
+                  p50: Math.round(at(0.5)),
+                  p95: Math.round(at(0.95)),
+                  worst: Math.round(sorted[sorted.length - 1]),
+                  // Frames a person would call a stutter, and ones they would
+                  // call a freeze.
+                  over100: sorted.filter((g) => g > 100).length,
+                  over500: sorted.filter((g) => g > 500).length,
+                };
+              },
+            };
 
             /*
              * ?zoom= &pitch= &bearing= &lng= &lat= — the camera, on demand.
@@ -259,7 +300,21 @@ export default function MapPreviewPage() {
              * toggle because that turns off the vehicles too.
              */
             if (q.get('terrain') === 'off') {
-              window.setTimeout(() => instance.setTerrain(null), 1400);
+              /*
+               * Held off, not switched off once.
+               *
+               * FleetMap re-enables terrain from its own moveend handler
+               * whenever the zoom drops back under the ceiling, so a single
+               * setTerrain(null) here only lasts until the first movement —
+               * which is precisely the period a measurement run spends moving.
+               * The first frame-time comparison taken with this switch was
+               * therefore measuring terrain being repeatedly torn down and
+               * rebuilt, which is worse than either state.
+               */
+              const hold = () => { if (instance.getTerrain()) instance.setTerrain(null); };
+              hold();
+              instance.on('moveend', () => window.setTimeout(hold, 10));
+              instance.on('terrain', hold);
             }
             if (['zoom', 'pitch', 'bearing', 'lng', 'lat'].some((k) => q.has(k))) {
               window.setTimeout(() => {

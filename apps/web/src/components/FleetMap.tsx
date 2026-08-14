@@ -18,6 +18,14 @@ import {
   setDimensional,
   syncTerrain,
 } from '@/lib/map3d';
+import {
+  loadQuality,
+  Quality,
+  QualityGovernor,
+  QUALITY_LABEL,
+  saveQuality,
+  type GovernorEvent,
+} from '@/lib/mapQuality';
 
 /** Remembered across mounts, so the view a dispatcher chose survives a route change. */
 const DIMENSIONAL_KEY = 'kh.map.3d';
@@ -153,6 +161,26 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
   if (!truckLayer.current && typeof window !== 'undefined') truckLayer.current = new TruckLayer();
 
   const [dimensional, setDimensionalState] = useState(true);
+
+  /*
+   * What this machine has been found capable of drawing.
+   *
+   * Starts from whatever the last session settled on and is then adjusted by
+   * the governor against real measured frames. Held in a ref as well as state
+   * because the governor's callback fires from a render handler registered
+   * once, which cannot see a later render's closure.
+   */
+  const [quality, setQualityState] = useState<Quality>(Quality.Buildings);
+  const qualityRef = useRef<Quality>(Quality.Buildings);
+  const governor = useRef<QualityGovernor | null>(null);
+  /** Surfaced briefly when the governor changes its mind, then faded. */
+  const [qualityNotice, setQualityNotice] = useState<GovernorEvent | null>(null);
+
+  useEffect(() => {
+    const stored = loadQuality();
+    qualityRef.current = stored;
+    setQualityState(stored);
+  }, []);
   /*
    * The zoom handler is registered once, in the load callback, so it cannot
    * read `dimensional` directly — it would close over the value from the first
@@ -529,7 +557,13 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       instance.on('moveend', () => {
         window.setTimeout(() => {
           if (map.current !== instance) return;
-          syncTerrain(instance, dimensionalRef.current);
+          // Both gates, or this handler quietly re-enables terrain that the
+          // governor just shed — which it did, and the map came back at full
+          // cost one movement after being told it could not afford it.
+          syncTerrain(
+            instance,
+            dimensionalRef.current && qualityRef.current >= Quality.Terrain,
+          );
         }, 0);
       });
 
@@ -618,10 +652,12 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     const instance = map.current;
     if (!instance || !ready) return;
 
-    if (truckLayer.current) truckLayer.current.enabled = dimensional;
+    if (truckLayer.current) {
+      truckLayer.current.enabled = dimensional && quality >= Quality.Vehicles;
+    }
 
     // The flat markers hold the map on their own when the model is off.
-    const fade = dimensional
+    const fade = dimensional && quality >= Quality.Vehicles
       ? (['interpolate', ['linear'], ['zoom'], TRUCK_3D_MIN_ZOOM, 1, TRUCK_3D_MIN_ZOOM + 1.5, 0] as unknown as number)
       : (1 as unknown as number);
     for (const [layer, property] of [
@@ -634,8 +670,16 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
     if (dimensional) {
       installSky(instance, resolved);
-      installBuildings(instance, resolved);
-      syncTerrain(instance, true);
+      /*
+       * Each feature is gated on the tier the machine has earned, not on the
+       * 3D toggle alone. Terrain measured at nearly three times the cost of
+       * everything else put together and was the only setting that produced
+       * multi-second frames, so it is the first thing shed and the last thing
+       * granted.
+       */
+      if (quality >= Quality.Buildings) installBuildings(instance, resolved);
+      else removeBuildings(instance);
+      syncTerrain(instance, quality >= Quality.Terrain);
     } else {
       removeBuildings(instance);
       // Terrain is torn down and not merely hidden: a DEM source left attached
@@ -643,9 +687,42 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       removeTerrain(instance);
     }
 
-    setDimensional(instance, dimensional);
+    setDimensional(instance, dimensional && quality >= Quality.Vehicles);
     instance.triggerRepaint();
-  }, [dimensional, ready, resolved]);
+  }, [dimensional, ready, resolved, quality]);
+
+  // ---- The governor ----------------------------------------------------------
+  /*
+   * Measures the map's own frames and spends or sheds accordingly.
+   *
+   * Created once the map is ready and torn down with it. The callback writes
+   * through the ref as well as the state so the governor's own view of the
+   * current tier stays correct between React renders.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready) return;
+
+    const gov = new QualityGovernor(instance, qualityRef.current, (event) => {
+      qualityRef.current = event.quality;
+      setQualityState(event.quality);
+      setQualityNotice(event);
+    });
+    governor.current = gov;
+    gov.start();
+
+    return () => {
+      gov.stop();
+      governor.current = null;
+    };
+  }, [ready]);
+
+  /** The notice is information, not an alert; it clears itself. */
+  useEffect(() => {
+    if (!qualityNotice) return;
+    const timer = window.setTimeout(() => setQualityNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [qualityNotice]);
 
   // ---- Data -----------------------------------------------------------------
   useEffect(() => {
@@ -857,6 +934,19 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
           const next = !dimensional;
           setDimensionalState(next);
           window.localStorage.setItem(DIMENSIONAL_KEY, next ? '1' : '0');
+          /*
+           * Turning 3D back on is a request to try again, so the search starts
+           * over from the middle tier rather than resuming wherever the
+           * governor had given up. Otherwise a dispatcher who switched off
+           * during a bad afternoon would be stuck at flat markers for ever.
+           */
+          if (next) {
+            const fresh = Quality.Buildings;
+            qualityRef.current = fresh;
+            setQualityState(fresh);
+            saveQuality(fresh);
+            governor.current?.reset(fresh);
+          }
         }}
         title={
           dimensional
@@ -893,6 +983,22 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       {dimensional && belowModelZoom && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-surface/90 px-2.5 py-1 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
           Araç modelleri için yakınlaştırın
+        </div>
+      )}
+
+      {/*
+        What the governor did, and why.
+
+        A map that quietly drops its own detail is unsettling; one that says
+        "this computer could not keep up, so I turned the terrain off" is a
+        tool. It clears itself after a few seconds because it is not an error.
+      */}
+      {qualityNotice && (
+        <div className="pointer-events-none absolute bottom-14 left-1/2 -translate-x-1/2 rounded-md bg-surface/95 px-3 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
+          {qualityNotice.direction === 'down'
+            ? `Bu bilgisayar yetişemedi (${qualityNotice.medianMs} ms/kare) — `
+            : 'Performans uygun — '}
+          {QUALITY_LABEL[qualityNotice.quality]}
         </div>
       )}
 
