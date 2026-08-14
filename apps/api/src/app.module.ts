@@ -14,6 +14,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { RedisModule } from './redis/redis.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { ShareModule } from './share/share.module';
+import { TerrainModule } from './terrain/terrain.module';
 import { TrackingModule } from './tracking/tracking.module';
 
 @Module({
@@ -31,6 +32,9 @@ import { TrackingModule } from './tracking/tracking.module';
     TrackingModule,
     CatalogModule,
     AlertsModule,
+    // Elevation tiles for the 3D map. Deliberately last and deliberately
+    // dependency-free: it must keep serving when the database is busy.
+    TerrainModule,
     JobsModule,
   ],
   controllers: [HealthController],

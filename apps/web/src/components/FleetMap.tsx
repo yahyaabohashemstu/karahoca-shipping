@@ -8,6 +8,44 @@ import type { LivePositionEvent } from '@/lib/useRealtime';
 import { displayState, SIGNAL_LABEL, type DisplayState } from '@/lib/signal';
 import { mapColors, mapStyleFor } from '@/lib/mapStyle';
 import { useTheme } from '@/lib/theme';
+import { TruckLayer, TRUCK_3D_MIN_ZOOM, type Truck } from '@/lib/truck3d';
+import {
+  DEFAULT_PITCH,
+  installBuildings,
+  installSky,
+  removeBuildings,
+  removeTerrain,
+  setDimensional,
+  syncTerrain,
+} from '@/lib/map3d';
+
+/** Remembered across mounts, so the view a dispatcher chose survives a route change. */
+const DIMENSIONAL_KEY = 'kh.map.3d';
+
+function readDimensionalPreference(): boolean {
+  if (typeof window === 'undefined') return true;
+  const stored = window.localStorage.getItem(DIMENSIONAL_KEY);
+  if (stored === '0') return false;
+  if (stored === '1') return true;
+  // Default on. The 3D view is the one that was asked for; a dispatcher who
+  // wants the flat map has a button, and the choice sticks after that.
+  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** '#rrggbb' or 'rgb(r,g,b)' to the 0-255 triple the GPU layer wants. */
+function parseColour(value: string): [number, number, number] {
+  const rgb = value.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  const hex = value.trim().replace('#', '');
+  if (hex.length === 6) {
+    return [
+      parseInt(hex.slice(0, 2), 16),
+      parseInt(hex.slice(2, 4), 16),
+      parseInt(hex.slice(4, 6), 16),
+    ];
+  }
+  return [136, 136, 136];
+}
 
 /** Gebze — the KaraHoca plant. Sensible default view before any truck loads. */
 const HOME: [number, number] = [29.4318, 40.7989];
@@ -44,6 +82,15 @@ interface Props {
   now: number;
   /** Dims the overlay when the feed is frozen, so staleness is visible peripherally. */
   stale?: boolean;
+  /**
+   * Handed the MapLibre instance once it has loaded.
+   *
+   * The map is otherwise entirely sealed inside this component, which is right
+   * for the dashboard and impossible to review: a camera bug on a canvas can
+   * only be found by asking the camera where it is. /map-preview uses this to
+   * put the live pitch, bearing and zoom on screen.
+   */
+  onMapReady?: (instance: MapLibreMap) => void;
 }
 
 /**
@@ -56,7 +103,7 @@ interface Props {
  * rest. It also gives data-driven styling — colour by signal state, rotation by
  * bearing — for free.
  */
-export default function FleetMap({ positions, liveUpdates, selectedId, onSelect, now, stale }: Props) {
+export default function FleetMap({ positions, liveUpdates, selectedId, onSelect, now, stale, onMapReady }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   /*
@@ -90,7 +137,53 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onMapReadyRef = useRef(onMapReady);
+  onMapReadyRef.current = onMapReady;
   const { resolved, ready: themeReady } = useTheme();
+
+  /*
+   * The 3D vehicle layer.
+   *
+   * Held in a ref rather than rebuilt, because it owns GPU objects — a shader
+   * program, three buffers — and a new one per render would leak them until the
+   * context ran out. The instance survives setStyle; only its re-registration
+   * with the map has to be redone, which installLayers handles.
+   */
+  const truckLayer = useRef<TruckLayer | null>(null);
+  if (!truckLayer.current && typeof window !== 'undefined') truckLayer.current = new TruckLayer();
+
+  const [dimensional, setDimensionalState] = useState(true);
+  /*
+   * The zoom handler is registered once, in the load callback, so it cannot
+   * read `dimensional` directly — it would close over the value from the first
+   * render and keep re-enabling terrain after the dispatcher switched 3D off.
+   */
+  const dimensionalRef = useRef(true);
+  dimensionalRef.current = dimensional;
+  /*
+   * Read from storage in an effect, not in useState's initialiser.
+   *
+   * localStorage does not exist while Next renders this on the server, and a
+   * value read on the client that differs from the server's would be a
+   * hydration mismatch — React would discard the whole subtree, which here
+   * means destroying and rebuilding the map on first paint.
+   */
+  useEffect(() => setDimensionalState(readDimensionalPreference()), []);
+
+  /** Live zoom, so the toolbar can say why the trucks are still flat. */
+  const [zoom, setZoom] = useState(6.5);
+
+  /**
+   * Last heading each vehicle was seen moving on.
+   *
+   * The server reports bearing 0 for a stationary fix, because a parked lorry
+   * has no direction of travel. That is correct as data and wrong as a picture:
+   * a yard of trucks all snapping to due north the moment their engines stop is
+   * both false and the most conspicuous thing on the screen. A flat dot could
+   * hide it — the heading arrow is filtered on speed — but a solid model cannot,
+   * it has to point somewhere.
+   */
+  const lastHeading = useRef(new Map<string, number>());
 
   /*
    * Layer setup is a named function rather than inline in the load handler
@@ -146,6 +239,27 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       },
     });
 
+    /*
+     * The flat marker, and its hand-over to the 3D model.
+     *
+     * Both exist because neither works everywhere. At country zoom forty
+     * perspective lorries is a mess and a 7 px dot is exactly right; at street
+     * zoom the dot is a lie about a 16 m vehicle and the model is right. So the
+     * dot shrinks to nothing across the two zoom levels either side of
+     * TRUCK_3D_MIN_ZOOM, which is where the model starts drawing, and the two
+     * cross over rather than either popping.
+     *
+     * The halo and accuracy circles underneath are NOT faded. They sit on the
+     * ground plane, so under a pitched camera they read as a pool of light the
+     * truck is standing in — which is both the selection cue and the only thing
+     * that keeps a vehicle findable behind a building.
+     */
+    const dotFade = (near: number, far: number) => [
+      'interpolate', ['linear'], ['zoom'],
+      TRUCK_3D_MIN_ZOOM, near,
+      TRUCK_3D_MIN_ZOOM + 1.5, far,
+    ];
+
     instance.addLayer({
       id: 'truck-dot',
       type: 'circle',
@@ -157,8 +271,21 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         // The ring is the surface colour, not hard white: a white ring on the
         // dark basemap reads as a second, brighter dot.
         'circle-stroke-color': c.ring,
+        'circle-opacity': dotFade(1, 0) as unknown as number,
+        'circle-stroke-opacity': dotFade(1, 0) as unknown as number,
       },
     });
+
+    /*
+     * The vehicles themselves, above the flat layers and below the labels.
+     *
+     * Added last of the truck layers so the plate label, added after it, still
+     * draws on top — a 3D model that covers its own registration number is
+     * worse than no model.
+     */
+    if (truckLayer.current && !instance.getLayer(truckLayer.current.id)) {
+      instance.addLayer(truckLayer.current);
+    }
 
     /*
      * text-font IS MANDATORY HERE, and leaving it out is what hid every truck.
@@ -199,7 +326,13 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: { 'text-color': ['get', 'colour'] },
+      paint: {
+        'text-color': ['get', 'colour'],
+        // Fades out with the dot. Once the model is drawing, the vehicle's own
+        // orientation is the heading indicator, and a second arrow floating
+        // above the cab is a duplicate that reads as a separate object.
+        'text-opacity': dotFade(1, 0) as unknown as number,
+      },
     });
 
     instance.addLayer({
@@ -273,13 +406,28 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
        * achieve it, as the measurement showed.
        */
       attributionControl: false,
-      // The dashboard is a 2D operations view; disabling rotation removes an
-      // entire class of "the map is sideways and I can't fix it" support calls.
-      pitchWithRotate: false,
+      /*
+       * Rotation starts disabled and `setDimensional` turns it on with the 3D
+       * view. The original reasoning for disabling it — a dispatcher who
+       * rotates the map by accident and cannot find north again is a support
+       * call — is still true, so the compass below is the way back, and the
+       * flat view keeps the old behaviour exactly.
+       */
+      pitchWithRotate: true,
       dragRotate: false,
+      maxPitch: 0,
+      /*
+       * Multisampling, which MapLibre leaves off by default.
+       *
+       * Off, every edge on the extruded buildings and every edge on a truck is
+       * a hard staircase, and a truck is 26 px of mostly-diagonal edges. This
+       * is the single largest visual difference in the whole 3D view and it
+       * costs one framebuffer.
+       */
+      antialias: true,
     });
 
-    instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    instance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
     instance.addControl(new maplibregl.AttributionControl(), 'bottom-left');
 
@@ -302,6 +450,41 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     instance.on('load', () => {
       installLayers(instance);
       setReady(true);
+
+      /*
+       * Terrain heights arrive long after the trucks are placed.
+       *
+       * DEM tiles are the slowest thing on the page, so a vehicle positioned
+       * during the first paint sits at elevation zero — which for a lorry in
+       * the pass above Cizre is 1,300 m underground, and it renders as a truck
+       * buried in a mountain. Both events matter: `terrain` fires when the
+       * terrain is enabled or swapped, `idle` fires once the tiles for the
+       * current viewport have actually landed.
+       */
+      const relift = () => truckLayer.current?.refreshElevation();
+      instance.on('terrain', relift);
+      /*
+       * `sourcedata`, filtered, rather than `idle`.
+       *
+       * idle is the obvious choice and it is wrong twice over: it fires after
+       * every paint, including the paint that refreshing elevation causes, and
+       * it fires for tile loads that have nothing to do with the DEM. The
+       * filter below narrows it to "a terrain tile finished", which is the only
+       * event that can change a truck's height, and refreshElevation itself
+       * refuses to repaint when nothing moved.
+       */
+      instance.on('sourcedata', (e) => {
+        if (e.sourceId === 'kh-terrain' && e.isSourceLoaded) relift();
+      });
+
+      instance.on('zoom', () => {
+        setZoom(instance.getZoom());
+        // Terrain is bounded by zoom — see syncTerrain for the camera-inside-
+        // the-hill failure it exists to prevent.
+        syncTerrain(instance, dimensionalRef.current);
+      });
+
+      onMapReadyRef.current?.(instance);
 
       instance.on('click', 'truck-dot', (e) => {
         const id = e.features?.[0]?.properties?.sessionId;
@@ -371,6 +554,50 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     instance.on('styledata', onStyle);
   }, [resolved, ready, installLayers]);
 
+  // ---- The third dimension ---------------------------------------------------
+  /*
+   * Everything that makes the map dimensional, applied together.
+   *
+   * Keyed on `ready` as well as on the toggle, so it re-runs after a theme
+   * change: setStyle discards the sky and the extrusion layer along with
+   * everything else the application added, and a dark map with a daylight
+   * horizon is worse than no sky at all. Terrain survives setStyle — it lives
+   * on the map rather than the style — which is why it is guarded rather than
+   * reinstalled unconditionally.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready) return;
+
+    if (truckLayer.current) truckLayer.current.enabled = dimensional;
+
+    // The flat markers hold the map on their own when the model is off.
+    const fade = dimensional
+      ? (['interpolate', ['linear'], ['zoom'], TRUCK_3D_MIN_ZOOM, 1, TRUCK_3D_MIN_ZOOM + 1.5, 0] as unknown as number)
+      : (1 as unknown as number);
+    for (const [layer, property] of [
+      ['truck-dot', 'circle-opacity'],
+      ['truck-dot', 'circle-stroke-opacity'],
+      ['truck-heading', 'text-opacity'],
+    ] as const) {
+      if (instance.getLayer(layer)) instance.setPaintProperty(layer, property, fade);
+    }
+
+    if (dimensional) {
+      installSky(instance, resolved);
+      installBuildings(instance, resolved);
+      syncTerrain(instance, true);
+    } else {
+      removeBuildings(instance);
+      // Terrain is torn down and not merely hidden: a DEM source left attached
+      // keeps fetching tiles for a viewport nobody is looking at in 3D.
+      removeTerrain(instance);
+    }
+
+    setDimensional(instance, dimensional);
+    instance.triggerRepaint();
+  }, [dimensional, ready, resolved]);
+
   // ---- Data -----------------------------------------------------------------
   useEffect(() => {
     const instance = map.current;
@@ -388,6 +615,25 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
     const truckFeatures: GeoJSON.Feature[] = [];
     const destinationFeatures: GeoJSON.Feature[] = [];
+    const models: Truck[] = [];
+    /*
+     * One parse per state, not one per vehicle.
+     *
+     * mapColors() returns CSS strings read off the theme's custom properties,
+     * and the GPU layer needs numeric triples. With forty trucks updating every
+     * two seconds, parsing the same six colour strings forty times a tick is
+     * pure waste — and the strings only change when the theme does, which is
+     * already a dependency of this effect.
+     */
+    const rgbCache = new Map<string, [number, number, number]>();
+    const rgbFor = (css: string) => {
+      let parsed = rgbCache.get(css);
+      if (!parsed) {
+        parsed = parseColour(css);
+        rgbCache.set(css, parsed);
+      }
+      return parsed;
+    };
 
     for (const position of positions) {
       // A socket frame is newer than the last HTTP snapshot; prefer it.
@@ -419,18 +665,47 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         now,
       );
 
+      const colour = colourFor[state] ?? c.NO_SIGNAL;
+      const reportedBearing = live?.bearingDeg ?? position.bearingDeg ?? 0;
+      const speedMps = live?.speedMps ?? position.speedMps ?? 0;
+      const selected = position.sessionId === selectedId;
+
+      // 1 m/s is the same threshold the heading arrow is filtered on, so the
+      // arrow and the model can never disagree about which way a truck faces.
+      if (speedMps > 1) lastHeading.current.set(position.sessionId, reportedBearing);
+      const bearingDeg = speedMps > 1
+        ? reportedBearing
+        : lastHeading.current.get(position.sessionId) ?? reportedBearing;
+
       truckFeatures.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [lon, lat] },
         properties: {
           sessionId: position.sessionId,
           label: position.vehiclePlate ?? position.reference,
-          colour: colourFor[state] ?? c.NO_SIGNAL,
-          selected: position.sessionId === selectedId,
-          speedMps: live?.speedMps ?? position.speedMps ?? 0,
-          bearingDeg: live?.bearingDeg ?? position.bearingDeg ?? 0,
+          colour,
+          selected,
+          speedMps,
+          bearingDeg,
           accuracyM: live?.accuracyM ?? position.accuracyM ?? 20,
         },
+      });
+
+      models.push({
+        id: position.sessionId,
+        lng: lon,
+        lat,
+        /*
+         * A parked lorry keeps its last heading rather than snapping to north.
+         *
+         * The server sends bearing 0 for a stationary fix because there is no
+         * direction of travel to report, and a yard full of trucks all pointing
+         * due north is both wrong and conspicuous. Zero from a moving vehicle is
+         * genuinely north, which is why the speed is what decides.
+         */
+        bearingDeg,
+        colour: rgbFor(colour),
+        selected,
       });
 
       if (position.destinationLat !== null && position.destinationLon !== null) {
@@ -451,6 +726,23 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       features: destinationFeatures,
     });
 
+    truckLayer.current?.setTrucks(models);
+
+    /*
+     * Forget vehicles that have left the fleet.
+     *
+     * Without this, `lastHeading` accumulates one entry per session for as long
+     * as the dashboard is open — which is a shift, and on a busy week is
+     * thousands of finished shipments. Small, but it is a leak, and the map is
+     * the one component in this app that stays mounted for eight hours.
+     */
+    if (lastHeading.current.size > models.length * 2 + 32) {
+      const live = new Set(models.map((m) => m.id));
+      for (const id of lastHeading.current.keys()) {
+        if (!live.has(id)) lastHeading.current.delete(id);
+      }
+    }
+
     /*
      * Frame the fleet the first time there is one.
      *
@@ -466,9 +758,9 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
      */
     if (!hasFitted.current && truckFeatures.length > 0 && !selectedId) {
       hasFitted.current = true;
-      fitTo(instance, truckFeatures);
+      fitTo(instance, truckFeatures, dimensional ? DEFAULT_PITCH : 0);
     }
-  }, [ready, positions, liveUpdates, selectedId, now, resolved]);
+  }, [ready, positions, liveUpdates, selectedId, now, resolved, dimensional]);
 
   /** Re-frame every truck on demand. Wired to the button over the map. */
   const fitAll = useCallback(() => {
@@ -476,7 +768,8 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     const source = instance?.getSource('trucks') as maplibregl.GeoJSONSource | undefined;
     const data = (source as unknown as { _data?: GeoJSON.FeatureCollection })?._data;
     if (!instance || !data?.features?.length) return;
-    fitTo(instance, data.features);
+    // Re-framing must not flatten a dispatcher's tilted view either.
+    fitTo(instance, data.features, instance.getPitch());
   }, []);
 
   // ---- Follow the selection --------------------------------------------------
@@ -500,6 +793,59 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         ref={container}
         className={`h-full w-full transition-opacity duration-500 ${stale ? 'opacity-55' : ''}`}
       />
+
+      {/*
+        The dimension switch, directly under MapLibre's own controls.
+
+        Labelled with the mode it will switch TO, which is the convention the
+        rest of this dashboard uses and the one that does not require a
+        dispatcher to work out whether a highlighted "3D" means it is on or
+        that pressing it turns it on.
+      */}
+      <button
+        type="button"
+        onClick={() => {
+          const next = !dimensional;
+          setDimensionalState(next);
+          window.localStorage.setItem(DIMENSIONAL_KEY, next ? '1' : '0');
+        }}
+        title={
+          dimensional
+            ? 'Düz haritaya geç'
+            : 'Üç boyutlu görünüme geç — araçlar, binalar ve arazi'
+        }
+        aria-pressed={dimensional}
+        className={`absolute right-2 top-[7.75rem] flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm shadow-sm ring-1 transition-colors ${
+          dimensional
+            ? 'bg-accent text-white ring-accent'
+            : 'bg-surface text-ink-2 ring-line hover:bg-surface-2 hover:text-ink'
+        }`}
+      >
+        <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
+          <path
+            d="M7 1.2 12.4 4v6L7 12.8 1.6 10V4L7 1.2Z"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+          />
+          <path d="M7 6.4 12.4 4M7 6.4 1.6 4M7 6.4v6.4" stroke="currentColor" strokeWidth="1.1" />
+        </svg>
+        3B
+      </button>
+
+      {/*
+        Why the trucks are still dots.
+
+        The single most likely support question about this feature, answered
+        before it is asked. Shown only in the band where a dispatcher has turned
+        3D on, can see it is on, and is looking at flat markers — which is every
+        zoom below the threshold, and is correct behaviour rather than a fault.
+      */}
+      {dimensional && zoom < TRUCK_3D_MIN_ZOOM && (
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-surface/90 px-2.5 py-1 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
+          Araç modelleri için yakınlaştırın
+        </div>
+      )}
 
       {/* Below the zoom controls, which MapLibre puts at top-right. */}
       <button
@@ -533,7 +879,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
  * collapses the bounding box to a point and fitBounds happily zooms to 22 —
  * street furniture filling the screen with no context at all.
  */
-function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[]) {
+function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[], pitch?: number) {
   const points = features
     .map((f) => (f.geometry?.type === 'Point' ? (f.geometry.coordinates as [number, number]) : null))
     .filter((c): c is [number, number] => Array.isArray(c));
@@ -548,6 +894,17 @@ function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[]) {
     padding: { top: 60, right: 80, bottom: 70, left: 60 },
     maxZoom: 13,
     duration: 700,
+    /*
+     * Pitch is passed explicitly, and that is a bug fix rather than a detail.
+     *
+     * Both this and the 3D effect issue a camera animation on the render where
+     * the map becomes ready, and the second one wins. fitBounds does not carry
+     * pitch, so it inherited whatever the tilt happened to be a few
+     * milliseconds into the other animation — which is nearly zero — and the
+     * map settled flat with the 3D button lit. Seen exactly that, in a
+     * screenshot, before this argument existed.
+     */
+    pitch,
   });
 }
 
