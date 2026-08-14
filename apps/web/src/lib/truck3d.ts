@@ -394,6 +394,30 @@ export class TruckLayer implements CustomLayerInterface {
    * what the precision argument in note 1 depends on.
    */
   render(gl: WebGLRenderingContext | WebGL2RenderingContext, matrix: ArrayLike<number>) {
+    /*
+     * Nothing this layer does may be allowed to stop the map.
+     *
+     * MapLibre calls custom layers from inside its requestAnimationFrame
+     * chain, and it does not wrap them. An exception thrown here does not
+     * produce a broken truck — it unwinds through Map._render, the next frame
+     * is never scheduled, and the canvas freezes for good while the rest of
+     * the page keeps working. A dispatcher hits that and reports "the map
+     * stopped after a few movements", which is a description of a dead render
+     * loop and tells you nothing about where it died.
+     *
+     * So the layer is allowed to fail, once, and then switch itself off. A
+     * fleet map with flat markers is a working fleet map; a frozen one is not.
+     */
+    try {
+      this.draw(gl, matrix);
+    } catch (err) {
+      this.enabled = false;
+      // eslint-disable-next-line no-console
+      console.error('[karahoca] 3D vehicle layer disabled after a render error', err);
+    }
+  }
+
+  private draw(gl: WebGLRenderingContext | WebGL2RenderingContext, matrix: ArrayLike<number>) {
     const bits = this.bits;
     const map = this.map;
     if (!bits || !map || !this.enabled || this.instanceCount === 0) return;

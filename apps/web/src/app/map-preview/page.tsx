@@ -176,6 +176,7 @@ export default function MapPreviewPage() {
         <span className="text-ink-2">
           {closeUp ? 'Gaziantep merkez · yakın plan' : 'Gaziantep → Habur'} · sentetik veri, veritabanı yok
         </span>
+        <span className="hidden" id="kh-render-count" data-testid="renders">0</span>
         {camera && (
           <span className="font-mono text-2xs text-ink-2" data-testid="camera">
             pitch {camera.pitch}° / max {camera.maxPitch}° · bearing {camera.bearing}° ·
@@ -217,6 +218,23 @@ export default function MapPreviewPage() {
             for (const event of ['move', 'pitch', 'rotate', 'zoom', 'terrain', 'idle'] as const) {
               instance.on(event, publish);
             }
+
+            /*
+             * How many frames the MAP has drawn.
+             *
+             * Not the page's requestAnimationFrame count, which is what the
+             * first attempt at a freeze test measured and why it found nothing:
+             * the browser keeps servicing rAF at sixty a second whether or not
+             * MapLibre is still painting, so a completely dead canvas looks
+             * perfectly healthy from outside. MapLibre's own `render` event is
+             * the only honest signal that the map is still alive.
+             */
+            let frames = 0;
+            instance.on('render', () => {
+              frames++;
+              const el = document.getElementById('kh-render-count');
+              if (el) el.textContent = String(frames);
+            });
 
             /*
              * ?zoom= &pitch= &bearing= &lng= &lat= — the camera, on demand.

@@ -170,8 +170,14 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
    */
   useEffect(() => setDimensionalState(readDimensionalPreference()), []);
 
-  /** Live zoom, so the toolbar can say why the trucks are still flat. */
-  const [zoom, setZoom] = useState(6.5);
+  /**
+   * Whether the camera is below the zoom at which vehicle models draw.
+   *
+   * A boolean rather than the zoom itself, deliberately. The only consumer is
+   * the hint over the map, and holding the number here meant a React render on
+   * every frame of every zoom — see the note on the zoom handler below.
+   */
+  const [belowModelZoom, setBelowModelZoom] = useState(true);
 
   /**
    * Last heading each vehicle was seen moving on.
@@ -473,15 +479,58 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
        * event that can change a truck's height, and refreshElevation itself
        * refuses to repaint when nothing moved.
        */
+      /*
+       * Throttled, because a pan over the mountains loads DEM tiles in a
+       * stream and each one fires this. refreshElevation re-queries the
+       * terrain height of every vehicle and allocates a copy of the instance
+       * buffer to compare against, so at one call per tile it is real work in
+       * the middle of the one interaction that has to stay smooth. Heights
+       * settle within a second of the movement stopping; nothing needs them
+       * sooner than that.
+       */
+      let liftPending = 0;
       instance.on('sourcedata', (e) => {
-        if (e.sourceId === 'kh-terrain' && e.isSourceLoaded) relift();
+        if (e.sourceId !== 'kh-terrain' || !e.isSourceLoaded) return;
+        if (liftPending) return;
+        liftPending = window.setTimeout(() => {
+          liftPending = 0;
+          if (map.current === instance) relift();
+        }, 400);
       });
 
+      /*
+       * Zoom reactions, and why neither of them runs on the `zoom` event.
+       *
+       * MapLibre emits `zoom` from inside its render pass, once per frame for
+       * the whole of a zoom animation. Two things were hung off it and both
+       * were wrong:
+       *
+       *   syncTerrain calls addSource and setTerrain. Doing that re-entrantly,
+       *   while the map is part-way through drawing the frame that emitted the
+       *   event, is how a render loop dies: the exception leaves MapLibre's
+       *   requestAnimationFrame chain broken, and from then on the canvas is
+       *   frozen while the rest of the page carries on working normally. Which
+       *   is exactly what a dispatcher reported — the map stopped after two or
+       *   three movements, the sidebar kept responding.
+       *
+       *   setZoom() is a React state update, so it re-rendered this component
+       *   sixty times a second for the length of every zoom.
+       *
+       * So: terrain waits for the movement to finish, and is deferred out of
+       * the event with a timeout so it can never run inside a render. And the
+       * zoom the UI needs is a threshold, not a number, so it changes twice a
+       * session instead of once a frame.
+       */
       instance.on('zoom', () => {
-        setZoom(instance.getZoom());
-        // Terrain is bounded by zoom — see syncTerrain for the camera-inside-
-        // the-hill failure it exists to prevent.
-        syncTerrain(instance, dimensionalRef.current);
+        const below = instance.getZoom() < TRUCK_3D_MIN_ZOOM;
+        setBelowModelZoom((current) => (current === below ? current : below));
+      });
+
+      instance.on('moveend', () => {
+        window.setTimeout(() => {
+          if (map.current !== instance) return;
+          syncTerrain(instance, dimensionalRef.current);
+        }, 0);
       });
 
       onMapReadyRef.current?.(instance);
@@ -841,7 +890,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         3D on, can see it is on, and is looking at flat markers — which is every
         zoom below the threshold, and is correct behaviour rather than a fault.
       */}
-      {dimensional && zoom < TRUCK_3D_MIN_ZOOM && (
+      {dimensional && belowModelZoom && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-surface/90 px-2.5 py-1 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
           Araç modelleri için yakınlaştırın
         </div>
