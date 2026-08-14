@@ -569,12 +569,25 @@ class TrackingRepository @Inject constructor(
     // =========================================================================
 
     suspend fun claimSession(code: String): Result<String> = runCatching {
-        val response = api.claim(
-            ClaimRequest(code = code, device = deviceInfo.toDto(store.deviceId())),
-        )
+        val response = try {
+            api.claim(ClaimRequest(code = code, device = deviceInfo.toDto(store.deviceId())))
+        } catch (io: java.io.IOException) {
+            /*
+             * No answer at all: no signal in the yard, DNS down, or the API
+             * being replaced mid-deploy. Retrofit surfaces this as an
+             * IOException whose message is a hostname and a stack of causes,
+             * and the view model puts `err.message` straight on screen — so
+             * without this the driver reads something like
+             * "Failed to connect to track.karahoca.com/1.2.3.4:443".
+             *
+             * Caught separately from the HTTP branch below because the two need
+             * opposite advice: this one says wait, that one may say the code is
+             * wrong.
+             */
+            error("İnternet bağlantısı yok gibi görünüyor. Şebekeyi kontrol edip tekrar deneyin.")
+        }
         if (!response.isSuccessful) {
-            error(decodeErrorMessage(runCatching { response.errorBody()?.string() }.getOrNull())
-                ?: "Session code was rejected")
+            error(claimFailureMessage(response.code(), response.errorBody()?.string()))
         }
         val body = response.body() ?: error("Empty response from server")
 
@@ -702,6 +715,48 @@ class TrackingRepository @Inject constructor(
         runCatching {
             json.decodeFromString<com.karahoca.tracker.data.remote.ApiErrorBody>(it).error?.code
         }.getOrNull()
+    }
+
+    /**
+     * What to tell a driver when a claim does not go through.
+     *
+     * The old version said "Session code was rejected" for every non-2xx, and
+     * that turned out to be actively harmful. On 14 August a deploy replaced
+     * the API container in the ninety seconds between a dispatcher issuing code
+     * DXP1-KFBQ and the driver typing it. The proxy answered 502 with an HTML
+     * page, the JSON decode returned null, and the phone told the driver his
+     * code was rejected — a code that was, and stayed, perfectly valid. The
+     * yard's next move is a phone call and a regenerated code, which
+     * invalidates the good one and makes the problem real.
+     *
+     * So the status code decides first, and only a 4xx is ever allowed to
+     * blame the code. Turkish, because the driver reads it.
+     */
+    private fun claimFailureMessage(status: Int, rawBody: String?): String {
+        val fromServer = decodeErrorMessage(rawBody)?.takeIf { it.isNotBlank() }
+        return when {
+            // The server said something specific and it is about the request.
+            // 429 included: "too many attempts" is its own message.
+            //
+            // `takeIf` above rather than `!isNullOrBlank()` in the guard: the
+            // smart cast that would make the latter compile comes from a
+            // stdlib contract, and this file cannot be compiled on the machine
+            // it was edited on — no JDK — so it leans on nothing clever.
+            status in 400..499 && fromServer != null -> fromServer
+
+            status == 429 -> "Çok fazla deneme yapıldı. Bir dakika bekleyip tekrar deneyin."
+
+            // 502/503/504 from the proxy while the API restarts, and 500 from
+            // the API itself. None of these say anything about the code.
+            status >= 500 ->
+                "Sunucuya şu an ulaşılamıyor. Kod geçerli — bir dakika sonra tekrar deneyin."
+
+            // A 4xx whose body could not be read. Rare, and still not evidence
+            // that the code is wrong.
+            status in 400..499 -> "İstek kabul edilmedi (HTTP $status). Tekrar deneyin."
+
+            else -> "Beklenmeyen sunucu yanıtı (HTTP $status). Tekrar deneyin."
+        }
     }
 
     private fun decodeErrorMessage(raw: String?): String? = raw?.let {
