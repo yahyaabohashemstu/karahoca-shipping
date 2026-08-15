@@ -181,6 +181,7 @@ export interface ShareStrings {
   driverPhone: string;
   carrier: string;
   items: string;
+  quantity: string;
   noFixYet: string;
 
   // Status headline and detail
@@ -253,6 +254,7 @@ const TR: ShareStrings = {
   driverPhone: 'Sürücü telefonu',
   carrier: 'Taşıyıcı firma',
   items: 'Ürünler',
+  quantity: 'Miktar',
   noFixYet: 'Henüz konum alınmadı',
 
   statusPreparing: 'Hazırlanıyor',
@@ -344,6 +346,7 @@ const AR: ShareStrings = {
   driverPhone: 'هاتف السائق',
   carrier: 'شركة النقل',
   items: 'الأصناف',
+  quantity: 'الكمية',
   noFixYet: 'لم يُستلم موقع بعد',
 
   statusPreparing: 'قيد التجهيز',

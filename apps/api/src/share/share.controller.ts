@@ -363,11 +363,11 @@ function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
     );
   }
   if (load.length) {
-    facts.push({ label: 'Miktar', value: esc(load.join(' · ')), group: 'cargo' });
+    facts.push({ label: t.quantity, value: esc(load.join(' · ')), group: 'cargo' });
   }
 
   if (view.carrierName) {
-    facts.push({ label: 'Nakliyeci', value: esc(view.carrierName), group: 'carrier' });
+    facts.push({ label: t.carrier, value: esc(view.carrierName), group: 'carrier' });
   }
 
   facts.push({
