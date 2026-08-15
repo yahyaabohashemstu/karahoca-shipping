@@ -37,6 +37,15 @@ export interface ConsigneeView {
   orderNumber: string;
   orderStatus: string;
   customerName: string;
+  /**
+   * ISO 3166-1 alpha-2 of the consignee.
+   *
+   * Chooses the page's language. It is the strongest signal available because
+   * it describes the recipient rather than the device: these links are pasted
+   * into WhatsApp and forwarded, so the browser that opens one is often not the
+   * browser the consignee configured.
+   */
+  customerCountryCode: string | null;
   destinationLabel: string | null;
   destinationLat: number | null;
   destinationLon: number | null;
@@ -299,6 +308,7 @@ export class ShareService {
       order_number: string;
       order_status: string;
       customer_name: string;
+  customer_country_code: string | null;
       destination_label: string | null;
       destination_lat: number | null;
       destination_lon: number | null;
@@ -336,6 +346,7 @@ export class ShareService {
               f.order_number::text AS order_number,
               f.order_status::text AS order_status,
               f.customer_name,
+              cu.country_code::text AS customer_country_code,
               f.destination_label,
               f.destination_lat,
               f.destination_lon,
@@ -374,6 +385,10 @@ export class ShareService {
        FROM kh.share_links l
        JOIN kh.v_live_fleet f ON f.session_id = l.session_id
        JOIN kh.orders       o ON o.id = f.order_id
+       -- For the page's language. Joined here rather than added to
+       -- kh.v_live_fleet, which is on the dispatcher's hot path and has no use
+       -- for a country code.
+       JOIN kh.customers    cu ON cu.id = o.customer_id
        WHERE l.token_hash = $1`,
       [sha256(rawToken)],
     );
@@ -397,6 +412,7 @@ export class ShareService {
         orderNumber: row.order_number,
         orderStatus: row.order_status,
         customerName: row.customer_name,
+        customerCountryCode: row.customer_country_code,
         destinationLabel: row.destination_label,
         destinationLat: row.destination_lat,
         destinationLon: row.destination_lon,

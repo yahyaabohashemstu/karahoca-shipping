@@ -7,11 +7,24 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
+  Req,
   Res,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { CurrentUser, Public, Roles } from '../auth/decorators';
 import { RateLimit } from '../common/rate-limit.guard';
+import type { FastifyRequest } from 'fastify';
+import {
+  formatDateTime,
+  isRtl,
+  LOCALE_NAME,
+  otherLocale,
+  resolveLocale,
+  strings,
+  type ShareLocale,
+  type ShareStrings,
+} from './share.i18n';
 import { ShareService, type ConsigneeView, type ShareResolution } from './share.service';
 import { CreateShareLinkDto } from './dto';
 
@@ -89,11 +102,34 @@ export class PublicShareController {
   @Public()
   @RateLimit({ bucket: 'share', perIp: 60, windowSec: 60 })
   @Get('s/:token')
-  async page(@Param('token') token: string, @Res() reply: FastifyReply): Promise<void> {
+  async page(
+    @Param('token') token: string,
+    @Query('lang') lang: string | undefined,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
     let rendered: { status: number; html: string };
+    /*
+     * Chosen before the lookup, so an expired or unknown link is still refused
+     * in a language the reader can read. Getting that wrong would mean the one
+     * page a consignee sees when something is wrong is the one page they
+     * cannot understand.
+     *
+     * The country of the consignee is the strongest signal and it only exists
+     * once the token resolves, so the notice pages fall back to the header and
+     * the query while the shipment page gets the better answer below.
+     */
+    const headerLocale = resolveLocale({
+      query: lang,
+      acceptLanguage: request.headers['accept-language'] ?? null,
+    });
 
     try {
-      rendered = render(await this.share.resolve(token));
+      rendered = render(await this.share.resolve(token), {
+        query: lang,
+        acceptLanguage: request.headers['accept-language'] ?? null,
+        fallback: headerLocale,
+      });
     } catch (err) {
       /*
        * Anything unexpected — the pool exhausted, a statement timeout on a long
@@ -107,8 +143,9 @@ export class PublicShareController {
       rendered = {
         status: 503,
         html: noticePage(
-          'Sayfa şu anda açılamıyor',
-          'Geçici bir sorun nedeniyle sevkiyat bilgileri getirilemedi. Lütfen birkaç dakika sonra tekrar deneyin.',
+          strings(headerLocale).noticeErrorTitle,
+          strings(headerLocale).noticeErrorBody,
+          headerLocale,
         ),
       };
     }
@@ -144,10 +181,22 @@ export class PublicShareController {
 // Rendering
 // =============================================================================
 
-function render(resolved: ShareResolution): { status: number; html: string } {
+function render(
+  resolved: ShareResolution,
+  locale: { query?: string | null; acceptLanguage?: string | null; fallback: ShareLocale },
+): { status: number; html: string } {
   switch (resolved.kind) {
-    case 'ok':
-      return { status: 200, html: shipmentPage(resolved.view) };
+    case 'ok': {
+      // Now that the consignee is known, their own country outranks the header:
+      // these links are forwarded, and the reader is not always the browser
+      // that was configured.
+      const chosen = resolveLocale({
+        query: locale.query,
+        countryCode: resolved.view.customerCountryCode,
+        acceptLanguage: locale.acceptLanguage,
+      });
+      return { status: 200, html: shipmentPage(resolved.view, chosen) };
+    }
     /*
      * 410 for expired, 404 for everything else — and "everything else" is
      * unknown and revoked together, in one branch, worded identically. A
@@ -161,23 +210,21 @@ function render(resolved: ShareResolution): { status: number; html: string } {
      * difference between a page that helps and a page that generates the phone
      * call this whole feature exists to prevent.
      */
-    case 'expired':
+    case 'expired': {
+      const t = strings(locale.fallback);
       return {
         status: 410,
-        html: noticePage(
-          'Bağlantının süresi doldu',
-          'Bu takip bağlantısı artık geçerli değil. Sevkiyat sorumlunuzdan yeni bir bağlantı isteyebilirsiniz.',
-        ),
+        html: noticePage(t.noticeExpiredTitle, t.noticeExpiredBody, locale.fallback),
       };
+    }
     case 'unknown':
-    default:
+    default: {
+      const t = strings(locale.fallback);
       return {
         status: 404,
-        html: noticePage(
-          'Bağlantı geçerli değil',
-          'Bu takip bağlantısı açılamıyor. Bağlantıyı eksiksiz kopyaladığınızdan emin olun; sorun sürerse sevkiyat sorumlunuzla iletişime geçin.',
-        ),
+        html: noticePage(t.noticeInvalidTitle, t.noticeUnknownBody, locale.fallback),
       };
+    }
   }
 }
 
@@ -212,14 +259,6 @@ const MAPLIBRE_VERSION = '4.7.1';
  * for all of them — and correct beats formatting against the phone's own clock,
  * which is the same reason every driver response carries `serverTime`.
  */
-const TR_DATETIME = new Intl.DateTimeFormat('tr-TR', {
-  timeZone: 'Europe/Istanbul',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
 
 type StatusTone = 'live' | 'wait' | 'done' | 'stop';
 
@@ -240,15 +279,17 @@ interface Fact {
  * two thirds of the page rather than reading eleven identical rows to find
  * one.
  */
-const GROUP_LABELS: Array<[FactGroup, string]> = [
-  ['now', 'Durum'],
-  ['shipment', 'Sevkiyat'],
-  ['cargo', 'Yük'],
-  ['carrier', 'Taşıma'],
-];
+function groupLabels(t: ShareStrings): Array<[FactGroup, string]> {
+  return [
+    ['now', t.groupNow],
+    ['shipment', t.groupShipment],
+    ['cargo', t.groupCargo],
+    ['carrier', t.groupCarrier],
+  ];
+}
 
-function renderGroups(facts: Fact[]): string {
-  return GROUP_LABELS.map(([key, heading]) => {
+function renderGroups(facts: Fact[], t: ShareStrings): string {
+  return groupLabels(t).map(([key, heading]) => {
     const rows = facts.filter((f) => f.group === key);
     if (!rows.length) return '';
     return `<section class="group">
@@ -262,17 +303,18 @@ function renderGroups(facts: Fact[]): string {
   }).join('\n    ');
 }
 
-function shipmentPage(view: ConsigneeView): string {
-  const state = describeStatus(view);
+function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
+  const t = strings(locale);
+  const state = describeStatus(view, t);
   const hasPosition = view.lat !== null && view.lon !== null;
 
   const facts: Fact[] = [
-    { label: 'Sipariş No', value: esc(view.orderNumber), group: 'shipment' },
-    { label: 'Alıcı', value: esc(view.customerName), group: 'shipment' },
+    { label: t.orderNumber, value: esc(view.orderNumber), group: 'shipment' },
+    { label: t.consignee, value: esc(view.customerName), group: 'shipment' },
   ];
 
   if (view.destinationLabel) {
-    facts.push({ label: 'Varış', value: esc(view.destinationLabel), group: 'shipment' });
+    facts.push({ label: t.destination, value: esc(view.destinationLabel), group: 'shipment' });
   }
 
   const remaining = formatKm(view.remainingKm);
@@ -281,14 +323,14 @@ function shipmentPage(view: ConsigneeView): string {
     // straight-line distance, not a road distance. A consignee planning a
     // forklift crew around a number that is 20% short would rightly be annoyed.
     facts.push({
-      label: 'Kalan mesafe',
+      label: t.remaining,
       group: 'now',
-      value: `${esc(remaining)} <span class="sub">kuş uçuşu</span>`,
+      value: `${esc(remaining)} <span class="sub">${esc(t.asTheCrowFlies)}</span>`,
     });
   }
 
   if (view.plannedDeliveryAt) {
-    facts.push({ label: 'Planlanan teslimat', value: esc(TR_DATETIME.format(view.plannedDeliveryAt)), group: 'now' });
+    facts.push({ label: t.plannedDelivery, value: esc(formatDateTime(locale, view.plannedDeliveryAt)), group: 'now' });
   }
 
   /*
@@ -303,10 +345,10 @@ function shipmentPage(view: ConsigneeView): string {
    * forklift is needed, how many hands, how long the bay is blocked.
    */
   if (view.cargoSummary) {
-    facts.push({ label: 'Yük', value: esc(view.cargoSummary), group: 'cargo' });
+    facts.push({ label: t.groupCargo, value: esc(view.cargoSummary), group: 'cargo' });
   }
   if (view.itemList) {
-    facts.push({ label: 'Ürünler', value: esc(view.itemList), group: 'cargo' });
+    facts.push({ label: t.items, value: esc(view.itemList), group: 'cargo' });
   }
 
   const load: string[] = [];
@@ -329,29 +371,29 @@ function shipmentPage(view: ConsigneeView): string {
   }
 
   facts.push({
-    label: 'Son konum güncellemesi',
+    label: t.lastFix,
     group: 'now',
     value: view.recordedAt
       ? `<span id="ago" data-at="${view.recordedAt.getTime()}">—</span>` +
-        `<span class="sub">${esc(TR_DATETIME.format(view.recordedAt))}</span>`
-      : 'Henüz konum alınmadı',
+        `<span class="sub">${esc(formatDateTime(locale, view.recordedAt))}</span>`
+      : t.noFixYet,
   });
 
   // Only reachable when the link was minted with show_driver; the service does
   // not even select these columns otherwise.
   if (view.driverName) {
-    facts.push({ label: 'Sürücü', value: esc(view.driverName), group: 'carrier' });
+    facts.push({ label: t.driver, value: esc(view.driverName), group: 'carrier' });
   }
   if (view.driverPhone) {
     const dialable = view.driverPhone.replace(/[^\d+]/g, '');
     facts.push({
-      label: 'Sürücü telefonu',
+      label: t.driverPhone,
       group: 'carrier',
       value: `<a href="tel:${esc(dialable)}">${esc(view.driverPhone)}</a>`,
     });
   }
   if (view.vehiclePlate) {
-    facts.push({ label: 'Plaka', value: esc(view.vehiclePlate), group: 'carrier' });
+    facts.push({ label: t.plate, value: esc(view.vehiclePlate), group: 'carrier' });
   }
 
   const mapData = {
@@ -365,10 +407,10 @@ function shipmentPage(view: ConsigneeView): string {
   };
 
   return page(
-    `Sevkiyat Takibi — ${esc(view.orderNumber)}`,
+    t.pageTitle(esc(view.orderNumber)),
     `
     <header class="head">
-      <div class="logo">KARAHOCA</div>
+      <div class="logo">${esc(t.brand)}</div>
       <button class="refresh" type="button" onclick="location.reload()">Yenile</button>
     </header>
 
@@ -380,33 +422,38 @@ function shipmentPage(view: ConsigneeView): string {
 
     ${
       hasPosition
-        ? `<div class="map" id="map"><span class="map__note">Harita yükleniyor…</span></div>`
-        : `<div class="map map--empty"><span class="map__note">Araç henüz konum bildirmedi.</span></div>`
+        ? `<div class="map" id="map"><span class="map__note">${esc(t.mapLoading)}</span></div>`
+        : `<div class="map map--empty"><span class="map__note">${esc(t.mapNoPosition)}</span></div>`
     }
 
-    ${renderGroups(facts)}
+    ${renderGroups(facts, t)}
 
+    <p class="fine">${esc(t.footerPrivate)}</p>
+    <p class="fine">${esc(t.footerContact)}</p>
     <p class="fine">
-      Bu sayfa yalnızca bu sevkiyat için oluşturulmuş özel bir bağlantıdır ve süresi dolduğunda
-      kapanır. Lütfen bağlantıyı üçüncü kişilerle paylaşmayın.
+      <a class="lang" href="?lang=${otherLocale(locale)}" hreflang="${otherLocale(locale)}"
+         lang="${otherLocale(locale)}" dir="${isRtl(otherLocale(locale)) ? 'rtl' : 'ltr'}"
+         >${esc(LOCALE_NAME[otherLocale(locale)])}</a>
     </p>
-    <p class="fine">Sorularınız için sevkiyat sorumlunuzla iletişime geçin.</p>
   `,
-    hasPosition ? mapScripts(mapData) : agoScript(),
+    hasPosition ? mapScripts(mapData, t) : agoScript(t),
+    locale,
   );
 }
 
-function noticePage(title: string, message: string): string {
+function noticePage(title: string, message: string, locale: ShareLocale): string {
+  const t = strings(locale);
   return page(
-    `${esc(title)} — KaraHoca`,
+    `${esc(title)} — ${esc(t.brand)}`,
     `
-    <header class="head"><div class="logo">KARAHOCA</div></header>
+    <header class="head"><div class="logo">${esc(t.brand)}</div></header>
     <h1>${esc(title)}</h1>
     <div class="status status--stop">
       <p class="status__detail">${esc(message)}</p>
     </div>
   `,
     '',
+    locale,
   );
 }
 
@@ -417,9 +464,9 @@ function noticePage(title: string, message: string): string {
  * for having run its own values through esc() already. Escaping again here
  * would double-encode the markup the callers legitimately build.
  */
-function page(title: string, body: string, tail: string): string {
+function page(title: string, body: string, tail: string, locale: ShareLocale): string {
   return `<!doctype html>
-<html lang="tr">
+<html lang="${locale}" dir="${isRtl(locale) ? 'rtl' : 'ltr'}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -504,7 +551,7 @@ function page(title: string, body: string, tail: string): string {
   .status__detail { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; text-wrap: pretty; }
   .status__dot {
     display: inline-block; width: 11px; height: 11px; border-radius: 50%;
-    margin-right: 11px; vertical-align: middle; position: relative; top: -3px;
+    margin-inline-end: 11px; vertical-align: middle; position: relative; top: -3px;
   }
   .status--done .status__title { color: var(--done); }
   .status--done .status__dot   { background: var(--done); }
@@ -602,7 +649,7 @@ function page(title: string, body: string, tail: string): string {
   .group:last-of-type .fact:last-child { border-bottom: 0; }
   dt { color: var(--ink-2); font-size: 14px; flex: 0 0 auto; }
   dd {
-    margin: 0; text-align: right; font-weight: 600; min-width: 0;
+    margin: 0; text-align: end; font-weight: 600; min-width: 0;
     /* Plates, distances, dates and quantities are all columns of digits;
      * proportional figures make them jitter from row to row. */
     font-variant-numeric: tabular-nums;
@@ -646,7 +693,7 @@ ${tail}
  * because the device's own clock cannot be trusted to compute the difference
  * correctly; clamping at zero keeps a fast phone from reading "-3 dakika önce".
  */
-function agoScript(): string {
+function agoScript(t: ShareStrings): string {
   return `<script>
 (function () {
   var el = document.getElementById('ago');
@@ -655,10 +702,10 @@ function agoScript(): string {
   function tick() {
     var s = Math.max(0, Math.round((Date.now() - at) / 1000));
     el.textContent =
-      s < 60    ? 'az önce' :
-      s < 3600  ? Math.floor(s / 60) + ' dakika önce' :
-      s < 86400 ? Math.floor(s / 3600) + ' saat önce' :
-                  Math.floor(s / 86400) + ' gün önce';
+      s < 60    ? ${JSON.stringify(t.agoJustNow)} :
+      s < 3600  ? Math.floor(s / 60) + ' ' + ${JSON.stringify(t.agoMinutes)} :
+      s < 86400 ? Math.floor(s / 3600) + ' ' + ${JSON.stringify(t.agoHours)} :
+                  Math.floor(s / 86400) + ' ' + ${JSON.stringify(t.agoDays)};
   }
   tick();
   setInterval(tick, 30000);
@@ -666,7 +713,10 @@ function agoScript(): string {
 </script>`;
 }
 
-function mapScripts(data: { lat: number | null; lon: number | null; dest: number[] | null; route: unknown }): string {
+function mapScripts(
+  data: { lat: number | null; lon: number | null; dest: number[] | null; route: unknown },
+  t: ShareStrings,
+): string {
   const base = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl`;
 
   /*
@@ -685,7 +735,7 @@ function mapScripts(data: { lat: number | null; lon: number | null; dest: number
    * first paint of text that does not depend on it.
    */
   return `<link rel="stylesheet" href="${base}.css">
-${agoScript()}
+${agoScript(t)}
 <script src="${base}.js"></script>
 <script>
 (function () {
@@ -697,7 +747,7 @@ ${agoScript()}
     // Everything above still tells the customer where their load is, so say so
     // rather than leaving "Harita yükleniyor…" spinning forever.
     var note = el.querySelector('.map__note');
-    if (note) note.textContent = 'Harita yüklenemedi. Yukarıdaki bilgiler günceldir.';
+    if (note) note.textContent = ${JSON.stringify(t.mapFailed)};
     return;
   }
 
@@ -808,7 +858,7 @@ ${agoScript()}
 // Copy
 // -----------------------------------------------------------------------------
 
-function describeStatus(view: ConsigneeView): { title: string; detail: string; tone: StatusTone } {
+function describeStatus(view: ConsigneeView, t: ShareStrings): { title: string; detail: string; tone: StatusTone } {
   /*
    * The order's status outranks the session's.
    *
@@ -818,12 +868,12 @@ function describeStatus(view: ConsigneeView): { title: string; detail: string; t
    * it — and why this page must not either.
    */
   if (view.orderStatus === 'DELIVERED') {
-    return { title: 'Teslim edildi', detail: 'Sevkiyat teslim edildi.', tone: 'done' };
+    return { title: t.statusDeliveredTitle, detail: t.statusDeliveredDetail, tone: 'done' };
   }
   if (view.orderStatus === 'CANCELLED' || view.status === 'CANCELLED') {
     return {
-      title: 'İptal edildi',
-      detail: 'Bu sevkiyat iptal edildi. Ayrıntı için sevkiyat sorumlunuzla görüşün.',
+      title: t.statusCancelledTitle,
+      detail: t.statusCancelledDetail,
       tone: 'stop',
     };
   }
@@ -832,53 +882,55 @@ function describeStatus(view: ConsigneeView): { title: string; detail: string; t
     case 'DRAFT':
     case 'ASSIGNED':
       return {
-        title: 'Hazırlanıyor',
-        detail: 'Sevkiyat planlandı, araç henüz yola çıkmadı.',
+        title: t.statusPreparing,
+        detail: t.statusPlannedNotStarted,
         tone: 'wait',
       };
     case 'CLAIMED':
       return {
-        title: 'Yola çıkıyor',
-        detail: 'Sürücü hazır, takip birazdan başlayacak.',
+        title: t.statusDepartingTitle,
+        detail: t.statusDriverReady,
         tone: 'wait',
       };
     case 'ACTIVE':
       return {
-        title: 'Yolda',
-        detail: signalDetail(view.signalState),
+        title: t.statusOnTheRoadTitle,
+        detail: signalDetail(view.signalState, t),
         // A truck whose last fix is hours old is not "live", however green the
         // session status is. Saying otherwise on a customer's page is how a
         // dispatcher ends up explaining a map that was lying.
         tone: view.signalState === 'LIVE' || view.signalState === 'DELAYED' ? 'live' : 'wait',
       };
     case 'PAUSED':
-      return { title: 'Molada', detail: 'Araç şu anda duruyor. Takip sürüyor.', tone: 'wait' };
+      return { title: t.statusOnBreakTitle, detail: t.statusStoppedDetail, tone: 'wait' };
     case 'COMPLETED':
       return {
-        title: 'Takip tamamlandı',
-        detail: 'Aracın takibi sona erdi. Teslimat onayı için sevkiyat sorumlunuzla görüşün.',
+        title: t.statusFinishedTitle,
+        detail: t.statusFinishedDetail,
         tone: 'done',
       };
     case 'EXPIRED':
     default:
       return {
-        title: 'Takip sona erdi',
-        detail: 'Bu sevkiyatın takip süresi doldu. Güncel bilgi için bizimle iletişime geçin.',
+        title: t.noticeExpiredTitle,
+        detail: t.noticeExpiredBody,
         tone: 'done',
       };
   }
 }
 
-function signalDetail(signalState: string): string {
+function signalDetail(signalState: string, t: ShareStrings): string {
   switch (signalState) {
     case 'LIVE':
-      return 'Araç yolda, konum canlı olarak güncelleniyor.';
+      return t.signalLive;
     case 'DELAYED':
-      return 'Araç yolda. Konum birkaç dakikadır güncellenmedi.';
+      return t.signalDelayed;
     case 'STALE':
-      return 'Araç yolda. Konum bir süredir alınamıyor, araç kapsama alanı dışında olabilir.';
+      return t.signalStale;
+    case 'LOST':
+      return t.signalLost;
     default:
-      return 'Araç yolda. Konum şu anda alınamıyor, araç kapsama alanı dışında olabilir.';
+      return t.signalNone;
   }
 }
 
