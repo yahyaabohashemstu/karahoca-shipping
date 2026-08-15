@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser, Roles } from '../auth/decorators';
 import { CatalogService } from './catalog.service';
 import {
   CreateCustomerDto,
+  UpdateCustomerDto,
   CreateDriverDto,
   CreateOrderDto,
   CreateShippingCompanyDto,
@@ -98,5 +108,16 @@ export class CustomersController {
   @Post()
   create(@Body() dto: CreateCustomerDto) {
     return this.catalog.createCustomer(dto);
+  }
+
+  /**
+   * PATCH, not PUT: the picker sends a coordinate and a radius and nothing
+   * else, and a PUT would oblige it to round-trip every other field just to
+   * move a pin — which is how a contact phone gets silently blanked.
+   */
+  @Roles('ADMIN', 'DISPATCHER')
+  @Patch(':id')
+  update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateCustomerDto) {
+    return this.catalog.updateCustomer(id, dto);
   }
 }

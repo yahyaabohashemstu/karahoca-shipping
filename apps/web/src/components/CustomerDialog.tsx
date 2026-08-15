@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Customer } from '@/lib/api';
 import { Button } from './ui/Button';
@@ -35,7 +36,15 @@ export function CustomerDialog({
   const [countryCode, setCountryCode] = useState('TR');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [coords, setCoords] = useState('');
+  /*
+   * A picked place, not a typed coordinate.
+   *
+   * The text field this replaces was correct, warned honestly about what was
+   * lost by leaving it blank, and was left blank on three consignees out of
+   * three — because filling it in meant leaving the application to find a
+   * warehouse on somebody else's map.
+   */
+  const [location, setLocation] = useState<PickedLocation | null>(null);
 
   function reset() {
     setCode('');
@@ -44,12 +53,10 @@ export function CustomerDialog({
     setCountryCode('TR');
     setContactName('');
     setContactPhone('');
-    setCoords('');
+    setLocation(null);
     create.reset();
   }
 
-  const parsed = parseCoords(coords);
-  const coordError = coords.trim() && !parsed ? 'Biçim: enlem, boylam' : null;
 
   const create = useMutation({
     mutationFn: () =>
@@ -59,8 +66,10 @@ export function CustomerDialog({
         city: city.trim() || undefined,
         contactName: contactName.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
-        lat: parsed?.lat,
-        lon: parsed?.lon,
+        lat: location?.lat,
+        lon: location?.lon,
+        addressLine: location?.label ?? undefined,
+        defaultRadiusM: location?.radiusM,
         countryCode,
       }),
     onSuccess: (c) => {
@@ -72,7 +81,9 @@ export function CustomerDialog({
     onError: (e) => toast.error('Müşteri eklenemedi', (e as Error).message),
   });
 
-  const valid = code.trim().length >= 2 && name.trim().length >= 2 && !coordError;
+  // The picker cannot produce an invalid coordinate — there is no text to
+  // mistype — so validity is back to the two fields that are actually required.
+  const valid = code.trim().length >= 2 && name.trim().length >= 2;
 
   return (
     <Modal
@@ -135,15 +146,17 @@ export function CustomerDialog({
           </Select>
           <Input label="Şehir" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Manisa" />
         </div>
-        <Input
-          label="Koordinat"
-          value={coords}
-          onChange={(e) => setCoords(e.target.value)}
-          placeholder="38.6191, 27.4289"
-          error={coordError}
-          numeric
-          hint="Girilirse kalan mesafe ve varış tespiti çalışır."
-        />
+        <div>
+          <p className="mb-2 text-sm font-medium text-ink">Varsayılan teslim noktası</p>
+          <LocationPicker
+            value={location}
+            onChange={setLocation}
+            emptyHint={
+              'Bu müşterinin siparişleri bu noktayı otomatik devralır. ' +
+              'Boş bırakılırsa kalan mesafe hesaplanamaz ve varış otomatik tespit edilemez.'
+            }
+          />
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="Yetkili"
@@ -166,16 +179,4 @@ export function CustomerDialog({
       </div>
     </Modal>
   );
-}
-
-function parseCoords(input: string): { lat: number; lon: number } | null {
-  const s = input.trim();
-  if (!s) return null;
-  const m = s.match(/^(-?\d{1,3}(?:[.,]\d+)?)\s*[,;]\s*(-?\d{1,3}(?:[.,]\d+)?)$/);
-  if (!m) return null;
-  const lat = Number(m[1].replace(',', '.'));
-  const lon = Number(m[2].replace(',', '.'));
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-  return { lat, lon };
 }

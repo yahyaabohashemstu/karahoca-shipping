@@ -14,6 +14,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { RedisModule } from './redis/redis.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { ShareModule } from './share/share.module';
+import { GeocodeModule } from './geocode/geocode.module';
 import { TerrainModule } from './terrain/terrain.module';
 import { TrackingModule } from './tracking/tracking.module';
 
@@ -34,6 +35,9 @@ import { TrackingModule } from './tracking/tracking.module';
     AlertsModule,
     // Elevation tiles for the 3D map. Deliberately last and deliberately
     // dependency-free: it must keep serving when the database is busy.
+    // Place search for the destination picker. Same shape as TerrainModule:
+    // an outbound proxy with its own cache and no database dependency.
+    GeocodeModule,
     TerrainModule,
     JobsModule,
   ],

@@ -272,6 +272,15 @@ export interface Customer {
   contactPhone: string | null;
   lat: number | null;
   lon: number | null;
+  /**
+   * Arrival radius for this consignee's own gate, in metres.
+   *
+   * Null means the order-level default applies. Carried on the customer so the
+   * order form can inherit both halves of a destination — a point without a
+   * radius cannot answer "has it arrived".
+   */
+  defaultRadiusM: number | null;
+  addressLine: string | null;
   isActive: boolean;
 }
 
@@ -558,6 +567,15 @@ export const api = {
 
   createCustomer: (body: Record<string, unknown>) =>
     apiFetch<Customer>('/customers', { method: 'POST', body: JSON.stringify(body) }),
+
+  /**
+   * PATCH, so a picker that only moved a pin sends a pin.
+   *
+   * Every consignee in production predates the destination picker, so this is
+   * the only way any of them will ever acquire one.
+   */
+  updateCustomer: (id: string, body: Record<string, unknown>) =>
+    apiFetch<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   companies: () => apiFetch<ShippingCompany[]>('/shipping-companies'),
 

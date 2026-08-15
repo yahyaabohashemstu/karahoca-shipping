@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { DatabaseService } from '../database/database.service';
 import type {
   CreateCustomerDto,
+  UpdateCustomerDto,
   CreateDriverDto,
   CreateOrderDto,
   CreateShippingCompanyDto,
@@ -337,6 +338,12 @@ export class CatalogService {
               country_code::text AS "countryCode",
               contact_name AS "contactName", contact_phone AS "contactPhone",
               ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
+              -- The default delivery point and its radius travel with every
+              -- customer row, because the order form inherits them the moment a
+              -- consignee is chosen and a second round trip for two numbers
+              -- would show as a flicker in the destination card.
+              default_radius_m AS "defaultRadiusM",
+              address_line AS "addressLine",
               is_active AS "isActive"
        FROM kh.customers
        WHERE ($1::text IS NULL OR name ILIKE '%' || $1 || '%' OR code::text ILIKE '%' || $1 || '%')
@@ -349,13 +356,14 @@ export class CatalogService {
   createCustomer(dto: CreateCustomerDto) {
     return this.db.one(
       `INSERT INTO kh.customers (code, name, contact_name, contact_phone, contact_email,
-                                 address_line, city, region, country_code, location, notes)
+                                 address_line, city, region, country_code, location, notes,
+                                 default_radius_m)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9::text, 'TR'),
                CASE WHEN $10::double precision IS NULL OR $11::double precision IS NULL THEN NULL
                     ELSE ST_SetSRID(
                            ST_MakePoint($11::double precision, $10::double precision), 4326
                          )::geography END,
-               $12)
+               $12, $13)
        ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, is_active = true
        -- Shaped like a row from listCustomers, not a three-column stub. The
        -- dashboard drops the customer it just created straight into a form,
@@ -365,13 +373,81 @@ export class CatalogService {
                  country_code::text AS "countryCode",
                  contact_name AS "contactName", contact_phone AS "contactPhone",
                  ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
+                 default_radius_m AS "defaultRadiusM",
+                 address_line AS "addressLine",
                  is_active AS "isActive"`,
       [
         dto.code, dto.name, dto.contactName ?? null, dto.contactPhone ?? null,
         dto.contactEmail ?? null, dto.addressLine ?? null, dto.city ?? null,
         dto.region ?? null, dto.countryCode ?? null, dto.lat ?? null, dto.lon ?? null,
-        dto.notes ?? null,
+        dto.notes ?? null, dto.defaultRadiusM ?? null,
       ],
     );
+  }
+
+  /**
+   * Edit a consignee, touching only the fields that were sent.
+   *
+   * The location is three-valued and the SQL has to respect that: absent means
+   * leave it, a coordinate means set it, and an explicit null means remove it.
+   * COALESCE alone cannot express the third case — it would silently turn
+   * "delete this pin" into "keep the old one", which is the worst of the three
+   * outcomes because the map would keep showing a destination the dispatcher
+   * believes they removed.
+   *
+   * So `locationTouched` is passed separately and the CASE reads it.
+   */
+  async updateCustomer(id: string, dto: UpdateCustomerDto) {
+    const locationTouched = 'lat' in dto || 'lon' in dto;
+    const radiusTouched = 'defaultRadiusM' in dto;
+
+    const rows = await this.db.query(
+      `UPDATE kh.customers SET
+         name          = coalesce($2, name),
+         contact_name  = coalesce($3, contact_name),
+         contact_phone = coalesce($4, contact_phone),
+         contact_email = coalesce($5, contact_email),
+         address_line  = coalesce($6, address_line),
+         city          = coalesce($7, city),
+         region        = coalesce($8, region),
+         country_code  = coalesce($9, country_code),
+         notes         = coalesce($10, notes),
+         is_active     = coalesce($11, is_active),
+         location = CASE
+           WHEN NOT $12::boolean THEN location
+           WHEN $13::double precision IS NULL OR $14::double precision IS NULL THEN NULL
+           ELSE ST_SetSRID(
+                  ST_MakePoint($14::double precision, $13::double precision), 4326
+                )::geography
+         END,
+         default_radius_m = CASE
+           WHEN NOT $15::boolean THEN default_radius_m
+           ELSE $16::integer
+         END,
+         updated_at = now()
+       WHERE id = $1
+       RETURNING id, code::text AS code, name, city, region,
+                 country_code::text AS "countryCode",
+                 contact_name AS "contactName", contact_phone AS "contactPhone",
+                 ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
+                 default_radius_m AS "defaultRadiusM",
+                 address_line AS "addressLine",
+                 is_active AS "isActive"`,
+      [
+        id, dto.name ?? null, dto.contactName ?? null, dto.contactPhone ?? null,
+        dto.contactEmail ?? null, dto.addressLine ?? null, dto.city ?? null,
+        dto.region ?? null, dto.countryCode ?? null, dto.notes ?? null,
+        dto.isActive ?? null,
+        locationTouched, dto.lat ?? null, dto.lon ?? null,
+        radiusTouched, dto.defaultRadiusM ?? null,
+      ],
+    );
+
+    // `query`, not `one`: a missing id is a 404 with a code the dashboard can
+    // branch on, and `one` would surface it as an unhandled row-count error.
+    if (rows.length === 0) {
+      throw new NotFoundException({ code: 'CUSTOMER_NOT_FOUND', message: 'Customer not found' });
+    }
+    return rows[0];
   }
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
@@ -18,6 +18,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { CustomerDialog } from '@/components/CustomerDialog';
+import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 
 /**
  * Create an order.
@@ -38,8 +39,18 @@ export default function NewOrderPage() {
   const [customerId, setCustomerId] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
   const [destinationAddress, setDestinationAddress] = useState('');
-  const [coords, setCoords] = useState('');
-  const [radius, setRadius] = useState('300');
+  const [location, setLocation] = useState<PickedLocation | null>(null);
+  /*
+   * Whether the point on screen came from the consignee's card or from a hand.
+   *
+   * The distinction is what makes inheritance safe. Adopting the customer's
+   * point silently would overwrite a one-off delivery address the moment
+   * somebody corrected the consignee dropdown; never adopting it would leave
+   * the field empty, which is the state three shipments in four are in today.
+   * So it is adopted only while untouched, and the badge says where it came
+   * from.
+   */
+  const [inherited, setInherited] = useState(false);
   const [weight, setWeight] = useState('');
   const [pallets, setPallets] = useState('');
   const [cargoSummary, setCargoSummary] = useState('');
@@ -52,16 +63,45 @@ export default function NewOrderPage() {
     enabled: authed,
   });
 
-  const parsed = parseCoords(coords);
-  const coordError = coords.trim() && !parsed ? 'Biçim: enlem, boylam — örn. 38.6191, 27.4289' : null;
 
-  // Mirrors the API's @Min(25) @Max(20000) so a rejected value is explained
-  // here rather than coming back as a 400 after the form is submitted.
-  const radiusNum = Number(radius);
-  const radiusError =
-    parsed && (!Number.isFinite(radiusNum) || radiusNum < 25 || radiusNum > 20000)
-      ? 'Yarıçap 25–20000 metre arasında olmalı.'
-      : null;
+  /*
+   * Adopt the consignee's own delivery point.
+   *
+   * This is the whole reason the customer carries one. A consignee in Erbil
+   * receives at the same gate every time, so asking for the coordinate once per
+   * customer instead of once per shipment turns a five-step errand into a
+   * single setup step — and the errand was being skipped: 3 of 4 orders in
+   * production have no destination at all.
+   *
+   * Only while the field is untouched or already inherited, so a deliberate
+   * one-off address survives a correction to the consignee dropdown.
+   */
+  const selectedCustomer = customers.data?.find((c) => c.id === customerId);
+  useEffect(() => {
+    if (!selectedCustomer) return;
+    if (location !== null && !inherited) return;
+
+    if (selectedCustomer.lat === null || selectedCustomer.lon === null) {
+      // The consignee has no point. Clear an inherited one rather than leaving
+      // the previous customer's warehouse attached to this order.
+      if (inherited) {
+        setLocation(null);
+        setInherited(false);
+      }
+      return;
+    }
+
+    setLocation({
+      lat: selectedCustomer.lat,
+      lon: selectedCustomer.lon,
+      label: selectedCustomer.addressLine ?? selectedCustomer.name,
+      radiusM: selectedCustomer.defaultRadiusM ?? 300,
+    });
+    setInherited(true);
+    // Keyed on the customer, not on `location`: including the value would make
+    // every edit re-run this and snap the pin back to the consignee's gate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, selectedCustomer?.lat, selectedCustomer?.lon]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -70,9 +110,9 @@ export default function NewOrderPage() {
         customerId,
         destinationLabel: destinationLabel.trim() || undefined,
         destinationAddress: destinationAddress.trim() || undefined,
-        destinationLat: parsed?.lat,
-        destinationLon: parsed?.lon,
-        destinationRadiusM: parsed ? Number(radius) || 300 : undefined,
+        destinationLat: location?.lat,
+        destinationLon: location?.lon,
+        destinationRadiusM: location?.radiusM,
         totalWeightKg: weight ? Number(weight) : undefined,
         palletCount: pallets ? Number(pallets) : undefined,
         cargoSummary: cargoSummary.trim() || undefined,
@@ -88,7 +128,9 @@ export default function NewOrderPage() {
 
   if (!authed) return null;
 
-  const valid = orderNumber.trim().length > 0 && customerId && !coordError && !radiusError;
+  // The picker cannot produce a malformed coordinate or an out-of-range radius,
+  // so there is nothing left here to guard beyond the two required fields.
+  const valid = orderNumber.trim().length > 0 && Boolean(customerId);
 
   return (
     <AppShell>
@@ -190,23 +232,13 @@ export default function NewOrderPage() {
               subtitle="Koordinat girilirse kalan mesafe ve varış tespiti çalışır"
               className="mb-4"
             />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Varış adı"
-                value={destinationLabel}
-                onChange={(e) => setDestinationLabel(e.target.value)}
-                placeholder="Manisa Deposu"
-              />
-              <Input
-                label="Koordinat"
-                value={coords}
-                onChange={(e) => setCoords(e.target.value)}
-                placeholder="38.6191, 27.4289"
-                error={coordError}
-                numeric
-                hint="Google Haritalar'da noktaya sağ tıklayıp kopyalayabilirsiniz"
-              />
-            </div>
+            <Input
+              label="Varış adı"
+              value={destinationLabel}
+              onChange={(e) => setDestinationLabel(e.target.value)}
+              placeholder="Erbil Deposu"
+              hint="Sevk evrakında görünecek kısa ad."
+            />
 
             <Textarea
               className="mt-4"
@@ -216,31 +248,36 @@ export default function NewOrderPage() {
               rows={2}
             />
 
-            {parsed && (
-              <div className="mt-4 max-w-xs">
-                {/* A free field, not a slider. A city depot gate and a quarry
-                    weighbridge want radii two orders of magnitude apart, and a
-                    slider that stops at 2 km just says "no" to the quarry. */}
-                <Input
-                  label="Varış yarıçapı"
-                  type="text"
-                  inputMode="numeric"
-                  numeric
-                  value={radius}
-                  onChange={(e) => setRadius(e.target.value.replace(/[^\d]/g, ''))}
-                  error={radiusError}
-                  hint="Araç bu yarıçapa girdiğinde sistem varış olayı üretir. Metre."
-                />
+            <div className="mt-4">
+              <div className="mb-2 flex items-center gap-2">
+                <p className="text-sm font-medium text-ink">Teslim noktası</p>
+                {inherited && (
+                  /*
+                   * Says where the pin came from.
+                   *
+                   * Without it an inherited point looks like something the
+                   * dispatcher entered and forgot, and the honest reaction to a
+                   * coordinate you do not remember typing is to distrust it.
+                   */
+                  <span className="rounded bg-surface-2 px-1.5 py-0.5 text-2xs text-ink-2 ring-1 ring-line">
+                    müşteri kartından
+                  </span>
+                )}
               </div>
-            )}
+              <LocationPicker
+                value={location}
+                onChange={(next) => {
+                  setLocation(next);
+                  setInherited(false);
+                }}
+                emptyHint={
+                  selectedCustomer && selectedCustomer.lat === null
+                    ? 'Bu müşterinin kayıtlı teslim noktası yok. Buradan seçerseniz yalnızca bu sipariş için geçerli olur — her seferinde tekrarlamamak için müşteri kartına ekleyin.'
+                    : 'Nokta seçilmezse sevkiyat takip edilir, ancak kalan mesafe hesaplanamaz ve varış otomatik tespit edilemez.'
+                }
+              />
+            </div>
 
-            {!parsed && (
-              <p className="mt-3 rounded bg-warn-bg px-3 py-2 text-sm text-warn ring-1 ring-inset ring-delayed-ring/35">
-                Koordinat girilmezse sevkiyat takip edilir, ancak <strong>kalan mesafe
-                hesaplanamaz</strong> ve <strong>varış otomatik tespit edilemez</strong>. Sonradan
-                eklenebilir.
-              </p>
-            )}
           </Card>
 
           {create.isError && (
@@ -275,14 +312,3 @@ export default function NewOrderPage() {
  * space, comma or semicolon separated, and with a decimal comma from a Turkish
  * locale keyboard.
  */
-function parseCoords(input: string): { lat: number; lon: number } | null {
-  const s = input.trim();
-  if (!s) return null;
-  const m = s.match(/^(-?\d{1,3}(?:[.,]\d+)?)\s*[,;]\s*(-?\d{1,3}(?:[.,]\d+)?)$/);
-  if (!m) return null;
-  const lat = Number(m[1].replace(',', '.'));
-  const lon = Number(m[2].replace(',', '.'));
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-  return { lat, lon };
-}

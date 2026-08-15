@@ -3,8 +3,8 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
-  IsInt,
   IsISO8601,
+  IsInt,
   IsNumber,
   IsObject,
   IsOptional,
@@ -14,6 +14,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -144,6 +145,62 @@ export class CreateShippingCompanyDto {
 
   @IsOptional() @IsString() @MaxLength(2000)
   notes?: string;
+
+}
+
+/**
+ * Edit a consignee.
+ *
+ * Exists because of a gap that made the whole default-destination idea
+ * unreachable: customers could be created with a location and never given one
+ * afterwards. Every consignee in production predates the picker, so without an
+ * update path the feature would only ever apply to customers created from
+ * today onward — which is nobody who is currently shipping.
+ *
+ * Every field optional, and `null` distinguished from absent where clearing is
+ * a real intent: omitting `lat` leaves the point alone, sending null removes
+ * it. A dispatcher who learns the pin is wrong needs to be able to take it off
+ * rather than leave a confidently wrong arrival radius in place.
+ */
+export class UpdateCustomerDto {
+  @IsOptional() @IsString() @Length(2, 200)
+  name?: string;
+
+  @IsOptional() @IsString() @MaxLength(120)
+  contactName?: string;
+
+  @IsOptional() @IsString() @MaxLength(40)
+  contactPhone?: string;
+
+  @IsOptional() @IsEmail()
+  contactEmail?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  addressLine?: string;
+
+  @IsOptional() @IsString() @MaxLength(120)
+  city?: string;
+
+  @IsOptional() @IsString() @MaxLength(120)
+  region?: string;
+
+  @IsOptional() @IsString() @Length(2, 2)
+  countryCode?: string;
+
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsNumber() @Min(-90) @Max(90)
+  lat?: number | null;
+
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsNumber() @Min(-180) @Max(180)
+  lon?: number | null;
+
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsInt() @Min(50) @Max(50_000)
+  defaultRadiusM?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  notes?: string;
+
+  @IsOptional() @IsBoolean()
+  isActive?: boolean;
 }
 
 export class CreateVehicleDto {
@@ -210,4 +267,13 @@ export class CreateCustomerDto {
 
   @IsOptional() @IsString() @MaxLength(2000)
   notes?: string;
+
+  /**
+   * Arrival radius for this consignee's own gate, in metres.
+   *
+   * Bounded here as well as by the column's CHECK, because a 400 naming the
+   * field is a usable answer and a 500 from a constraint violation is not.
+   */
+  @IsOptional() @IsInt() @Min(50) @Max(50_000)
+  defaultRadiusM?: number;
 }
