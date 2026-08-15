@@ -26,6 +26,7 @@ import {
   saveQuality,
   type GovernorEvent,
 } from '@/lib/mapQuality';
+import { guardRenderQueue } from '@/lib/renderGuard';
 
 /** Remembered across mounts, so the view a dispatcher chose survives a route change. */
 const DIMENSIONAL_KEY = 'kh.map.3d';
@@ -175,6 +176,17 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
   const governor = useRef<QualityGovernor | null>(null);
   /** Surfaced briefly when the governor changes its mind, then faded. */
   const [qualityNotice, setQualityNotice] = useState<GovernorEvent | null>(null);
+
+  /**
+   * A render task threw and the guard caught it.
+   *
+   * Sticky, and shown until the page is reloaded. Before the guard existed
+   * this state was a permanently frozen map with an empty console; a dropped
+   * frame with a visible notice is a strictly better version of the same
+   * event, and the dispatcher can say "it showed the yellow line" instead of
+   * "it stopped".
+   */
+  const [renderFault, setRenderFault] = useState(false);
 
   useEffect(() => {
     const stored = loadQuality();
@@ -461,6 +473,21 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       antialias: true,
     });
 
+    /*
+     * Before any control, layer or handler gets a chance to queue work.
+     *
+     * MapLibre's render task queue has no try/finally, so one throw from any
+     * queued task freezes the canvas permanently and silently — see
+     * lib/renderGuard.ts for the verbatim source and the full mechanism. The
+     * specific throw that caused this was fixed at source; this is the net
+     * underneath it.
+     */
+    guardRenderQueue(instance, (error) => {
+      // eslint-disable-next-line no-console
+      console.error('[karahoca] a map render task threw; the frame was dropped', error);
+      setRenderFault(true);
+    });
+
     instance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
     instance.addControl(new maplibregl.AttributionControl(), 'bottom-left');
@@ -557,6 +584,24 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       instance.on('moveend', () => {
         window.setTimeout(() => {
           if (map.current !== instance) return;
+          /*
+           * Not while the camera is moving, and moveend does not mean it has
+           * stopped.
+           *
+           * Camera.easeTo calls _stop() as its FIRST statement, and _stop
+           * fires moveend synchronously. So starting a second animation while
+           * a first is running emits moveend from inside the second one's own
+           * call stack — before it has captured its elevation baseline. The
+           * setTimeout(0) queued here then lands mid-flight and installs
+           * terrain underneath a running ease, which is the crash described on
+           * the easeTo above. A dispatcher clicking one truck and then another
+           * within 800 ms hits it exactly.
+           *
+           * Deferring again is safe: another moveend is guaranteed when the
+           * real movement ends, and the zoom-bounded terrain rule is not
+           * urgent — being one movement late costs nothing.
+           */
+          if (instance.isEasing() || instance.isMoving()) return;
           // Both gates, or this handler quietly re-enables terrain that the
           // governor just shed — which it did, and the map came back at full
           // cost one movement after being told it could not afford it.
@@ -907,7 +952,29 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     const lat = live?.lat ?? selected?.lat;
     const lon = live?.lon ?? selected?.lon;
     if (lat == null || lon == null) return;
-    instance.easeTo({ center: [lon, lat], zoom: Math.max(instance.getZoom(), 11), duration: 800 });
+    /*
+     * freezeElevation, and it is not cosmetic.
+     *
+     * Camera.easeTo captures the elevation baseline ONCE, at call time, and
+     * only `if (this.terrain)`. Its per-frame callback then re-tests terrain
+     * every frame. So an animation that starts with terrain absent and finds
+     * it present a macrotask later calls _updateElevation with an undefined
+     * _elevationCenter, and MapLibre throws inside the render task queue —
+     * whose run() has no try/finally, so _currentlyRunning latches true and
+     * every subsequent _render throws on its first line. The canvas is then
+     * dead for good, silently, because _render is awaited under a bare
+     * .catch(() => {}).
+     *
+     * With this flag the per-frame elevation update is skipped entirely and
+     * the deref is unreachable. The camera holds a constant height for the
+     * length of the animation, which over 700-800 ms nobody can see.
+     */
+    instance.easeTo({
+      center: [lon, lat],
+      zoom: Math.max(instance.getZoom(), 11),
+      duration: 800,
+      freezeElevation: true,
+    });
     // Intentionally keyed on selectedId only: re-centring on every position
     // frame would fight the dispatcher for control of the map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1002,6 +1069,12 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         </div>
       )}
 
+      {renderFault && (
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-amber-500/15 px-3 py-1.5 text-2xs font-medium text-amber-700 shadow-sm ring-1 ring-amber-500/40 backdrop-blur dark:text-amber-300">
+          Harita bir kareyi çizemedi ve atladı — takip sürüyor. Sorun tekrarlarsa 3B&apos;yi kapatın.
+        </div>
+      )}
+
       {/* Below the zoom controls, which MapLibre puts at top-right. */}
       <button
         type="button"
@@ -1045,6 +1118,10 @@ function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[], pitch?: numbe
     new maplibregl.LngLatBounds(points[0], points[0]),
   );
   instance.fitBounds(bounds, {
+    // See the note on the follow-selection easeTo: an animation running while
+    // terrain is installed throws inside MapLibre's render queue and latches
+    // the map dead. fitBounds is an ease like any other.
+    freezeElevation: true,
     // Right padding clears the selected-truck panel; bottom clears the legend.
     padding: { top: 60, right: 80, bottom: 70, left: 60 },
     maxZoom: 13,

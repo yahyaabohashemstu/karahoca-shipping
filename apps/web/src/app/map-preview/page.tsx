@@ -256,6 +256,16 @@ export default function MapPreviewPage() {
               if (el) el.textContent = String(frames);
             });
 
+            /*
+             * The map itself, for the render-guard test.
+             *
+             * Reaching MapLibre's private task queue is the only way to prove
+             * that a throwing render task no longer freezes the canvas, and
+             * that proof is worth more than the tidiness of not exposing it.
+             * This route is a harness and is not linked from anywhere.
+             */
+            (window as unknown as Record<string, unknown>).__khMap = instance;
+
             // Read by the frame-time harness over CDP. Deliberately a plain
             // global: it is a measurement tap, not application state.
             (window as unknown as Record<string, unknown>).__khFrames = {

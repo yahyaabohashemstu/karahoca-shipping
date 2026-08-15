@@ -271,7 +271,10 @@ export function setDimensional(map: MapLibreMap, on: boolean, animate = true) {
   }
 
   const target = { pitch: on ? DEFAULT_PITCH : 0, bearing: on ? map.getBearing() : 0 };
-  if (animate) map.easeTo({ ...target, duration: 700 });
+  // freezeElevation for the reason spelled out in FleetMap's follow-selection
+  // easeTo: this animation runs at exactly the moment terrain is being added or
+  // removed, which is the worst possible time for MapLibre to re-read it.
+  if (animate) map.easeTo({ ...target, duration: 700, freezeElevation: true });
   else {
     map.setPitch(target.pitch);
     map.setBearing(target.bearing);
