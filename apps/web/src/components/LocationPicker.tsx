@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapLibreMap, type Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { API_BASE } from '@/lib/api';
+import { api } from '@/lib/api';
 import { mapColors, mapStyleFor } from '@/lib/mapStyle';
 import { useTheme } from '@/lib/theme';
 import { Input } from '@/components/ui/Form';
@@ -55,9 +55,16 @@ interface Props {
 const PLANT: [number, number] = [37.3825, 37.0662];
 const DEFAULT_RADIUS = 300;
 
-/** Metres, matching the CHECK on both the customer and order columns. */
-const MIN_RADIUS = 50;
-const MAX_RADIUS = 50_000;
+/*
+ * Metres, matching kh.orders.destination_radius_m — the narrower of the two.
+ *
+ * The customer column was written with a wider 50..50000 range, which looked
+ * harmless and was not: a consignee default of 30 km is inherited straight into
+ * a new order, where ck_orders_radius rejects it. The dispatcher would see a
+ * failure on the order form caused by a number they set on a different screen.
+ */
+const MIN_RADIUS = 25;
+const MAX_RADIUS = 20_000;
 
 export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -150,9 +157,17 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
     // the coordinate is already correct and the label is a convenience.
     if (label === null) {
       try {
-        const res = await fetch(`${API_BASE}/geocode/reverse?lat=${lat}&lon=${lon}`);
-        if (!res.ok) return;
-        const body = (await res.json()) as { label: string | null };
+        /*
+         * Through apiFetch, not bare fetch.
+         *
+         * The dashboard authenticates with an Authorization: Bearer header,
+         * which a plain fetch does not carry — so this returned 401 in
+         * production while passing every local test, because the local stub
+         * had no auth at all. The endpoint stays authenticated deliberately:
+         * an open proxy to Nominatim is an invitation to have our User-Agent
+         * blocked, and geocoding is a dispatcher's tool.
+         */
+        const body = await api.geocodeReverse(lat, lon);
         if (body.label) {
           const current = latest.current.value;
           // Only if the pin has not moved again while we were asking.
@@ -245,9 +260,7 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
     setSearching(true);
     const timer = window.setTimeout(async () => {
       try {
-        const res = await fetch(`${API_BASE}/geocode/search?q=${encodeURIComponent(q)}`);
-        if (!res.ok) throw new Error(String(res.status));
-        const body = (await res.json()) as { places: Place[] };
+        const body = await api.geocodeSearch(q);
         if (!cancelled) setResults(body.places ?? []);
       } catch {
         if (!cancelled) setResults([]);

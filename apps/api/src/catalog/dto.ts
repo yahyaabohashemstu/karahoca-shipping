@@ -193,7 +193,7 @@ export class UpdateCustomerDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsNumber() @Min(-180) @Max(180)
   lon?: number | null;
 
-  @IsOptional() @ValidateIf((_, v) => v !== null) @IsInt() @Min(50) @Max(50_000)
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsInt() @Min(25) @Max(20_000)
   defaultRadiusM?: number | null;
 
   @IsOptional() @IsString() @MaxLength(2000)
@@ -274,6 +274,6 @@ export class CreateCustomerDto {
    * Bounded here as well as by the column's CHECK, because a 400 naming the
    * field is a usable answer and a 500 from a constraint violation is not.
    */
-  @IsOptional() @IsInt() @Min(50) @Max(50_000)
+  @IsOptional() @IsInt() @Min(25) @Max(20_000)
   defaultRadiusM?: number;
 }

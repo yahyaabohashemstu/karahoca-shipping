@@ -574,6 +574,20 @@ export const api = {
    * Every consignee in production predates the destination picker, so this is
    * the only way any of them will ever acquire one.
    */
+  /**
+   * Place search for the destination picker.
+   *
+   * Through apiFetch because the endpoint is authenticated — deliberately, so
+   * the proxy is not an open relay to Nominatim under our User-Agent.
+   */
+  geocodeSearch: (q: string) =>
+    apiFetch<{ places: Array<{ label: string; lat: number; lon: number; kind: string | null }> }>(
+      `/geocode/search?q=${encodeURIComponent(q)}`,
+    ),
+
+  geocodeReverse: (lat: number, lon: number) =>
+    apiFetch<{ label: string | null }>(`/geocode/reverse?lat=${lat}&lon=${lon}`),
+
   updateCustomer: (id: string, body: Record<string, unknown>) =>
     apiFetch<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
