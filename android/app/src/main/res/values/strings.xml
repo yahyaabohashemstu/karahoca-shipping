@@ -9,16 +9,20 @@
     the persistent notification the one screen a driver stares at for eighteen
     hours and the one that could never be translated.
 
-    Two conventions worth keeping:
+    Three conventions worth keeping:
 
-      Distances and counts are passed in as already-formatted strings, not as
-      numbers, so the formatter can pin Latin digits. %1$s not %1$d. An Arabic
-      phone formatting "%d" yields ٨ beside a Latin plate number.
+      Counts and distances are passed in as already-formatted strings, not as
+      numbers: %1$s, not %1$d. An Arabic phone formatting "%d" yields ٨ next to
+      a Latin plate number, and formatRemaining already pins Latin digits.
 
       Nothing here interpolates a plate, a reference or an order number into the
       middle of a sentence. Those are identifiers, they are never translated,
-      and a sentence built around them reads badly in a language whose word
-      order differs from Turkish.
+      and a sentence built around one reads badly in a language whose word order
+      differs from Turkish.
+
+      Diagnostics stay in English and out of this file. A crash class name is
+      read by whoever is debugging, not by the driver, and translating it would
+      make it harder to search for.
 -->
 <resources>
     <string name="app_name">KaraHoca Takip</string>
@@ -50,13 +54,10 @@
     <!-- Arrival -->
     <string name="arrival_title">Varış noktasına ulaştınız</string>
     <string name="arrival_body">Teslimat tamamlandıysa takibi bitirebilirsiniz.</string>
-    <string name="arrival_action_finish">Takibi bitir</string>
     <string name="arrival_banner">Varış noktasındasınız</string>
 
     <!-- Claim screen -->
-    <string name="claim_heading">Sevkiyat Takibi</string>
     <string name="claim_hint">Sevkiyat sorumlunuzdan aldığınız oturum kodunu girin.</string>
-    <string name="claim_field_label">Oturum Kodu</string>
     <string name="claim_submit">Oturumu Aç</string>
 
     <!-- Readiness screen -->
@@ -64,15 +65,36 @@
     <string name="readiness_warning">Bu ayarlar yapılmazsa telefon takibi durdurabilir.</string>
     <string name="readiness_ready">Sevkiyat Hazır</string>
     <string name="readiness_start">TAKİBİ BAŞLAT</string>
-    <string name="readiness_grant">Her zaman izin ver</string>
-    <string name="readiness_location_off">Konum servisi kapalı</string>
-    <string name="readiness_open_location">KONUMU AÇ</string>
+
+    <!-- Readiness checks -->
+    <string name="check_location_service">Konum servisi açık</string>
+    <string name="check_location_service_why">Telefonun konum düğmesi kapalı. Açılmadan konum alınamaz.</string>
+    <string name="check_location_permission">Konum izni (uygulama açıkken)</string>
+    <string name="check_location_permission_why">GPS izni olmadan takip başlatılamaz.</string>
+    <string name="check_background_why">Servis yeniden başladığında ve telefon kilitliyken gereklidir.</string>
+    <string name="check_play_services_why">Konum motoru buna bağlıdır. Bazı telefonlarda bulunmaz.</string>
+    <string name="check_battery">Pil optimizasyonu kapalı</string>
+    <string name="check_battery_why">En kritik ayar. Kapalı değilse Android uygulamayı uyutur.</string>
+    <string name="check_alarms">Tam zamanlı alarm izni</string>
+    <string name="check_alarms_why">Servis kapanırsa otomatik yeniden başlatma için gereklidir.</string>
+    <string name="check_autostart">Otomatik başlatma (%1$s)</string>
+    <string name="check_autostart_why">Bu marka telefonlarda ayrıca izin verilmesi gerekir.</string>
+
+    <!-- Location switched off -->
+    <string name="location_off_title">Konum servisi kapalı</string>
+    <string name="location_off_body">Telefonun konum düğmesi kapatıldı. Açılana kadar hiçbir konum kaydedilmiyor.</string>
+    <string name="location_off_action">KONUMU AÇ</string>
 
     <!-- Tracking screen -->
-    <string name="tracking_heading">Takip Aktif</string>
-    <string name="tracking_subtitle">Konumunuz merkeze gönderiliyor.</string>
+    <string name="tracking_active">Takip Aktif</string>
+    <string name="tracking_offline">Çevrimdışı — Kayıt Sürüyor</string>
+    <string name="tracking_online_body">Konumunuz merkeze gönderiliyor.</string>
+    <string name="tracking_offline_body">İnternet yok. Konumlar telefonda saklanıyor ve bağlantı gelince otomatik gönderilecek.</string>
     <string name="tracking_stop">TAKİBİ DURDUR</string>
-    <string name="tracking_close_session">Oturumu kapat</string>
+    <string name="tracking_background_note">Uygulamayı kapatabilirsiniz. Takip arka planda devam eder.</string>
+    <string name="tracking_pending_note">%1$s konum gönderilmeyi bekliyor</string>
+    <string name="tracking_sync_now">Şimdi Gönder</string>
+
     <string name="label_order">Sipariş</string>
     <string name="label_customer">Müşteri</string>
     <string name="label_destination">Teslimat</string>
@@ -81,9 +103,33 @@
     <string name="label_last_fix">Son konum</string>
     <string name="label_last_sync">Son gönderim</string>
 
-    <!-- Diagnostics -->
-    <string name="diag_send_report">Hata raporunu gönder</string>
-    <string name="diag_clear">Temizle</string>
-    <string name="diag_collapse">Daralt</string>
-    <string name="diag_send">Gönder</string>
+    <!-- Errors shown to the driver -->
+    <string name="error_tracking_in_progress">Takip sürerken yeni kod açılamaz. Önce mevcut takibi durdurun.</string>
+    <string name="error_code_length">Kod %1$s karakter olmalıdır</string>
+    <string name="error_claim_failed">Oturum açılamadı</string>
+    <string name="error_permissions_first">Önce zorunlu izinleri verin</string>
+
+    <!-- Claim failure, by cause. Only a 4xx may ever blame the code. -->
+    <string name="claim_no_network">İnternet bağlantısı yok gibi görünüyor. Şebekeyi kontrol edip tekrar deneyin.</string>
+    <string name="claim_server_unreachable">Sunucuya şu an ulaşılamıyor. Kod geçerli — bir dakika sonra tekrar deneyin.</string>
+    <string name="claim_too_many">Çok fazla deneme yapıldı. Bir dakika bekleyip tekrar deneyin.</string>
+    <string name="claim_rejected">İstek kabul edilmedi (HTTP %1$s). Tekrar deneyin.</string>
+    <string name="claim_unexpected">Beklenmeyen sunucu yanıtı (HTTP %1$s). Tekrar deneyin.</string>
+
+    <!-- Service and watchdog alerts -->
+    <string name="alert_no_location_engine_title">Konum servisi çalışmıyor</string>
+    <string name="alert_no_location_engine_body">Bu telefonda konum motoru başlatılamadı. Sevkiyat sorumlunuzu arayın.</string>
+    <string name="alert_permission_revoked_title">Konum izni kapalı</string>
+    <string name="alert_permission_revoked_body">KaraHoca Takip konum izni olmadan çalışamaz. Uygulamayı açıp izni tekrar verin.</string>
+    <string name="alert_session_ended_title">Takip oturumu sonlandı</string>
+    <string name="alert_session_ended_body">Yeni bir oturum kodu için sevkiyat sorumlunuzu arayın.</string>
+    <string name="alert_shipment_done_title">Sevkiyat tamamlandı</string>
+    <string name="alert_shipment_done_body">Takip oturumu kapatıldı (%1$s). Konum gönderimi durduruldu.</string>
+
+    <!-- Crash report -->
+    <string name="crash_prompt">Uygulama bir önceki açılışta hata verdi</string>
+    <string name="crash_send">Hata raporunu gönder</string>
+    <string name="crash_show_all">Tümünü göster</string>
+    <string name="crash_send_short">Gönder</string>
+    <string name="action_open">Aç</string>
 </resources>

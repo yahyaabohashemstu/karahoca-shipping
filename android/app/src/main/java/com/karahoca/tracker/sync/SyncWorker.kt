@@ -13,6 +13,7 @@ import com.karahoca.tracker.service.ServiceWatchdog
 import com.karahoca.tracker.service.TrackingNotification
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import com.karahoca.tracker.R
 
 /**
  * ============================================================================
@@ -107,8 +108,8 @@ class SyncWorker @AssistedInject constructor(
             is TrackingRepository.SyncOutcome.Unauthorised -> {
                 Log.e(TAG, "Credentials rejected — driver must re-claim")
                 notifications.alert(
-                    title = "Takip oturumu sonlandı",
-                    body = "Yeni bir oturum kodu için sevkiyat sorumlunuzu arayın.",
+                    title = applicationContext.getString(R.string.alert_session_ended_title),
+                    body = applicationContext.getString(R.string.alert_session_ended_body),
                 )
                 store.setTrackingActive(false)
                 ServiceWatchdog.cancel(applicationContext)
@@ -120,8 +121,8 @@ class SyncWorker @AssistedInject constructor(
 
     private suspend fun handleSessionClosed(status: String) {
         notifications.alert(
-            title = "Sevkiyat tamamlandı",
-            body = "Takip oturumu kapatıldı ($status). Konum gönderimi durduruldu.",
+            title = applicationContext.getString(R.string.alert_shipment_done_title),
+            body = applicationContext.getString(R.string.alert_shipment_done_body, status),
         )
         store.setTrackingActive(false)
         ServiceWatchdog.cancel(applicationContext)

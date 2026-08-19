@@ -28,8 +28,8 @@ android {
         // 15 / 1.2.2 — the claim-failure messages. A driver whose code fails
         // during a deploy is now told the server is unreachable and the code is
         // still valid, instead of being told the code was rejected.
-        versionCode = 15
-        versionName = "1.2.2"
+        versionCode = 16
+        versionName = "1.3.0"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Arabic, for drivers on the Iraq and Syria corridor.
+
+    Modern Standard, matching the consignee's tracking page: the readers share
+    no spoken dialect but all read the register their customs paperwork and
+    waybills are already written in.
+
+    Two choices a translator would ask about, kept consistent with the web page:
+
+      الشاحنة (the lorry) rather than المركبة (the vehicle). The Turkish "araç"
+      is generic, but the person reading this is sitting in a specific truck.
+
+      Numbers arrive already formatted with Latin digits — see formatRemaining,
+      which is pinned to Locale.ROOT — so nothing here should reintroduce
+      Arabic-Indic numerals. A distance in ٨٫٣ beside a plate reading 27 AB 100
+      looks broken, and the plate is never transliterated.
+
+    The app_name is deliberately NOT translated. It is what the driver looks for
+    in a launcher full of icons, and what a dispatcher says down a phone.
+-->
+<resources>
+    <string name="channel_tracking">تتبّع الشحنة</string>
+    <string name="channel_tracking_desc">إشعار دائم يظهر أثناء التتبّع. لا تُغلقه.</string>
+    <string name="channel_alerts">تنبيهات</string>
+    <string name="channel_alerts_desc">تنبيهات مهمة بخصوص حالة الجلسة.</string>
+
+    <string name="notification_starting">جارٍ بدء التتبّع…</string>
+    <string name="notification_acquiring_gps">جارٍ البحث عن إشارة GPS</string>
+    <string name="notification_buffered">%1$s موقع في الانتظار</string>
+    <string name="notification_title">التتبّع نشط</string>
+    <string name="notification_title_ref">التتبّع نشط · %1$s</string>
+    <string name="notification_offline">دون اتصال · %1$s موقع في الانتظار</string>
+    <string name="notification_sending">جارٍ إرسال %1$s موقع</string>
+    <string name="notification_sent">أُرسل آخر موقع</string>
+    <string name="notification_waiting_gps">في انتظار GPS</string>
+
+    <string name="action_stop">إيقاف</string>
+    <string name="action_sync_now">أرسل الآن</string>
+
+    <string name="distance_metres">بقي %1$s م</string>
+    <string name="distance_kilometres">بقي %1$s كم</string>
+
+    <string name="arrival_title">وصلت إلى نقطة التسليم</string>
+    <string name="arrival_body">إن اكتمل التسليم، يمكنك إنهاء التتبّع.</string>
+    <string name="arrival_banner">أنت عند نقطة التسليم</string>
+
+    <string name="claim_hint">أدخل رمز الجلسة الذي استلمته من مسؤول الشحن.</string>
+    <string name="claim_submit">افتح الجلسة</string>
+
+    <string name="readiness_heading">قبل البدء</string>
+    <string name="readiness_warning">إن لم تُضبط هذه الإعدادات، قد يوقف الهاتف التتبّع.</string>
+    <string name="readiness_ready">الشحنة جاهزة</string>
+    <string name="readiness_start">ابدأ التتبّع</string>
+
+    <string name="check_location_service">خدمة الموقع مفعّلة</string>
+    <string name="check_location_service_why">زرّ الموقع في الهاتف مغلق. لا يمكن تحديد الموقع قبل تفعيله.</string>
+    <string name="check_location_permission">إذن الموقع (أثناء استخدام التطبيق)</string>
+    <string name="check_location_permission_why">لا يمكن بدء التتبّع دون إذن GPS.</string>
+    <string name="check_background_why">مطلوب عند إعادة تشغيل الخدمة وعندما يكون الهاتف مقفلًا.</string>
+    <string name="check_play_services_why">محرّك الموقع يعتمد عليها. غير متوفّرة في بعض الهواتف.</string>
+    <string name="check_battery">تحسين البطارية مُعطَّل</string>
+    <string name="check_battery_why">أهمّ إعداد على الإطلاق. إن لم يُعطَّل، سيُنيم أندرويد التطبيق.</string>
+    <string name="check_alarms">إذن المنبّهات الدقيقة</string>
+    <string name="check_alarms_why">مطلوب لإعادة التشغيل تلقائيًا إن توقّفت الخدمة.</string>
+    <string name="check_autostart">التشغيل التلقائي (%1$s)</string>
+    <string name="check_autostart_why">تتطلّب هواتف هذه العلامة إذنًا إضافيًا.</string>
+
+    <string name="location_off_title">خدمة الموقع مغلقة</string>
+    <string name="location_off_body">زرّ الموقع في الهاتف مُغلق. لا يُسجَّل أي موقع حتى تفتحه.</string>
+    <string name="location_off_action">افتح الموقع</string>
+
+    <string name="tracking_active">التتبّع نشط</string>
+    <string name="tracking_offline">دون اتصال — التسجيل مستمر</string>
+    <string name="tracking_online_body">يُرسَل موقعك إلى المركز.</string>
+    <string name="tracking_offline_body">لا يوجد إنترنت. تُحفظ المواقع في الهاتف وتُرسَل تلقائيًا عند عودة الاتصال.</string>
+    <string name="tracking_stop">أوقف التتبّع</string>
+    <string name="tracking_background_note">يمكنك إغلاق التطبيق. يستمرّ التتبّع في الخلفية.</string>
+    <string name="tracking_pending_note">%1$s موقع في انتظار الإرسال</string>
+    <string name="tracking_sync_now">أرسل الآن</string>
+
+    <string name="label_order">الطلب</string>
+    <string name="label_customer">العميل</string>
+    <string name="label_destination">التسليم</string>
+    <string name="label_session">الجلسة</string>
+    <string name="label_pending">مواقع في الانتظار</string>
+    <string name="label_last_fix">آخر موقع</string>
+    <string name="label_last_sync">آخر إرسال</string>
+
+    <string name="error_tracking_in_progress">لا يمكن فتح رمز جديد أثناء التتبّع. أوقف التتبّع الحالي أولًا.</string>
+    <string name="error_code_length">يجب أن يتكوّن الرمز من %1$s خانات</string>
+    <string name="error_claim_failed">تعذّر فتح الجلسة</string>
+    <string name="error_permissions_first">امنح الأذونات المطلوبة أولًا</string>
+
+    <string name="claim_no_network">يبدو أنه لا يوجد اتصال بالإنترنت. تحقّق من الشبكة وأعد المحاولة.</string>
+    <string name="claim_server_unreachable">تعذّر الوصول إلى الخادم حاليًا. الرمز صالح — أعد المحاولة بعد دقيقة.</string>
+    <string name="claim_too_many">جرّبت مرات كثيرة. انتظر دقيقة ثم أعد المحاولة.</string>
+    <string name="claim_rejected">لم يُقبل الطلب (HTTP %1$s). أعد المحاولة.</string>
+    <string name="claim_unexpected">ردّ غير متوقّع من الخادم (HTTP %1$s). أعد المحاولة.</string>
+
+    <string name="alert_no_location_engine_title">خدمة الموقع لا تعمل</string>
+    <string name="alert_no_location_engine_body">تعذّر تشغيل محرّك الموقع على هذا الهاتف. اتّصل بمسؤول الشحن لديك.</string>
+    <string name="alert_permission_revoked_title">إذن الموقع مغلق</string>
+    <string name="alert_permission_revoked_body">لا يعمل تطبيق كارا هوجا للتتبّع دون إذن الموقع. افتح التطبيق وامنح الإذن مجددًا.</string>
+    <string name="alert_session_ended_title">انتهت جلسة التتبّع</string>
+    <string name="alert_session_ended_body">اتّصل بمسؤول الشحن لديك للحصول على رمز جلسة جديد.</string>
+    <string name="alert_shipment_done_title">اكتملت الشحنة</string>
+    <string name="alert_shipment_done_body">أُغلقت جلسة التتبّع (%1$s). توقّف إرسال المواقع.</string>
+
+    <string name="crash_prompt">حدث خطأ في التشغيل السابق للتطبيق</string>
+    <string name="crash_send">أرسل تقرير الخطأ</string>
+    <string name="crash_show_all">أظهر الكل</string>
+    <string name="crash_send_short">إرسال</string>
+    <string name="action_open">فتح</string>
+</resources>

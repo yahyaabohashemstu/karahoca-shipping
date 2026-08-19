@@ -16,6 +16,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.karahoca.tracker.R
 
 /**
  * Device identity and self-reported health, sent at claim time.
@@ -124,7 +125,7 @@ class DeviceInfoProvider @Inject constructor(
         add(
             ReadinessCheck(
                 key = "location_services",
-                label = "Konum servisi açık",
+                label = context.getString(R.string.check_location_service),
                 satisfied = isLocationEnabled(),
                 /*
                  * First in the list and blocking, because it outranks every
@@ -139,7 +140,7 @@ class DeviceInfoProvider @Inject constructor(
                  * TrackingScreen re-checks it while a shift is running.
                  */
                 blocking = true,
-                detail = "Telefonun konum düğmesi kapalı. Açılmadan konum alınamaz.",
+                detail = context.getString(R.string.check_location_service_why),
             ),
         )
         add(
@@ -149,10 +150,10 @@ class DeviceInfoProvider @Inject constructor(
                 // "Her zaman" (Always) while only checking ACCESS_FINE_LOCATION,
                 // so tapping "Allow only while using the app" satisfied a row
                 // that promised the opposite.
-                label = "Konum izni (uygulama açıkken)",
+                label = context.getString(R.string.check_location_permission),
                 satisfied = hasForegroundLocation(),
                 blocking = true,
-                detail = "GPS izni olmadan takip başlatılamaz.",
+                detail = context.getString(R.string.check_location_permission_why),
             ),
         )
         add(
@@ -179,7 +180,7 @@ class DeviceInfoProvider @Inject constructor(
                  * supposed to save the shipment.
                  */
                 blocking = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
-                detail = "Servis yeniden başladığında ve telefon kilitliyken gereklidir.",
+                detail = context.getString(R.string.check_background_why),
             ),
         )
         add(
@@ -192,7 +193,7 @@ class DeviceInfoProvider @Inject constructor(
                 // app looks healthy and produces nothing.
                 satisfied = hasPlayServices(),
                 blocking = true,
-                detail = "Konum motoru buna bağlıdır. Bazı telefonlarda bulunmaz.",
+                detail = context.getString(R.string.check_play_services_why),
             ),
         )
         add(
@@ -207,32 +208,32 @@ class DeviceInfoProvider @Inject constructor(
         add(
             ReadinessCheck(
                 key = "battery",
-                label = "Pil optimizasyonu kapalı",
+                label = context.getString(R.string.check_battery),
                 satisfied = PowerHelper.isIgnoringBatteryOptimizations(context),
                 blocking = false,
-                detail = "En kritik ayar. Kapalı değilse Android uygulamayı uyutur.",
+                detail = context.getString(R.string.check_battery_why),
             ),
         )
         add(
             ReadinessCheck(
                 key = "exact_alarm",
-                label = "Tam zamanlı alarm izni",
+                label = context.getString(R.string.check_alarms),
                 satisfied = PowerHelper.canScheduleExactAlarms(context),
                 blocking = false,
-                detail = "Servis kapanırsa otomatik yeniden başlatma için gereklidir.",
+                detail = context.getString(R.string.check_alarms_why),
             ),
         )
         if (PowerHelper.hasAggressiveOem()) {
             add(
                 ReadinessCheck(
                     key = "autostart",
-                    label = "Otomatik başlatma (${PowerHelper.oemLabel()})",
+                    label = context.getString(R.string.check_autostart, PowerHelper.oemLabel()),
                     // Unverifiable from inside the app — no OEM exposes a query
                     // API, so the driver confirms it manually.
                     satisfied = false,
                     blocking = false,
                     manualConfirm = true,
-                    detail = "Bu marka telefonlarda ayrıca izin verilmesi gerekir.",
+                    detail = context.getString(R.string.check_autostart_why),
                 ),
             )
         }

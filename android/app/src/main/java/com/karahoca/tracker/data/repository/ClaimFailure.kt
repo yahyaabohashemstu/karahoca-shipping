@@ -1,19 +1,21 @@
 package com.karahoca.tracker.data.repository
 
+import android.content.Context
+import com.karahoca.tracker.R
+
 /**
- * What to tell a driver when a session code does not go through.
+ * Why a session code did not go through.
  *
- * Extracted from TrackingRepository so it can be tested, and it earned that: it
- * is the one piece of this app that shipped without ever going through a
- * compiler, let alone a test, because there was no JDK on the machine it was
- * written on for several weeks.
+ * A cause rather than a sentence, so the decision and the wording can live
+ * apart: the rule below is pure and testable, and the Turkish, Arabic or
+ * Kurdish comes from resources at the edge where a Context exists.
  *
- * The rule it encodes came from a real incident. On 14 August a deploy replaced
- * the API container in the ninety seconds between a dispatcher issuing code
- * DXP1-KFBQ and the driver typing it. The proxy answered 502 with an HTML page,
- * the JSON decode returned null, and the phone said "Session code was rejected"
- * — about a code that was ASSIGNED, unexpired, and claimed successfully eight
- * minutes later.
+ * The rule came from a real incident. On 14 August a deploy replaced the API
+ * container in the ninety seconds between a dispatcher issuing code DXP1-KFBQ
+ * and the driver typing it. The proxy answered 502 with an HTML page, the JSON
+ * decode returned null, and the phone said "Session code was rejected" — about
+ * a code that was ASSIGNED, unexpired, and claimed successfully eight minutes
+ * later.
  *
  * That is not a wording problem. A driver in a yard reads "your code is
  * rejected" and telephones the office; the dispatcher regenerates the code; the
@@ -22,38 +24,61 @@ package com.karahoca.tracker.data.repository
  *
  * So the status code decides first, and only a 4xx may ever blame the code.
  */
-object ClaimFailure {
+sealed interface ClaimFailure {
 
-    /**
-     * @param status     the HTTP status the server answered with
-     * @param fromServer a message decoded from the error body, or null if the
-     *                   body was absent, empty, or not the JSON we expect —
-     *                   which is exactly what an HTML proxy error looks like
-     */
-    fun message(status: Int, fromServer: String?): String {
-        val server = fromServer?.takeIf { it.isNotBlank() }
-        return when {
-            // The server said something specific and it is about the request.
-            // 429 included: "too many attempts" is its own message.
-            status in 400..499 && server != null -> server
+    /** The server explained itself, and it was about the request. */
+    data class FromServer(val message: String) : ClaimFailure
 
-            status == 429 -> "Çok fazla deneme yapıldı. Bir dakika bekleyip tekrar deneyin."
+    /** The request never reached a server. */
+    data object NoNetwork : ClaimFailure
 
-            // 502/503/504 from the proxy while the API restarts, and 500 from
-            // the API itself. None of these say anything about the code, and
-            // saying the code is valid is the part that stops the phone call.
-            status >= 500 ->
-                "Sunucuya şu an ulaşılamıyor. Kod geçerli — bir dakika sonra tekrar deneyin."
+    /** 5xx. Says nothing about the code, and says so. */
+    data object ServerUnreachable : ClaimFailure
 
-            // A 4xx whose body could not be read. Rare, and still not evidence
-            // that the code is wrong.
-            status in 400..499 -> "İstek kabul edilmedi (HTTP $status). Tekrar deneyin."
+    data object TooManyAttempts : ClaimFailure
 
-            else -> "Beklenmeyen sunucu yanıtı (HTTP $status). Tekrar deneyin."
+    /** A 4xx whose body could not be read. Still not evidence the code is wrong. */
+    data class Rejected(val status: Int) : ClaimFailure
+
+    data class Unexpected(val status: Int) : ClaimFailure
+
+    companion object {
+        /**
+         * @param status     the HTTP status the server answered with
+         * @param fromServer a message decoded from the error body, or null when
+         *                   the body was absent, empty, or not the JSON we
+         *                   expect — which is exactly what an HTML proxy error
+         *                   looks like
+         */
+        fun of(status: Int, fromServer: String?): ClaimFailure {
+            val server = fromServer?.takeIf { it.isNotBlank() }
+            return when {
+                status in 400..499 && server != null -> FromServer(server)
+                status == 429 -> TooManyAttempts
+                // 502/503/504 from the proxy while the API restarts, and 500
+                // from the API itself. Telling the driver the code is still
+                // valid is the part that stops the phone call.
+                status >= 500 -> ServerUnreachable
+                status in 400..499 -> Rejected(status)
+                else -> Unexpected(status)
+            }
         }
     }
+}
 
-    /** Shown when the request never reached a server at all. */
-    const val NO_NETWORK =
-        "İnternet bağlantısı yok gibi görünüyor. Şebekeyi kontrol edip tekrar deneyin."
+/**
+ * The cause, in the driver's language.
+ *
+ * Separate from the decision so that adding Arabic and Kurdish changed no
+ * logic, and so the tests above assert on causes rather than on Turkish
+ * substrings — which would have had to be rewritten for every new locale and
+ * would have been testing the translation, not the rule.
+ */
+fun ClaimFailure.messageFor(context: Context): String = when (this) {
+    is ClaimFailure.FromServer -> message
+    ClaimFailure.NoNetwork -> context.getString(R.string.claim_no_network)
+    ClaimFailure.ServerUnreachable -> context.getString(R.string.claim_server_unreachable)
+    ClaimFailure.TooManyAttempts -> context.getString(R.string.claim_too_many)
+    is ClaimFailure.Rejected -> context.getString(R.string.claim_rejected, status.toString())
+    is ClaimFailure.Unexpected -> context.getString(R.string.claim_unexpected, status.toString())
 }

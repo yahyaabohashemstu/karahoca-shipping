@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Kurdish — Kurmanji, in Latin script.
+
+    Which Kurdish is a real decision and it went this way for a specific reason:
+    the readers here are drivers, and the drivers on this corridor are hired
+    from carriers in Gaziantep, Şanlıurfa, Mardin and Şırnak, where Kurmanji in
+    the Latin alphabet is what people read and write. Sorani, in Arabic script,
+    is what Erbil reads — but Erbil is the consignee, and the consignee has the
+    web page, which is already Arabic. A driver handed Sorani in a script they
+    do not read would be worse served than by Turkish.
+
+    So: values-ku is Kurmanji, left-to-right, and if Sorani is ever wanted for
+    an Iraqi-hired driver it belongs in values-ckb with an RTL layout, not here.
+
+    Numbers arrive already formatted with Latin digits, which suits this locale
+    without further thought.
+
+    The app_name is deliberately NOT translated — it is what a driver looks for
+    in a launcher and what a dispatcher says down a phone.
+-->
+<resources>
+    <string name="channel_tracking">Şopandina Barê</string>
+    <string name="channel_tracking_desc">Dema şopandin çalak e agahdariyeke daîmî tê xuyakirin. Wê negire.</string>
+    <string name="channel_alerts">Hişyarî</string>
+    <string name="channel_alerts_desc">Hişyariyên girîng derbarê rewşa danişînê de.</string>
+
+    <string name="notification_starting">Şopandin tê destpêkirin…</string>
+    <string name="notification_acquiring_gps">Sînyala GPS tê lêgerîn</string>
+    <string name="notification_buffered">%1$s cih li bendê ye</string>
+    <string name="notification_title">Şopandin çalak e</string>
+    <string name="notification_title_ref">Şopandin çalak e · %1$s</string>
+    <string name="notification_offline">Bê girêdan · %1$s cih li bendê ye</string>
+    <string name="notification_sending">%1$s cih tê şandin</string>
+    <string name="notification_sent">Cihê dawî hat şandin</string>
+    <string name="notification_waiting_gps">Li benda GPS</string>
+
+    <string name="action_stop">Rawestîne</string>
+    <string name="action_sync_now">Niha bişîne</string>
+
+    <string name="distance_metres">%1$s m maye</string>
+    <string name="distance_kilometres">%1$s km maye</string>
+
+    <string name="arrival_title">Tu gihîştî cihê radestkirinê</string>
+    <string name="arrival_body">Ger radestkirin qediya be, tu dikarî şopandinê biqedînî.</string>
+    <string name="arrival_banner">Tu li cihê radestkirinê yî</string>
+
+    <string name="claim_hint">Koda danişînê ya ku te ji berpirsê barkirinê wergirt binivîse.</string>
+    <string name="claim_submit">Danişînê veke</string>
+
+    <string name="readiness_heading">Berî destpêkirinê</string>
+    <string name="readiness_warning">Ger ev mîheng neyên kirin, telefon dikare şopandinê rawestîne.</string>
+    <string name="readiness_ready">Bar amade ye</string>
+    <string name="readiness_start">ŞOPANDINÊ DEST PÊ BIKE</string>
+
+    <string name="check_location_service">Xizmeta cihî vekirî ye</string>
+    <string name="check_location_service_why">Bişkoka cihî ya telefonê girtî ye. Berî ku were vekirin cih nayê wergirtin.</string>
+    <string name="check_location_permission">Destûra cihî (dema sepan vekirî ye)</string>
+    <string name="check_location_permission_why">Bê destûra GPS şopandin nayê destpêkirin.</string>
+    <string name="check_background_why">Dema xizmet ji nû ve dest pê dike û telefon kilît e pêwîst e.</string>
+    <string name="check_play_services_why">Motora cihî bi vê ve girêdayî ye. Di hin telefonan de nîne.</string>
+    <string name="check_battery">Xweşkirina bataryayê girtî ye</string>
+    <string name="check_battery_why">Mîhenga herî girîng. Ger negirtî be, Android sepanê radizîne.</string>
+    <string name="check_alarms">Destûra alarma rast</string>
+    <string name="check_alarms_why">Ger xizmet bisekine, ji bo destpêkirina otomatîk pêwîst e.</string>
+    <string name="check_autostart">Destpêka otomatîk (%1$s)</string>
+    <string name="check_autostart_why">Di telefonên vê marqeyê de destûreke zêde pêwîst e.</string>
+
+    <string name="location_off_title">Xizmeta cihî girtî ye</string>
+    <string name="location_off_body">Bişkoka cihî ya telefonê hat girtin. Heta ku were vekirin tu cih nayê tomarkirin.</string>
+    <string name="location_off_action">CIHÎ VEKE</string>
+
+    <string name="tracking_active">Şopandin çalak e</string>
+    <string name="tracking_offline">Bê girêdan — Tomarkirin berdewam e</string>
+    <string name="tracking_online_body">Cihê te ji navendê re tê şandin.</string>
+    <string name="tracking_offline_body">Înternet tune. Cih di telefonê de tên hilanîn û dema girêdan hat wê otomatîk bên şandin.</string>
+    <string name="tracking_stop">ŞOPANDINÊ RAWESTÎNE</string>
+    <string name="tracking_background_note">Tu dikarî sepanê bigirî. Şopandin li paş berdewam dike.</string>
+    <string name="tracking_pending_note">%1$s cih li benda şandinê ye</string>
+    <string name="tracking_sync_now">Niha bişîne</string>
+
+    <string name="label_order">Sipariş</string>
+    <string name="label_customer">Muşterî</string>
+    <string name="label_destination">Radestkirin</string>
+    <string name="label_session">Danişîn</string>
+    <string name="label_pending">Cihên li bendê</string>
+    <string name="label_last_fix">Cihê dawî</string>
+    <string name="label_last_sync">Şandina dawî</string>
+
+    <string name="error_tracking_in_progress">Dema şopandin berdewam e koda nû nayê vekirin. Pêşî şopandina heyî rawestîne.</string>
+    <string name="error_code_length">Divê kod %1$s tîp be</string>
+    <string name="error_claim_failed">Danişîn nehat vekirin</string>
+    <string name="error_permissions_first">Pêşî destûrên pêwîst bide</string>
+
+    <string name="claim_no_network">Wisa xuya dike ku girêdana înternetê tune. Torê kontrol bike û dîsa biceribîne.</string>
+    <string name="claim_server_unreachable">Niha nagihîje servera. Kod derbasdar e — piştî deqeyekê dîsa biceribîne.</string>
+    <string name="claim_too_many">Pir caran hat ceribandin. Deqeyekê bisekine û dîsa biceribîne.</string>
+    <string name="claim_rejected">Daxwaz nehat qebûlkirin (HTTP %1$s). Dîsa biceribîne.</string>
+    <string name="claim_unexpected">Bersiveke neçaverêkirî ji serverê (HTTP %1$s). Dîsa biceribîne.</string>
+
+    <string name="alert_no_location_engine_title">Xizmeta cihî naxebite</string>
+    <string name="alert_no_location_engine_body">Li ser vê telefonê motora cihî nehat destpêkirin. Berpirsê barkirinê bigire.</string>
+    <string name="alert_permission_revoked_title">Destûra cihî girtî ye</string>
+    <string name="alert_permission_revoked_body">KaraHoca Takip bê destûra cihî naxebite. Sepanê veke û destûrê dîsa bide.</string>
+    <string name="alert_session_ended_title">Danişîna şopandinê qediya</string>
+    <string name="alert_session_ended_body">Ji bo koda danişînê ya nû berpirsê barkirinê bigire.</string>
+    <string name="alert_shipment_done_title">Bar qediya</string>
+    <string name="alert_shipment_done_body">Danişîna şopandinê hat girtin (%1$s). Şandina cihan rawestiya.</string>
+
+    <string name="crash_prompt">Di vekirina berê de sepanê xeletî da</string>
+    <string name="crash_send">Rapora xeletiyê bişîne</string>
+    <string name="crash_show_all">Hemûyan nîşan bide</string>
+    <string name="crash_send_short">Bişîne</string>
+    <string name="action_open">Veke</string>
+</resources>

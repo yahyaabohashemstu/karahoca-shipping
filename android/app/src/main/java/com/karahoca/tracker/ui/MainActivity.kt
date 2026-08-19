@@ -172,7 +172,7 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         Spacer(Modifier.height(40.dp))
 
         Text(
-            "Sevkiyat sorumlunuzdan aldığınız oturum kodunu girin.",
+            stringResource(R.string.claim_hint),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -223,7 +223,7 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
             if (state.busy) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             } else {
-                Text("Oturumu Aç", fontSize = 16.sp)
+                Text(stringResource(R.string.claim_submit), fontSize = 16.sp)
             }
         }
     }
@@ -236,7 +236,7 @@ private fun shareText(context: Context, text: String) {
         putExtra(Intent.EXTRA_SUBJECT, "KaraHoca Takip — hata raporu")
         putExtra(Intent.EXTRA_TEXT, text.take(60_000))
     }
-    context.startActivity(Intent.createChooser(send, "Hata raporunu gönder"))
+    context.startActivity(Intent.createChooser(send, context.getString(R.string.crash_send)))
 }
 
 /**
@@ -252,7 +252,7 @@ private fun CrashBanner(report: String, onShare: () -> Unit, onDismiss: () -> Un
     Surface(color = Color(0xFF7F1D1D)) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Text(
-                "Uygulama bir önceki açılışta hata verdi",
+                stringResource(R.string.crash_prompt),
                 color = Color.White,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
@@ -269,9 +269,9 @@ private fun CrashBanner(report: String, onShare: () -> Unit, onDismiss: () -> Un
             )
             Row {
                 TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Daralt" else "Tümünü göster", color = Color.White)
+                    Text(if (expanded) "Daralt" else stringResource(R.string.crash_show_all), color = Color.White)
                 }
-                TextButton(onClick = onShare) { Text("Gönder", color = Color.White) }
+                TextButton(onClick = onShare) { Text(stringResource(R.string.crash_send_short), color = Color.White) }
                 TextButton(onClick = onDismiss) { Text("Temizle", color = Color(0xFFFCA5A5)) }
             }
         }
@@ -343,7 +343,7 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
             .padding(20.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        Text("Sevkiyat Hazır", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.readiness_ready), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(4.dp))
         state.reference?.let {
             Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -352,17 +352,17 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                state.orderNumber?.let { InfoRow("Sipariş", it) }
-                state.customerName?.let { InfoRow("Müşteri", it) }
-                state.destination?.let { InfoRow("Teslimat", it) }
+                state.orderNumber?.let { InfoRow(stringResource(R.string.label_order), it) }
+                state.customerName?.let { InfoRow(stringResource(R.string.label_customer), it) }
+                state.destination?.let { InfoRow(stringResource(R.string.label_destination), it) }
             }
         }
 
         Spacer(Modifier.height(24.dp))
-        Text("Başlamadan Önce", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.readiness_heading), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "Bu ayarlar yapılmazsa telefon takibi durdurabilir.",
+            stringResource(R.string.readiness_warning),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -460,7 +460,7 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
             enabled = state.canStart,
             modifier = Modifier.fillMaxWidth().height(56.dp),
         ) {
-            Text("TAKİBİ BAŞLAT", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.readiness_start), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
         TextButton(
@@ -518,14 +518,14 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "Konum servisi kapalı",
+                            stringResource(R.string.location_off_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )
                     }
                     Text(
-                        "Telefonun konum düğmesi kapatıldı. Açılana kadar hiçbir konum kaydedilmiyor.",
+                        stringResource(R.string.location_off_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.padding(top = 4.dp),
@@ -545,7 +545,7 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
                             )
                         },
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    ) { Text("KONUMU AÇ", fontWeight = FontWeight.Bold) }
+                    ) { Text(stringResource(R.string.location_off_action), fontWeight = FontWeight.Bold) }
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -574,7 +574,7 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            if (state.online) "Takip Aktif" else "Çevrimdışı — Kayıt Sürüyor",
+            if (state.online) "Takip Aktif" else stringResource(R.string.tracking_offline),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
         )
@@ -583,9 +583,9 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
             // The single most important sentence in the app: it stops a driver
             // in a dead zone from concluding it is broken and force-stopping it.
             if (state.online) {
-                "Konumunuz merkeze gönderiliyor."
+                stringResource(R.string.tracking_online_body)
             } else {
-                "İnternet yok. Konumlar telefonda saklanıyor ve bağlantı gelince otomatik gönderilecek."
+                stringResource(R.string.tracking_offline_body)
             },
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
@@ -598,17 +598,17 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                state.reference?.let { InfoRow("Oturum", it) }
-                state.orderNumber?.let { InfoRow("Sipariş", it) }
-                state.destination?.let { InfoRow("Teslimat", it) }
+                state.reference?.let { InfoRow(stringResource(R.string.label_session), it) }
+                state.orderNumber?.let { InfoRow(stringResource(R.string.label_order), it) }
+                state.destination?.let { InfoRow(stringResource(R.string.label_destination), it) }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                InfoRow("Bekleyen konum", "${state.pendingCount}")
+                InfoRow(stringResource(R.string.label_pending), state.pendingCount.toString())
                 InfoRow(
-                    "Son konum",
+                    stringResource(R.string.label_last_fix),
                     if (state.lastFixAt > 0) time.format(Date(state.lastFixAt)) else "—",
                 )
                 InfoRow(
-                    "Son gönderim",
+                    stringResource(R.string.label_last_sync),
                     if (state.lastSyncAt > 0) time.format(Date(state.lastSyncAt)) else "—",
                 )
             }
@@ -620,7 +620,7 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
                 Icon(Icons.Default.Error, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "${state.pendingCount} konum gönderilmeyi bekliyor",
+                    stringResource(R.string.tracking_pending_note, state.pendingCount.toString()),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -630,18 +630,18 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         OutlinedButton(
             onClick = { viewModel.syncNow(context) },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Şimdi Gönder") }
+        ) { Text(stringResource(R.string.tracking_sync_now)) }
 
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = { viewModel.stopTracking(context) },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) { Text("TAKİBİ DURDUR", fontWeight = FontWeight.Bold) }
+        ) { Text(stringResource(R.string.tracking_stop), fontWeight = FontWeight.Bold) }
 
         Spacer(Modifier.height(24.dp))
         Text(
-            "Uygulamayı kapatabilirsiniz. Takip arka planda devam eder.",
+            stringResource(R.string.tracking_background_note),
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -750,7 +750,7 @@ private fun CheckRow(
                 )
             }
             if (!satisfied) {
-                TextButton(onClick = onFix) { Text("Aç") }
+                TextButton(onClick = onFix) { Text(stringResource(R.string.action_open)) }
             }
         }
     }

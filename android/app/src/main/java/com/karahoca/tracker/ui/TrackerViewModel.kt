@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.karahoca.tracker.R
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 data class TrackerUiState(
     val screen: Screen = Screen.CLAIM,
@@ -74,6 +76,16 @@ data class TrackerUiState(
 
 @HiltViewModel
 class TrackerViewModel @Inject constructor(
+    /*
+     * The application context, purely to reach string resources.
+     *
+     * A ViewModel holding a Context is usually a leak waiting to happen — but
+     * @ApplicationContext is the process-wide one, which outlives every
+     * ViewModel by construction, so there is nothing here to leak. The
+     * alternative was for this class to keep composing Turkish sentences, which
+     * is what made the messages it produces untranslatable.
+     */
+    @ApplicationContext private val context: Context,
     private val repository: TrackingRepository,
     private val store: SessionStore,
     private val deviceInfo: DeviceInfoProvider,
@@ -134,7 +146,7 @@ class TrackerViewModel @Inject constructor(
     /** Surface a background failure in the UI instead of dying silently. */
     private fun reportSoftFailure(t: Throwable) {
         _state.update {
-            it.copy(error = "Arka plan hatası: ${t.javaClass.simpleName}: ${t.message ?: "-"}")
+            it.copy(error = "Background error: ${t.javaClass.simpleName}: ${t.message ?: "-"}")
         }
     }
 
@@ -221,7 +233,7 @@ class TrackerViewModel @Inject constructor(
 
         if (_state.value.trackingActive) {
             _state.update {
-                it.copy(error = "Takip sürerken yeni kod açılamaz. Önce mevcut takibi durdurun.")
+                it.copy(error = context.getString(R.string.error_tracking_in_progress))
             }
             return
         }
@@ -233,7 +245,9 @@ class TrackerViewModel @Inject constructor(
     fun claim() {
         val code = ClaimCode.normalise(_state.value.codeInput)
         if (code.length != ClaimCode.LENGTH) {
-            _state.update { it.copy(error = "Kod ${ClaimCode.LENGTH} karakter olmalıdır") }
+            _state.update {
+                it.copy(error = context.getString(R.string.error_code_length, ClaimCode.LENGTH.toString()))
+            }
             return
         }
         _state.update { it.copy(busy = true, error = null) }
@@ -256,7 +270,7 @@ class TrackerViewModel @Inject constructor(
                 }
                 .onFailure { err ->
                     _state.update {
-                        it.copy(busy = false, error = err.message ?: "Oturum açılamadı")
+                        it.copy(busy = false, error = err.message ?: context.getString(R.string.error_claim_failed))
                     }
                 }
         }
@@ -264,7 +278,7 @@ class TrackerViewModel @Inject constructor(
 
     fun startTracking(context: Context) {
         if (!_state.value.canStart) {
-            _state.update { it.copy(error = "Önce zorunlu izinleri verin") }
+            _state.update { it.copy(error = context.getString(R.string.error_permissions_first)) }
             return
         }
         viewModelScope.launch {

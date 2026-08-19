@@ -7,10 +7,12 @@ import org.junit.Test
 /**
  * The rule: only a 4xx may ever blame the driver's code.
  *
- * This exists because the previous version broke that rule for every failure
- * and turned a ninety-second deploy into a broken shipment — see the note on
- * [ClaimFailure]. Each case below is one of the ways the old code said "your
- * code is rejected" about a code that was fine.
+ * These assert on causes rather than on wording. The earlier version matched
+ * Turkish substrings, which meant every new locale would have broken tests that
+ * were really testing the translation instead of the rule.
+ *
+ * Each case is one of the ways the previous implementation said "your code is
+ * rejected" about a code that was fine — see the note on [ClaimFailure].
  */
 class ClaimFailureTest {
 
@@ -19,18 +21,13 @@ class ClaimFailureTest {
     fun `a proxy error during a deploy does not blame the code`() {
         // What a driver actually hit: 502 from Traefik with an HTML body, which
         // is not decodable JSON, so the caller passes null.
-        val message = ClaimFailure.message(502, null)
-        assertTrue(
-            "a 5xx must say the code is still valid, said: $message",
-            message.contains("Kod geçerli"),
-        )
+        assertEquals(ClaimFailure.ServerUnreachable, ClaimFailure.of(502, null))
     }
 
     @Test
     fun `every server-side status says the server, not the code`() {
-        for (status in listOf(500, 502, 503, 504)) {
-            val message = ClaimFailure.message(status, null)
-            assertTrue("HTTP $status blamed the code: $message", message.contains("Kod geçerli"))
+        for (status in listOf(500, 502, 503, 504, 599)) {
+            assertEquals("HTTP $status", ClaimFailure.ServerUnreachable, ClaimFailure.of(status, null))
         }
     }
 
@@ -38,81 +35,73 @@ class ClaimFailureTest {
      * A 5xx that happens to carry a decodable body is still a server fault.
      *
      * Worth pinning: the obvious implementation checks "did the server send a
-     * message" before it checks the status, and then a 503 with a JSON body
-     * would be reported to the driver as though it described their code.
+     * message" before it checks the status, and then a 503 with a JSON body is
+     * reported to the driver as though it described their code.
      */
     @Test
     fun `a server message on a 5xx is not shown as a verdict on the code`() {
-        val message = ClaimFailure.message(503, "Service temporarily unavailable")
-        assertTrue(message.contains("Kod geçerli"))
-        assertTrue(!message.contains("Service temporarily"))
+        assertEquals(
+            ClaimFailure.ServerUnreachable,
+            ClaimFailure.of(503, "Service temporarily unavailable"),
+        )
     }
 
     @Test
     fun `a 4xx with a message shows what the server said`() {
-        // The real one, from kh.alerts' claim endpoint.
+        // The real one, from the claim endpoint.
         val server = "That session code is not valid, has expired, or was already used."
-        assertEquals(server, ClaimFailure.message(404, server))
+        assertEquals(ClaimFailure.FromServer(server), ClaimFailure.of(404, server))
     }
 
     @Test
-    fun `a 4xx with an unreadable body still does not assert the code is wrong`() {
-        val message = ClaimFailure.message(400, null)
-        assertTrue("said: $message", message.contains("400"))
-        // "not accepted", not "your code is wrong" — the distinction the whole
-        // class exists for.
-        assertTrue(message.contains("İstek kabul edilmedi"))
+    fun `a 4xx with an unreadable body reports the status, not a verdict`() {
+        assertEquals(ClaimFailure.Rejected(400), ClaimFailure.of(400, null))
     }
 
     @Test
     fun `a blank body counts as no body`() {
         // Retrofit hands back an empty string for a bodyless response, and
-        // "   " for one that is whitespace. Neither is a message.
-        assertEquals(ClaimFailure.message(400, null), ClaimFailure.message(400, ""))
-        assertEquals(ClaimFailure.message(400, null), ClaimFailure.message(400, "   "))
+        // whitespace for one that is only whitespace. Neither is a message.
+        assertEquals(ClaimFailure.of(400, null), ClaimFailure.of(400, ""))
+        assertEquals(ClaimFailure.of(400, null), ClaimFailure.of(400, "   "))
     }
 
     @Test
-    fun `too many attempts has its own message`() {
-        val message = ClaimFailure.message(429, null)
-        assertTrue("said: $message", message.contains("Çok fazla deneme"))
+    fun `too many attempts is its own cause`() {
+        assertEquals(ClaimFailure.TooManyAttempts, ClaimFailure.of(429, null))
     }
 
     /** 429 is inside 400..499, so a server message must still win over it. */
     @Test
     fun `a rate-limit message from the server is preferred`() {
         val server = "Too many claim attempts. Wait a few minutes and try again."
-        assertEquals(server, ClaimFailure.message(429, server))
+        assertEquals(ClaimFailure.FromServer(server), ClaimFailure.of(429, server))
     }
 
     @Test
     fun `a status outside every band is reported honestly`() {
-        val message = ClaimFailure.message(302, null)
-        assertTrue("said: $message", message.contains("302"))
-        assertTrue(message.contains("Beklenmeyen"))
+        assertEquals(ClaimFailure.Unexpected(302), ClaimFailure.of(302, null))
     }
 
     /**
-     * Every message is Turkish and none leaks a hostname or a stack.
+     * Nothing but FromServer can carry text the app did not write.
      *
      * The transport failure is the one that used to: Retrofit's IOException
      * message is a hostname and a chain of causes, and the view model puts
-     * `err.message` straight on screen.
+     * `err.message` straight on screen. Every other cause resolves through a
+     * string resource, so it cannot leak plumbing by construction.
      */
     @Test
-    fun `no message exposes plumbing to the driver`() {
-        val all = listOf(
-            ClaimFailure.NO_NETWORK,
-            ClaimFailure.message(500, null),
-            ClaimFailure.message(429, null),
-            ClaimFailure.message(400, null),
-            ClaimFailure.message(302, null),
+    fun `only a server message can carry text the app did not write`() {
+        val causes = listOf(
+            ClaimFailure.of(500, null),
+            ClaimFailure.of(429, null),
+            ClaimFailure.of(400, null),
+            ClaimFailure.of(302, null),
+            ClaimFailure.NoNetwork,
         )
-        for (message in all) {
-            assertTrue("empty message", message.isNotBlank())
-            for (leak in listOf("http://", "https://", "Exception", "karahoca.com", "at com.")) {
-                assertTrue("leaked '$leak' in: $message", !message.contains(leak))
-            }
+        for (cause in causes) {
+            assertTrue("$cause carries free text", cause !is ClaimFailure.FromServer)
         }
     }
 }

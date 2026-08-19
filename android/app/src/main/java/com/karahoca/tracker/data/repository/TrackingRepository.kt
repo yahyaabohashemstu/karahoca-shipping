@@ -584,10 +584,10 @@ class TrackingRepository @Inject constructor(
              * opposite advice: this one says wait, that one may say the code is
              * wrong.
              */
-            error(ClaimFailure.NO_NETWORK)
+            error(ClaimFailure.NoNetwork.messageFor(context))
         }
         if (!response.isSuccessful) {
-            error(ClaimFailure.message(response.code(), response.errorBody()?.string()))
+            error(ClaimFailure.of(response.code(), response.errorBody()?.string()).messageFor(context))
         }
         val body = response.body() ?: error("Empty response from server")
 

@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.karahoca.tracker.R
 
 /**
  * The resurrection mechanism.
@@ -186,9 +187,8 @@ class WatchdogReceiver : BroadcastReceiver() {
                         message = "Watchdog halted: ACCESS_FINE_LOCATION is not granted",
                     )
                     notifications.alert(
-                        title = "Konum izni kapalı",
-                        body = "KaraHoca Takip konum izni olmadan çalışamaz. " +
-                            "Uygulamayı açıp izni tekrar verin.",
+                        title = context.getString(R.string.alert_permission_revoked_title),
+                        body = context.getString(R.string.alert_permission_revoked_body),
                     )
                     ServiceWatchdog.cancel(appContext)
                     return@launch

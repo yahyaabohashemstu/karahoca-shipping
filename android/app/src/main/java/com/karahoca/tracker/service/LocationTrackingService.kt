@@ -538,9 +538,8 @@ class LocationTrackingService : LifecycleService() {
                         )
                     }
                     notifications.alert(
-                        title = "Konum servisi çalışmıyor",
-                        body = "Bu telefonda konum motoru başlatılamadı. " +
-                            "Sevkiyat sorumlunuzu arayın.",
+                        title = getString(R.string.alert_no_location_engine_title),
+                        body = getString(R.string.alert_no_location_engine_body),
                     )
                 }
             locationCallback = callback
