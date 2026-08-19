@@ -32,14 +32,21 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
   const { resolved, ready: themeReady } = useTheme();
 
   const installLayers = useCallback((instance: MapLibreMap) => {
-    if (instance.getSource('route')) return;
+    // Guarded per item, matching FleetMap — see the note there for why one
+    // surviving source is not proof that everything else survived with it.
+    const addSource = (id: string, spec: maplibregl.SourceSpecification) => {
+      if (!instance.getSource(id)) addSource(id, spec);
+    };
+    const addLayer = (spec: maplibregl.LayerSpecification) => {
+      if (!instance.getLayer(spec.id)) addLayer(spec);
+    };
     const c = mapColors();
 
-    instance.addSource('route', { type: 'geojson', data: empty() });
-    instance.addSource('backfill', { type: 'geojson', data: empty() });
-    instance.addSource('current', { type: 'geojson', data: empty() });
+    addSource('route', { type: 'geojson', data: empty() });
+    addSource('backfill', { type: 'geojson', data: empty() });
+    addSource('current', { type: 'geojson', data: empty() });
 
-    instance.addLayer({
+    addLayer({
       id: 'route-line',
       type: 'line',
       source: 'route',
@@ -49,7 +56,7 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
 
     // Backfilled geometry is dashed and amber so a dispatcher can see at a
     // glance which part of the route arrived late out of a dead zone.
-    instance.addLayer({
+    addLayer({
       id: 'backfill-line',
       type: 'line',
       source: 'backfill',
@@ -57,7 +64,7 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
       paint: { 'line-color': c.DELAYED, 'line-width': 4, 'line-dasharray': [2, 1] },
     });
 
-    instance.addLayer({
+    addLayer({
       id: 'current-dot',
       type: 'circle',
       source: 'current',
@@ -115,14 +122,19 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
     if (!instance || !ready) return;
     setReady(false);
     instance.setStyle(mapStyleFor(resolved));
-    // See FleetMap: styledata fires repeatedly and the first one is too early.
-    const onStyle = () => {
-      if (!instance.isStyleLoaded()) return;
-      instance.off('styledata', onStyle);
+    /*
+     * See FleetMap for the full account. In short: setStyle with a URL fetches
+     * before it swaps, so until the response lands map.style is still the old
+     * style and isStyleLoaded() answers true about that one. A styledata fired
+     * in that window ran this handler against the style on its way out, and the
+     * route and the driver marker went with it when the real one arrived.
+     *
+     * style.load fires from Style._load, once, for the style actually installed.
+     */
+    instance.once('style.load', () => {
       installLayers(instance);
       setReady(true);
-    };
-    instance.on('styledata', onStyle);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved]);
 

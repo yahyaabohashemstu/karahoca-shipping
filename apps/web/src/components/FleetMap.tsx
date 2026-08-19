@@ -240,14 +240,32 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
    * rebuilt on each style load, or switching theme silently empties the map.
    */
   const installLayers = useCallback((instance: MapLibreMap) => {
-    if (instance.getSource('trucks')) return;
+    /*
+     * Idempotent per item, not all-or-nothing.
+     *
+     * This used to open with `if (instance.getSource('trucks')) return`, which
+     * treats one surviving source as proof that everything else survived too.
+     * It does not: the custom vehicle layer is a separate object with its own
+     * guard further down, so any state where the source outlived the layer —
+     * which is exactly what a half-swapped style looks like — skipped the
+     * reinstall entirely and left the map with no vehicles on it.
+     *
+     * Guarding each add instead means calling this twice is free and calling it
+     * against a partially populated style repairs the gap.
+     */
+    const addSource = (id: string, spec: maplibregl.SourceSpecification) => {
+      if (!instance.getSource(id)) addSource(id, spec);
+    };
+    const addLayer = (spec: maplibregl.LayerSpecification | maplibregl.CustomLayerInterface) => {
+      if (!instance.getLayer(spec.id)) addLayer(spec);
+    };
     const c = mapColors();
 
-    instance.addSource('trucks', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    instance.addSource('destinations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    addSource('trucks', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    addSource('destinations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
 
     // Destination pins sit under the trucks so a truck never hides itself.
-    instance.addLayer({
+    addLayer({
       id: 'destination-pins',
       type: 'circle',
       source: 'destinations',
@@ -261,7 +279,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     });
 
     // Accuracy halo: honest about how sure we are of a position.
-    instance.addLayer({
+    addLayer({
       id: 'truck-accuracy',
       type: 'circle',
       source: 'trucks',
@@ -276,7 +294,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       },
     });
 
-    instance.addLayer({
+    addLayer({
       id: 'truck-halo',
       type: 'circle',
       source: 'trucks',
@@ -308,7 +326,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       TRUCK_3D_MIN_ZOOM + 1.5, far,
     ];
 
-    instance.addLayer({
+    addLayer({
       id: 'truck-dot',
       type: 'circle',
       source: 'trucks',
@@ -331,9 +349,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
      * draws on top — a 3D model that covers its own registration number is
      * worse than no model.
      */
-    if (truckLayer.current && !instance.getLayer(truckLayer.current.id)) {
-      instance.addLayer(truckLayer.current);
-    }
+    if (truckLayer.current) addLayer(truckLayer.current);
 
     /*
      * text-font IS MANDATORY HERE, and leaving it out is what hid every truck.
@@ -359,7 +375,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
 
     // Heading arrow, only when the truck is actually moving — a rotating arrow
     // on a parked vehicle is noise that reads as movement.
-    instance.addLayer({
+    addLayer({
       id: 'truck-heading',
       type: 'symbol',
       source: 'trucks',
@@ -383,7 +399,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       },
     });
 
-    instance.addLayer({
+    addLayer({
       id: 'truck-label',
       type: 'symbol',
       source: 'trucks',
@@ -678,21 +694,43 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     setReady(false);
     instance.setStyle(wanted);
     /*
-     * NOT once('styledata'). MapLibre emits styledata several times while a
-     * style loads, and the first one arrives before the style is actually in
-     * place. Sources added at that moment attach to a transient style and end
-     * up with no worker-side tile index: the source holds the features, the
-     * layers report visible, and nothing is ever painted.
+     * 'style.load', not 'styledata' — and isStyleLoaded() cannot stand in for
+     * it. This is the bug that made a truck vanish on every theme toggle and
+     * stay vanished until the page was reloaded.
      *
-     * isStyleLoaded() is the only reliable "the swap is complete" signal.
+     * setStyle with a URL fetches the style JSON and only swaps it in when the
+     * response lands. Until then map.style is still the OLD style, and
+     * isStyleLoaded() — which is just style.loaded() — answers true about it.
+     * Meanwhile the effect below this one re-runs in the same commit, still
+     * holding ready === true from the render that is being replaced, and calls
+     * setPaintProperty and installSky on that old style. Style.update() then
+     * fires styledata on the next frame:
+     *
+     *     update() { if (!this._loaded) return; ... if (changed) fire('data', {dataType:'style'}) }
+     *
+     * So a styledata arrived, isStyleLoaded() said true, and the handler ran
+     * against the style that was on its way out: it unsubscribed itself, called
+     * installLayers — which returned immediately because the doomed 'trucks'
+     * source was still there — and set ready back to true. When the real style
+     * finally arrived it discarded every source and layer the application had
+     * added, and nothing was left listening to put them back. Both the 3D model
+     * and the flat dot went with it, the dot because it is faded to zero at
+     * zoom whenever the model is on, so the vehicle disappeared completely.
+     *
+     * style.load is fired from Style._load, which runs once per style and only
+     * for the one that has actually been installed.
      */
-    const onStyle = () => {
-      if (!instance.isStyleLoaded()) return;
-      instance.off('styledata', onStyle);
+    const onStyleLoad = () => {
       installLayers(instance);
       setReady(true);
     };
-    instance.on('styledata', onStyle);
+    instance.once('style.load', onStyleLoad);
+    /*
+     * No cleanup. This effect re-runs the moment setReady(false) lands, and a
+     * cleanup would tear the listener down before the style it is waiting for
+     * has arrived — reintroducing the same silence by a different route. The
+     * listener is one-shot, and map.remove() on unmount takes any stray with it.
+     */
   }, [resolved, ready, installLayers]);
 
   // ---- The third dimension ---------------------------------------------------
