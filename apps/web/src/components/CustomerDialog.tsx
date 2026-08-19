@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Customer } from '@/lib/api';
@@ -12,23 +12,34 @@ import { useToast } from './ui/Toast';
 import { COUNTRY_OPTIONS } from '@/lib/countries';
 
 /**
- * Create a customer without leaving whatever you were doing.
+ * Add or correct a consignee, without leaving whatever you were doing.
  *
- * This is a dialog rather than a page because the moment a dispatcher needs it
- * is halfway through an order form — and sending them to a separate screen
- * means abandoning a half-filled one.
+ * A dialog rather than a page because the moment a dispatcher needs it is
+ * halfway through an order form, and sending them to a separate screen means
+ * abandoning a half-filled one.
+ *
+ * It gained an edit mode for a reason worth recording. The default delivery
+ * point was built, the PATCH endpoint was built, and neither could ever reach a
+ * consignee who already existed — every customer in production predated the
+ * picker, so the feature applied to nobody currently shipping. Create-only is
+ * also why all three of them are still filed under Turkey, and therefore sent a
+ * Turkish tracking page.
  */
 export function CustomerDialog({
   open,
   onClose,
   onCreated,
+  customer,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated?: (c: Customer) => void;
+  /** Present to edit that consignee; absent to add one. */
+  customer?: Customer | null;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const editing = Boolean(customer);
 
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -46,72 +57,116 @@ export function CustomerDialog({
    */
   const [location, setLocation] = useState<PickedLocation | null>(null);
 
-  function reset() {
-    setCode('');
-    setName('');
-    setCity('');
-    setCountryCode('TR');
-    setContactName('');
-    setContactPhone('');
-    setLocation(null);
-    create.reset();
-  }
-
-
-  const create = useMutation({
-    mutationFn: () =>
-      api.createCustomer({
-        code: code.trim(),
+  const save = useMutation({
+    mutationFn: () => {
+      const common = {
         name: name.trim(),
         city: city.trim() || undefined,
         contactName: contactName.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
+        countryCode,
+      };
+
+      if (customer) {
+        /*
+         * null, not undefined, when the point was removed.
+         *
+         * The PATCH endpoint treats an absent field as "leave it alone" and an
+         * explicit null as "clear it", which is the only way a dispatcher who
+         * finds the pin on the wrong warehouse can take it off. Sending
+         * undefined would silently keep a confidently wrong arrival radius in
+         * place.
+         */
+        return api.updateCustomer(customer.id, {
+          ...common,
+          lat: location ? location.lat : null,
+          lon: location ? location.lon : null,
+          defaultRadiusM: location ? location.radiusM : null,
+          addressLine: location?.label ?? undefined,
+        });
+      }
+
+      return api.createCustomer({
+        ...common,
+        code: code.trim(),
         lat: location?.lat,
         lon: location?.lon,
         addressLine: location?.label ?? undefined,
         defaultRadiusM: location?.radiusM,
-        countryCode,
-      }),
+      });
+    },
     onSuccess: (c) => {
       qc.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Müşteri eklendi', c.name);
-      reset();
-      onCreated?.(c);
+      // The order form inherits a consignee's point, so a corrected customer
+      // has to invalidate orders too — otherwise a form already on screen keeps
+      // the old one.
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      toast.success(editing ? 'Müşteri güncellendi' : 'Müşteri eklendi', c.name);
+      onClose();
+      if (!editing) onCreated?.(c);
     },
-    onError: (e) => toast.error('Müşteri eklenemedi', (e as Error).message),
+    onError: (e) =>
+      toast.error(editing ? 'Güncellenemedi' : 'Müşteri eklenemedi', (e as Error).message),
   });
 
+  /*
+   * Seeded when the dialog opens, not on every render.
+   *
+   * Modal keeps its children mounted — it drives a native <dialog> — so this
+   * component and its map exist from the moment the page loads. Seeding on
+   * `open` is what makes "edit" show the consignee rather than a blank form,
+   * and keying on the id as well means opening one customer, closing, and
+   * opening another does not show the first one's details.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setCode(customer?.code ?? '');
+    setName(customer?.name ?? '');
+    setCity(customer?.city ?? '');
+    setCountryCode(customer?.countryCode ?? 'TR');
+    setContactName(customer?.contactName ?? '');
+    setContactPhone(customer?.contactPhone ?? '');
+    setLocation(
+      customer && customer.lat !== null && customer.lon !== null
+        ? {
+            lat: customer.lat,
+            lon: customer.lon,
+            label: customer.addressLine ?? customer.name,
+            radiusM: customer.defaultRadiusM ?? 300,
+          }
+        : null,
+    );
+    save.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, customer?.id]);
+
   // The picker cannot produce an invalid coordinate — there is no text to
-  // mistype — so validity is back to the two fields that are actually required.
-  const valid = code.trim().length >= 2 && name.trim().length >= 2;
+  // mistype — so validity is the two fields that are actually required. In edit
+  // mode the code is fixed, so only the name can fail.
+  const valid = name.trim().length >= 2 && (editing || code.trim().length >= 2);
 
   return (
     <Modal
       open={open}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
-      title="Yeni müşteri"
-      description="Sevkiyatın teslim edileceği taraf"
+      onClose={onClose}
+      title={editing ? 'Müşteriyi düzenle' : 'Yeni müşteri'}
+      description={
+        editing
+          ? 'Teslim noktası ve ülke, alıcının takip sayfasını doğrudan etkiler'
+          : 'Sevkiyatın teslim edileceği taraf'
+      }
       footer={
         <>
-          <Button
-            onClick={() => {
-              reset();
-              onClose();
-            }}
-            disabled={create.isPending}
-          >
+          <Button onClick={onClose} disabled={save.isPending}>
             Vazgeç
           </Button>
           <Button
             variant="primary"
-            loading={create.isPending}
+            loading={save.isPending}
             disabled={!valid}
-            onClick={() => create.mutate()}
+            onClick={() => save.mutate()}
           >
-            Ekle
+            {editing ? 'Kaydet' : 'Ekle'}
           </Button>
         </>
       }
@@ -120,11 +175,15 @@ export function CustomerDialog({
         <div className="grid grid-cols-[8rem_1fr] gap-3">
           <Input
             label="Kod"
-            required
+            required={!editing}
             value={code}
             onChange={(e) => setCode(e.target.value.toLocaleUpperCase('tr'))}
             placeholder="MGZ-01"
             numeric
+            /* The ERP key, and what every order is filed under. Changing it
+               would not rename a customer, it would create a second one. */
+            disabled={editing}
+            hint={editing ? 'Kod değiştirilemez' : undefined}
           />
           <Input
             label="Ünvan"
@@ -136,7 +195,8 @@ export function CustomerDialog({
         </div>
         <div className="grid grid-cols-2 gap-3">
           {/* A select, not free text. Typed per shipment, the same firm ends up
-              filed under DE, DEU and Almanya, and no export report ever adds up. */}
+              filed under DE, DEU and Almanya and no export report adds up. It
+              also decides the language of the consignee's tracking page. */}
           <Select label="Ülke" required value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
             {COUNTRY_OPTIONS.map((c) => (
               <option key={c.code} value={c.code}>
@@ -146,6 +206,16 @@ export function CustomerDialog({
           </Select>
           <Input label="Şehir" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Manisa" />
         </div>
+
+        {/* Says what the country actually does, where it is chosen. Nobody
+            would guess that a dropdown labelled "Ülke" decides whether a
+            consignee in Erbil can read the page they are sent. */}
+        {(countryCode === 'IQ' || countryCode === 'SY') && (
+          <p className="rounded bg-surface-2 px-3 py-2 text-2xs text-ink-2 ring-1 ring-line">
+            Bu ülke seçiliyken alıcının takip sayfası <strong>Arapça</strong> açılır.
+          </p>
+        )}
+
         <div>
           <p className="mb-2 text-sm font-medium text-ink">Varsayılan teslim noktası</p>
           <LocationPicker
@@ -173,8 +243,12 @@ export function CustomerDialog({
           />
         </div>
 
-        {create.isError && (
-          <ErrorState compact title="Eklenemedi" message={(create.error as Error).message} />
+        {save.isError && (
+          <ErrorState
+            compact
+            title={editing ? 'Kaydedilemedi' : 'Eklenemedi'}
+            message={(save.error as Error).message}
+          />
         )}
       </div>
     </Modal>

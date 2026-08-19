@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Customer } from '@/lib/api';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import { CustomerDialog } from '@/components/CustomerDialog';
 import { countryLabel, isExport } from '@/lib/countries';
@@ -28,6 +28,14 @@ export default function CustomersPage() {
   const authed = useRequireAuth();
   const [search, setSearch] = useState('');
   const [dialog, setDialog] = useState(false);
+  /*
+   * Which consignee the dialog is showing. Null is "add a new one".
+   *
+   * Held beside `dialog` rather than derived from it so the dialog keeps
+   * rendering the right customer while it animates closed — clearing this on
+   * close would blank every field for the length of the transition.
+   */
+  const [editing, setEditing] = useState<Customer | null>(null);
 
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ['customers'],
@@ -56,7 +64,7 @@ export default function CustomersPage() {
         title="Müşteriler"
         subtitle="Sevkiyatların teslim edildiği taraflar"
         actions={
-          <Button variant="primary" onClick={() => setDialog(true)}>
+          <Button variant="primary" onClick={() => { setEditing(null); setDialog(true); }}>
             + Yeni müşteri
           </Button>
         }
@@ -83,6 +91,7 @@ export default function CustomersPage() {
                 <TH>Yetkili</TH>
                 <TH>Telefon</TH>
                 <TH>Konum</TH>
+                <TH></TH>
               </TR>
             </THead>
             <tbody>
@@ -108,7 +117,7 @@ export default function CustomersPage() {
                         : 'Sipariş oluşturabilmek için önce en az bir müşteri tanımlamalısınız.'
                     }
                     action={
-                      <Button variant="primary" size="sm" onClick={() => setDialog(true)}>
+                      <Button variant="primary" size="sm" onClick={() => { setEditing(null); setDialog(true); }}>
                         Müşteri ekle
                       </Button>
                     }
@@ -157,6 +166,23 @@ export default function CustomersPage() {
                         <Badge tone="warn">Koordinat yok</Badge>
                       )}
                     </TD>
+                    <TD>
+                      {/*
+                        The row already said "Koordinat yok" and offered no way
+                        to fix it, which is how three consignees out of three
+                        ended up with no delivery point: the problem was
+                        visible and unactionable in the same place.
+                      */}
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setEditing(c);
+                          setDialog(true);
+                        }}
+                      >
+                        Düzenle
+                      </Button>
+                    </TD>
                   </TR>
                 ))
               )}
@@ -165,7 +191,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <CustomerDialog open={dialog} onClose={() => setDialog(false)} />
+      <CustomerDialog open={dialog} onClose={() => setDialog(false)} customer={editing} />
     </AppShell>
   );
 }

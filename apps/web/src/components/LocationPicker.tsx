@@ -73,6 +73,23 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
   const [ready, setReady] = useState(false);
   const { resolved, ready: themeReady } = useTheme();
 
+  /*
+   * Whether the camera has been put on the value at least once.
+   *
+   * The map is constructed with whatever `value` held at mount, and on the
+   * customer dialog that is always null — Modal uses a native <dialog> and
+   * keeps its children mounted, so the map exists (at 0x0, inside a closed
+   * dialog) long before anyone clicks "edit" and the consignee's saved point
+   * arrives as a prop. Without this, editing a customer in Erbil opens a map of
+   * Gaziantep at zoom 5.5 with the marker somewhere off the bottom of the
+   * screen, and the dispatcher concludes the point was never saved.
+   *
+   * Once only: after the first framing the viewport belongs to the person
+   * using it, and a map that re-centres every time the radius changes would be
+   * unusable.
+   */
+  const hasFramed = useRef(false);
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
   const [searching, setSearching] = useState(false);
@@ -207,6 +224,8 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
     });
 
     instance.on('click', (e) => {
+      // Already where the user is looking, so it needs no framing.
+      hasFramed.current = true;
       commit(e.lngLat.lat, e.lngLat.lng, null);
     });
     instance.getCanvas().style.cursor = 'crosshair';
@@ -238,9 +257,18 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
       marker.current = null;
       const source = instance.getSource('picker-radius') as maplibregl.GeoJSONSource | undefined;
       source?.setData({ type: 'FeatureCollection', features: [] });
+      // Cleared, so the next value is a fresh choice and deserves framing.
+      hasFramed.current = false;
       return;
     }
     place(instance, value.lat, value.lon, value.radiusM);
+
+    if (!hasFramed.current) {
+      hasFramed.current = true;
+      // jumpTo, not easeTo: this runs as a dialog is opening, and an animation
+      // competing with the open transition arrives late and looks like a fault.
+      instance.jumpTo({ center: [value.lon, value.lat], zoom: 14 });
+    }
   }, [value, ready, place]);
 
   // ---- search --------------------------------------------------------------
@@ -278,6 +306,9 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
   const choose = (p: Place) => {
     setQuery('');
     setResults([]);
+    // The ease below is the framing; claiming it here stops the effect jumping
+    // to the same place a frame later and cutting the animation short.
+    hasFramed.current = true;
     commit(p.lat, p.lon, p.label);
     map.current?.easeTo({ center: [p.lon, p.lat], zoom: 14, duration: 600 });
   };
@@ -288,6 +319,28 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
     onChange({ ...value, radiusM: parsedRadius });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedRadius]);
+
+  /*
+   * And the other direction: a radius supplied from outside.
+   *
+   * useState's initialiser runs once, at mount, and on the customer dialog the
+   * value at that moment is always null — Modal keeps its children mounted, so
+   * the map and this field exist long before anyone clicks "edit". The box
+   * therefore held the 300 m default while the consignee's saved 450 m sat in
+   * `value`, and the effect above then wrote 300 back over it. Opening the
+   * dialog and pressing save would have silently narrowed the arrival radius of
+   * every customer edited — a data loss with no error and no visible cause.
+   *
+   * Guarded against the effect above rather than merely mirroring: they run in
+   * the same commit, and syncing unconditionally would fight a half-typed
+   * number back to the stored one on every keystroke.
+   */
+  useEffect(() => {
+    if (!value) return;
+    if (parsedRadius === value.radiusM) return;
+    setRadiusText(String(value.radiusM));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value?.radiusM]);
 
   return (
     <div className="space-y-3">
