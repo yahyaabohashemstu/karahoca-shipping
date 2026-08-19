@@ -1,6 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    Data table
@@ -206,6 +207,7 @@ export function Pagination({
   offset: number;
   onOffset: (n: number) => void;
 }) {
+  const t = useT();
   if (total <= limit) return null;
   const from = offset + 1;
   const to = Math.min(offset + limit, total);
@@ -224,7 +226,7 @@ export function Pagination({
           onClick={() => onOffset(Math.max(0, offset - limit))}
           className="rounded px-2 py-1 hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
         >
-          ‹ Önceki
+          ‹ {t.common.previous}
         </button>
         <span className="kh-num px-2 tabular-nums">
           {page} / {pages}
@@ -235,7 +237,7 @@ export function Pagination({
           onClick={() => onOffset(offset + limit)}
           className="rounded px-2 py-1 hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
         >
-          Sonraki ›
+          {t.common.next} ›
         </button>
       </div>
     </div>

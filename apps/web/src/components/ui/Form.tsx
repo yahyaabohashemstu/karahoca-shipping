@@ -2,6 +2,7 @@
 
 import { forwardRef, useId } from 'react';
 import clsx from 'clsx';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    Form controls
@@ -185,7 +186,7 @@ export const Textarea = forwardRef<
 export function SearchInput({
   value,
   onValueChange,
-  placeholder = 'Ara…',
+  placeholder,
   className,
 }: {
   value: string;
@@ -193,6 +194,7 @@ export function SearchInput({
   placeholder?: string;
   className?: string;
 }) {
+  const t = useT();
   return (
     <div className={clsx('relative', className)}>
       <svg
@@ -208,14 +210,14 @@ export function SearchInput({
         type="search"
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t.common.search}
         className={clsx(CONTROL, 'h-8 pl-8 pr-2.5 text-base', '[&::-webkit-search-cancel-button]:hidden')}
       />
       {value && (
         <button
           type="button"
           onClick={() => onValueChange('')}
-          aria-label="Aramayı temizle"
+          aria-label={t.common.clearSearch}
           className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded text-ink-3 hover:bg-surface-3 hover:text-ink"
         >
           <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>

@@ -11,7 +11,8 @@ import { Input, Select } from './ui/Form';
 import { ErrorState } from './ui/Feedback';
 import { Modal } from './ui/Modal';
 import { useToast } from './ui/Toast';
-import { COUNTRY_OPTIONS } from '@/lib/countries';
+import { countryOptions } from '@/lib/countries';
+import { useI18n, useT } from '@/lib/i18n';
 
 /*
  * Loaded on demand, not with the page.
@@ -67,6 +68,7 @@ export function CustomerDialog({
   /** Present to edit that consignee; absent to add one. */
   customer?: Customer | null;
 }) {
+  const { locale } = useI18n();
   const qc = useQueryClient();
   const toast = useToast();
   const editing = Boolean(customer);
@@ -229,7 +231,7 @@ export function CustomerDialog({
               filed under DE, DEU and Almanya and no export report adds up. It
               also decides the language of the consignee's tracking page. */}
           <Select label="Ülke" required value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
-            {COUNTRY_OPTIONS.map((c) => (
+            {countryOptions(locale).map((c) => (
               <option key={c.code} value={c.code}>
                 {c.label}
               </option>

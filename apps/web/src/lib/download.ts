@@ -13,6 +13,7 @@
  */
 
 import { API_BASE, ApiError, refreshTokens, tokens } from './api';
+import { clientDictionary } from '@/lib/i18n';
 
 export interface DownloadResult {
   /**
@@ -51,7 +52,7 @@ export async function downloadAuthed(
   if (res.status === 401 && retry) {
     if (await refreshTokens()) return downloadAuthed(path, filename, false);
     if (typeof window !== 'undefined') window.location.href = '/login';
-    throw new ApiError(401, 'UNAUTHORIZED', 'Oturum süresi doldu.');
+    throw new ApiError(401, 'UNAUTHORIZED', clientDictionary().errors.sessionExpired);
   }
 
   if (!res.ok) {

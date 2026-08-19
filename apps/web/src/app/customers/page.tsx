@@ -21,10 +21,12 @@ import {
   TR,
   TRMessage,
 } from '@/components/ui';
+import { useI18n, useT } from '@/lib/i18n';
 
 const COLS = 7;
 
 export default function CustomersPage() {
+  const { locale } = useI18n();
   const authed = useRequireAuth();
   const [search, setSearch] = useState('');
   const [dialog, setDialog] = useState(false);
@@ -50,7 +52,7 @@ export default function CustomersPage() {
     const all = data ?? [];
     if (!q) return all;
     return all.filter((c) =>
-      [c.name, c.code, c.city, c.contactName, countryLabel(c.countryCode)].filter(Boolean).some((v) =>
+      [c.name, c.code, c.city, c.contactName, countryLabel(c.countryCode, locale)].filter(Boolean).some((v) =>
         String(v).toLocaleLowerCase('tr').includes(q),
       ),
     );
@@ -141,9 +143,9 @@ export default function CustomersPage() {
                       {/* An export shipment needs customs paperwork a domestic
                           one does not, so it is worth spotting in a list. */}
                       {isExport(c.countryCode) ? (
-                        <Badge tone="brand">{countryLabel(c.countryCode)}</Badge>
+                        <Badge tone="brand">{countryLabel(c.countryCode, locale)}</Badge>
                       ) : (
-                        <span className="text-ink-2">{countryLabel(c.countryCode)}</span>
+                        <span className="text-ink-2">{countryLabel(c.countryCode, locale)}</span>
                       )}
                     </TD>
                     <TD muted>{c.city ?? '—'}</TD>

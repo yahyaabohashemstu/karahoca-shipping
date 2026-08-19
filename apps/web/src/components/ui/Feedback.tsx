@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import { Button } from './Button';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    The three states every data surface must distinguish
@@ -25,7 +26,7 @@ export function Skeleton({ className }: { className?: string }) {
 export function SkeletonList({ rows = 6, className }: { rows?: number; className?: string }) {
   return (
     <div className={clsx('divide-y divide-line', className)} aria-busy role="status">
-      <span className="sr-only">Yükleniyor…</span>
+      <span className="sr-only">{useT().common.loading}</span>
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex items-center gap-3 px-4 py-3">
           <Skeleton className="h-2 w-2 rounded-full" />
@@ -77,7 +78,7 @@ export function EmptyState({
  * oluştu" tells the person on the phone to support absolutely nothing.
  */
 export function ErrorState({
-  title = 'Veri alınamadı',
+  title,
   message,
   onRetry,
   retrying,
@@ -91,6 +92,7 @@ export function ErrorState({
   className?: string;
   compact?: boolean;
 }) {
+  const t = useT();
   return (
     <div
       role="alert"
@@ -106,8 +108,8 @@ export function ErrorState({
         <circle cx="8" cy="11.25" r="0.85" fill="currentColor" />
       </svg>
       <div className="min-w-0 flex-1">
-        <p className="text-base font-medium text-danger">{title}</p>
-        {message && <p className="mt-0.5 break-words text-sm text-danger/90">{message}</p>}
+        <p className="text-base font-medium text-danger">{title ?? t.common.loadFailed}</p>
+        {message && <p className="mt-0.5 break-words text-sm text-danger/90">{message ?? t.common.staleData}</p>}
         {onRetry && (
           <Button
             size="sm"
@@ -116,7 +118,7 @@ export function ErrorState({
             onClick={onRetry}
             className="mt-2"
           >
-            Yeniden dene
+            {t.common.retry}
           </Button>
         )}
       </div>
@@ -130,7 +132,7 @@ export function ErrorState({
  * Distinct from ErrorState: there IS data, it is simply old.
  */
 export function StaleBanner({
-  message = 'Bağlantı kesildi — gösterilen bilgiler eski olabilir.',
+  message,
   onRetry,
   className,
 }: {
@@ -138,6 +140,7 @@ export function StaleBanner({
   onRetry?: () => void;
   className?: string;
 }) {
+  const t = useT();
   return (
     <div
       role="status"
@@ -151,7 +154,7 @@ export function StaleBanner({
       <span className="flex-1">{message}</span>
       {onRetry && (
         <button onClick={onRetry} className="shrink-0 font-medium underline underline-offset-2">
-          Yenile
+          {t.common.refresh}
         </button>
       )}
     </div>
@@ -167,6 +170,7 @@ export function StaleBanner({
  * this feed live or frozen?" matters most.
  */
 export function ConnectionPill({ connected, className }: { connected: boolean; className?: string }) {
+  const t = useT();
   return (
     <span
       aria-live="polite"
@@ -182,7 +186,7 @@ export function ConnectionPill({ connected, className }: { connected: boolean; c
         className={clsx('h-1.5 w-1.5 rounded-full bg-current', connected && 'kh-pulse')}
         aria-hidden
       />
-      {connected ? 'Canlı' : 'Bağlantı yok'}
+      {connected ? t.common.live : t.common.offline}
     </span>
   );
 }

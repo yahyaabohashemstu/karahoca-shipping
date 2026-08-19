@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, tokens } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Form';
 import { ErrorState } from '@/components/ui/Feedback';
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export default function LoginPage() {
       setError(
         err instanceof Error && err.message
           ? err.message
-          : 'Giriş başarısız. E-posta ve parolanızı kontrol edin.',
+          : t.login.failedBody,
       );
       setBusy(false);
     }
@@ -60,15 +62,13 @@ export default function LoginPage() {
       >
         <div className="mb-6">
           <div className="text-2xs font-bold uppercase tracking-[0.22em] text-brand">KaraHoca</div>
-          <h1 className="mt-1.5 text-lg font-semibold tracking-tight">Sevkiyat Takip Merkezi</h1>
-          <p className="mt-1 text-sm text-ink-2">
-            Üçüncü taraf nakliye araçlarının canlı takibi
-          </p>
+          <h1 className="mt-1.5 text-lg font-semibold tracking-tight">{t.login.heading}</h1>
+          <p className="mt-1 text-sm text-ink-2">{t.login.tagline}</p>
         </div>
 
         <div className="space-y-3.5">
           <Input
-            label="E-posta"
+            label={t.login.email}
             id="email"
             type="email"
             autoComplete="username"
@@ -79,7 +79,7 @@ export default function LoginPage() {
             className="h-10"
           />
           <Input
-            label="Parola"
+            label={t.login.password}
             id="password"
             type="password"
             autoComplete="current-password"
@@ -90,10 +90,12 @@ export default function LoginPage() {
           />
         </div>
 
-        {error && <ErrorState className="mt-4" title="Giriş yapılamadı" message={error} compact />}
+        {error && (
+          <ErrorState className="mt-4" title={t.login.failedTitle} message={error} compact />
+        )}
 
         <Button type="submit" variant="primary" size="lg" block loading={busy} className="mt-5">
-          {busy ? 'Giriş yapılıyor…' : 'Giriş yap'}
+          {busy ? t.login.submitting : t.login.submit}
         </Button>
       </form>
     </div>

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { serverLocale } from '@/lib/i18n/server';
 
 /*
  * default carries no suffix; template does.
@@ -9,9 +10,9 @@ import type { Metadata } from 'next';
  * string replaces the parent's template for the whole subtree and left
  * /orders/new with no suffix at all.
  */
-export const metadata: Metadata = {
-  title: { default: 'Siparişler', template: '%s — KaraHoca' },
-};
+export const generateMetadata = async (): Promise<Metadata> => ({
+  title: { default: (await serverLocale()).t.nav.orders, template: '%s — KaraHoca' },
+});
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return children;

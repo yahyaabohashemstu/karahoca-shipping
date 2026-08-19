@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { disconnectRealtime } from '@/lib/useRealtime';
 import { tokens } from '@/lib/api';
+import { LOCALES, LOCALE_NAME, useI18n, useT, type Dictionary } from '@/lib/i18n';
 import { useTheme } from '@/lib/theme';
 import { IconButton } from './ui/Button';
 import { AlertCentre } from './AlertCentre';
@@ -23,13 +24,18 @@ import { DiagnosticsLog } from './DiagnosticsLog';
    the navigation is plumbing.
    ========================================================================== */
 
-const NAV = [
-  { href: '/', label: 'Canlı harita', exact: true },
-  { href: '/sessions', label: 'Oturumlar' },
-  { href: '/orders', label: 'Siparişler' },
-  { href: '/customers', label: 'Müşteriler' },
-  { href: '/carriers', label: 'Nakliyeciler' },
-  { href: '/performance', label: 'Performans' },
+/*
+ * Routing only. The labels live in the dictionary and are looked up by `key`,
+ * because a module-level array is evaluated once at import and cannot see the
+ * language — a label written here would be Turkish for every reader, for ever.
+ */
+const NAV: Array<{ href: string; key: keyof Dictionary['nav']; exact?: boolean }> = [
+  { href: '/', key: 'map', exact: true },
+  { href: '/sessions', key: 'sessions' },
+  { href: '/orders', key: 'orders' },
+  { href: '/customers', key: 'customers' },
+  { href: '/carriers', key: 'carriers' },
+  { href: '/performance', key: 'performance' },
 ];
 
 export function AppShell({
@@ -54,17 +60,18 @@ export function AppShell({
 
 function TopBar({ right }: { right?: React.ReactNode }) {
   const pathname = usePathname();
+  const t = useT();
 
   return (
     <header className="flex h-11 shrink-0 items-center gap-1 border-b border-line bg-surface px-3">
       <Link
         href="/"
-        className="mr-3 flex items-baseline gap-2 rounded px-1 py-0.5"
-        aria-label="KaraHoca Sevkiyat Takip Merkezi"
+        className="me-3 flex items-baseline gap-2 rounded px-1 py-0.5"
+        aria-label={t.shell.brandAria}
       >
         <span className="text-sm font-bold uppercase tracking-[0.18em] text-brand">KaraHoca</span>
         <span className="hidden text-2xs uppercase tracking-wider text-ink-3 lg:inline">
-          Sevkiyat Takip
+          {t.shell.brandSub}
         </span>
       </Link>
 
@@ -85,7 +92,7 @@ function TopBar({ right }: { right?: React.ReactNode }) {
                   : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
               )}
             >
-              {item.label}
+              {t.nav[item.key]}
               {/* An underline, not a filled pill: the active item should read as
                   a tab, and a pill competes with the status badges below it. */}
               {active && (
@@ -96,7 +103,7 @@ function TopBar({ right }: { right?: React.ReactNode }) {
         })}
       </nav>
 
-      <div className="flex shrink-0 items-center gap-2 pl-2">
+      <div className="flex shrink-0 items-center gap-2 ps-2">
         {right}
         {/*
           The driver app's install page. Reachable from every screen because the
@@ -110,10 +117,10 @@ function TopBar({ right }: { right?: React.ReactNode }) {
           href="/app"
           target="_blank"
           rel="noreferrer"
-          title="Sürücü uygulamasının kurulum sayfası — track.karahoca.com/app"
+          title={t.shell.driverAppTitle}
           className="hidden whitespace-nowrap rounded px-2 py-1.5 text-2xs uppercase tracking-wider text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink md:inline"
         >
-          Sürücü uygulaması
+          {t.shell.driverApp}
         </a>
         {/* The exception desk, on every screen. An alert that only reaches
             the dispatcher who already has that truck's page open reaches
@@ -121,6 +128,7 @@ function TopBar({ right }: { right?: React.ReactNode }) {
         <AlertCentre />
         {/* Renders nothing until a request actually fails. */}
         <DiagnosticsLog />
+        <LanguagePicker />
         <ThemeToggle />
         <SignOut />
       </div>
@@ -128,8 +136,45 @@ function TopBar({ right }: { right?: React.ReactNode }) {
   );
 }
 
+/**
+ * Language, in the languages themselves.
+ *
+ * A <select> rather than the icon buttons beside it, and for once that is the
+ * accessible choice as well as the cheap one: three options do not fit an icon,
+ * a native select is reachable by keyboard and screen reader without any of the
+ * focus management a custom menu needs, and on a phone the operating system
+ * renders it as a proper picker.
+ *
+ * Each option carries its own lang, so a browser lays "العربية" out
+ * right-to-left inside a left-to-right menu instead of mangling it, and a
+ * screen reader set to Turkish does not read the Arabic name as nonsense.
+ */
+function LanguagePicker() {
+  const { locale, setLocale } = useI18n();
+  const t = useT();
+
+  return (
+    <label className="relative">
+      <span className="sr-only">{t.shell.language}</span>
+      <select
+        value={locale}
+        onChange={(event) => setLocale(event.target.value as (typeof LOCALES)[number])}
+        title={t.shell.language}
+        className="h-8 cursor-pointer rounded border border-line bg-surface px-1.5 text-2xs text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        {LOCALES.map((option) => (
+          <option key={option} value={option} lang={option}>
+            {LOCALE_NAME[option]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function ThemeToggle() {
   const { pref, resolved, setPref } = useTheme();
+  const t = useT();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -140,10 +185,12 @@ function ThemeToggle() {
   const next = pref === 'system' ? (resolved === 'dark' ? 'light' : 'dark') : pref === 'dark' ? 'light' : 'dark';
   const label =
     pref === 'system'
-      ? `Sistem teması (${resolved === 'dark' ? 'koyu' : 'açık'}) — değiştirmek için tıklayın`
+      ? t.shell.themeSystem(
+          resolved === 'dark' ? t.shell.themeResolvedDark : t.shell.themeResolvedLight,
+        )
       : pref === 'dark'
-        ? 'Koyu tema — açığa geç'
-        : 'Açık tema — koyuya geç';
+        ? t.shell.themeDark
+        : t.shell.themeLight;
 
   return (
     <IconButton
@@ -178,9 +225,10 @@ function ThemeToggle() {
 
 function SignOut() {
   const router = useRouter();
+  const t = useT();
   return (
     <IconButton
-      label="Oturumu kapat"
+      label={t.shell.signOut}
       size="sm"
       onClick={() => {
         // Kill the socket before clearing tokens: otherwise it keeps retrying

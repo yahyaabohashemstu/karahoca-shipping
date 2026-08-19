@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
+import { useT } from '@/lib/i18n';
 
 /**
  * Route-level error boundary.
@@ -21,6 +22,7 @@ export default function RouteError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useT();
   useEffect(() => {
     // The console is the only sink available; there is no error reporter on a
     // self-hosted single-box deployment.
@@ -43,11 +45,8 @@ export default function RouteError({
           </svg>
         </div>
 
-        <h1 className="text-md font-semibold text-ink">Bu ekran yüklenemedi</h1>
-        <p className="mt-1.5 text-base text-ink-2">
-          Beklenmeyen bir hata oluştu. Takip verileri sunucuda korunuyor — bu yalnızca
-          bu tarayıcı sekmesini etkiler.
-        </p>
+        <h1 className="text-md font-semibold text-ink">{t.errors.routeTitle}</h1>
+        <p className="mt-1.5 text-base text-ink-2">{t.errors.routeBody}</p>
 
         {error.message && (
           <pre className="kh-scroll mt-4 max-h-28 overflow-auto rounded bg-surface-2 px-3 py-2 text-left text-sm text-ink-2">
@@ -58,10 +57,10 @@ export default function RouteError({
 
         <div className="mt-5 flex justify-center gap-2">
           <Button variant="primary" onClick={reset}>
-            Yeniden dene
+            {t.common.retry}
           </Button>
           <Button variant="secondary" onClick={() => (window.location.href = '/')}>
-            Canlı haritaya dön
+            {t.errors.backToMap}
           </Button>
         </div>
       </div>

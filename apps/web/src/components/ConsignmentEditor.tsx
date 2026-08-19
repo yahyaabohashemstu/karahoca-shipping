@@ -6,6 +6,7 @@ import { api, type Customer } from '@/lib/api';
 import { Badge, Button, IconButton, Input, Select } from './ui';
 import { CustomerDialog } from './CustomerDialog';
 import { countryLabel, isExport } from '@/lib/countries';
+import { useI18n, useT } from '@/lib/i18n';
 
 /* =============================================================================
    Who the load is going to, and what is on the truck
@@ -61,6 +62,7 @@ export function ConsignmentEditor({
   onChange: (c: Consignment) => void;
   defaultCustomerId?: string;
 }) {
+  const { locale } = useI18n();
   const [dialog, setDialog] = useState(false);
 
   const customers = useQuery({
@@ -134,7 +136,7 @@ export function ConsignmentEditor({
         <div className="flex h-8 shrink-0 items-center">
           {selected ? (
             <Badge tone={isExport(selected.countryCode) ? 'brand' : 'neutral'}>
-              {countryLabel(selected.countryCode)}
+              {countryLabel(selected.countryCode, locale)}
             </Badge>
           ) : (
             <span className="text-sm text-ink-3">Ülke —</span>

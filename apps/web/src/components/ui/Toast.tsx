@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    Toasts
@@ -75,6 +76,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 }
 
 function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+  const t = useT();
   const tones = {
     success: 'bg-success-bg text-success ring-live-ring/40',
     error: 'bg-danger-bg text-danger ring-danger-ring',
@@ -115,7 +117,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       </div>
       <button
         onClick={onDismiss}
-        aria-label="Kapat"
+        aria-label={t.common.close}
         className="-mr-1 shrink-0 rounded p-1 opacity-60 transition-opacity hover:opacity-100"
       >
         <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>

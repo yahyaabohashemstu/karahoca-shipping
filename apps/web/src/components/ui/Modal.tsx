@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import { Button } from './Button';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    Modal
@@ -52,6 +53,7 @@ export function Modal({
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
 }) {
+  const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
   // createPortal needs a document, which does not exist during the server
   // render. Mounting first keeps this component usable from any page.
@@ -99,7 +101,7 @@ export function Modal({
       <div className="flex justify-end gap-2 border-t border-line bg-surface-2 px-5 py-3">
         {footer ?? (
           <Button variant="secondary" onClick={handleClose}>
-            Kapat
+            {t.common.close}
           </Button>
         )}
       </div>
@@ -120,8 +122,8 @@ export function ConfirmDialog({
   onConfirm,
   title,
   detail,
-  confirmLabel = 'Onayla',
-  cancelLabel = 'Vazgeç',
+  confirmLabel,
+  cancelLabel,
   tone = 'primary',
   loading,
   error,
@@ -137,6 +139,7 @@ export function ConfirmDialog({
   loading?: boolean;
   error?: string | null;
 }) {
+  const t = useT();
   return (
     <Modal
       open={open}
@@ -146,10 +149,10 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="secondary" onClick={onCancel} disabled={loading}>
-            {cancelLabel}
+            {cancelLabel ?? t.common.cancel}
           </Button>
           <Button variant={tone} onClick={onConfirm} loading={loading}>
-            {confirmLabel}
+            {confirmLabel ?? t.common.confirm}
           </Button>
         </>
       }

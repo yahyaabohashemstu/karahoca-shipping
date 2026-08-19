@@ -1,7 +1,7 @@
-import type { Metadata } from 'next';
+import { pageTitle } from '@/lib/i18n/server';
 
 // The page beside this is a client component and cannot export metadata.
-export const metadata: Metadata = { title: 'Giriş' };
+export const generateMetadata = pageTitle((t) => t.titles.login);
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return children;

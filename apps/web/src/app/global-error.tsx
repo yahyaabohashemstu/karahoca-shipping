@@ -1,5 +1,7 @@
 'use client';
 
+import { clientDictionary, clientLocale, dirOf } from '@/lib/i18n';
+
 /**
  * Last resort: a throw in the root layout itself, above every provider.
  *
@@ -7,6 +9,12 @@
  * fonts, Tailwind's generated classes, or any provider — all of them live
  * inside the tree that just failed. Everything here is inline styles on
  * purpose, and it must stay that way.
+ *
+ * The language comes from the cookie directly rather than from context, for the
+ * same reason: I18nProvider is one of the things that just failed. This is also
+ * the one screen where the root layout never ran, so lang and dir have to be
+ * set here by hand — and it is precisely the screen a reader most needs to be
+ * able to read.
  */
 export default function GlobalError({
   error,
@@ -15,8 +23,11 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const locale = clientLocale();
+  const t = clientDictionary();
+
   return (
-    <html lang="tr">
+    <html lang={locale} dir={dirOf(locale)}>
       <body
         style={{
           margin: 0,
@@ -42,13 +53,12 @@ export default function GlobalError({
           >
             KaraHoca
           </p>
-          <h1 style={{ margin: '12px 0 6px', fontSize: 18 }}>Uygulama başlatılamadı</h1>
+          <h1 style={{ margin: '12px 0 6px', fontSize: 18 }}>{t.errors.appTitle}</h1>
           <p style={{ margin: 0, fontSize: 14, color: '#54646b', lineHeight: 1.5 }}>
-            Takip verileri sunucuda güvende. Sayfayı yenilemeyi deneyin; sorun sürerse
-            sistem yöneticisine bildirin.
+            {t.errors.appBody}
           </p>
           {error.digest && (
-            <p style={{ marginTop: 12, fontSize: 12, color: '#85959c' }}>Hata kodu: {error.digest}</p>
+            <p style={{ marginTop: 12, fontSize: 12, color: '#85959c' }}>{t.errors.code}: {error.digest}</p>
           )}
           <button
             onClick={reset}
@@ -64,7 +74,7 @@ export default function GlobalError({
               cursor: 'pointer',
             }}
           >
-            Yeniden dene
+            {t.common.retry}
           </button>
         </div>
       </body>
