@@ -25,6 +25,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { useT } from '@/lib/i18n';
+import { upperIdentifier } from '@/lib/identifier';
 
 const COLS = 6;
 
@@ -354,7 +355,7 @@ function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }
             label={t.carriers.code}
             required
             value={code}
-            onChange={(e) => setCode(e.target.value.toLocaleUpperCase('tr'))}
+            onChange={(e) => setCode(upperIdentifier(e.target.value))}
             placeholder={t.carriers.codePlaceholder}
             numeric
           />
@@ -477,7 +478,7 @@ function VehicleOrDriverDialog({
               label={t.carriers.plate}
               required
               value={a}
-              onChange={(e) => setA(e.target.value.toLocaleUpperCase('tr'))}
+              onChange={(e) => setA(upperIdentifier(e.target.value))}
               placeholder={t.carriers.platePlaceholder}
               numeric
             />

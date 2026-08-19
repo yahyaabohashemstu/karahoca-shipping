@@ -29,6 +29,7 @@ import {
   type Consignment,
 } from '@/components/ConsignmentEditor';
 import { useFormat, useT } from '@/lib/i18n';
+import { upperIdentifier } from '@/lib/identifier';
 
 /**
  * Create a tracking session and print the hand-off.
@@ -228,7 +229,7 @@ export default function NewSessionPage() {
               <Input
                 label={t.sessionNew.plate}
                 value={vehiclePlate}
-                onChange={(e) => setVehiclePlate(e.target.value.toLocaleUpperCase('tr'))}
+                onChange={(e) => setVehiclePlate(upperIdentifier(e.target.value))}
                 placeholder={t.sessionNew.platePlaceholder}
                 numeric
               />

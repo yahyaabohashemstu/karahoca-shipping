@@ -13,6 +13,7 @@ import { Modal } from './ui/Modal';
 import { useToast } from './ui/Toast';
 import { countryOptions } from '@/lib/countries';
 import { interpolate, useI18n, useT } from '@/lib/i18n';
+import { upperIdentifier } from '@/lib/identifier';
 
 /*
  * Loaded on demand, not with the page.
@@ -211,7 +212,7 @@ export function CustomerDialog({
             label={t.customer.code}
             required={!editing}
             value={code}
-            onChange={(e) => setCode(e.target.value.toLocaleUpperCase('tr'))}
+            onChange={(e) => setCode(upperIdentifier(e.target.value))}
             placeholder={t.customer.codePlaceholder}
             numeric
             /* The ERP key, and what every order is filed under. Changing it
