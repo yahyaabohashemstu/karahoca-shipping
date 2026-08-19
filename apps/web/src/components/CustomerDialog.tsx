@@ -1,7 +1,9 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import { useEffect, useState } from 'react';
-import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
+import type { PickedLocation } from '@/components/LocationPicker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Customer } from '@/lib/api';
 import { Button } from './ui/Button';
@@ -10,6 +12,29 @@ import { ErrorState } from './ui/Feedback';
 import { Modal } from './ui/Modal';
 import { useToast } from './ui/Toast';
 import { COUNTRY_OPTIONS } from '@/lib/countries';
+
+/*
+ * Loaded on demand, not with the page.
+ *
+ * MapLibre is ~212 kB and this component is behind a dialog that most visits
+ * never open. Imported statically it landed in the first-load bundle of every
+ * screen that can add a consignee: measured, /customers went from ~150 kB to
+ * 361 kB and /orders/new to 362 kB, against ~150 kB for every other page.
+ *
+ * This is the same mistake, and the same fix, as SessionMap — see the note at
+ * the top of that file, which was written after /sessions/[id] reached 353 kB
+ * for exactly this reason.
+ */
+const LocationPicker = dynamic(
+  () => import('@/components/LocationPicker').then((m) => m.LocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 w-full animate-pulse rounded-md bg-surface-2 ring-1 ring-line" />
+    ),
+  },
+);
+
 
 /**
  * Add or correct a consignee, without leaving whatever you were doing.
