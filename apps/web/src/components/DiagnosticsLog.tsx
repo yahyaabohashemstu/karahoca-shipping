@@ -10,6 +10,7 @@ import {
 } from '@/lib/diagnostics';
 import { useToast } from './ui/Toast';
 import { Button, IconButton } from './ui/Button';
+import { useFormat, useT } from '@/lib/i18n';
 
 /*
  * The error log, in the top bar.
@@ -24,6 +25,8 @@ import { Button, IconButton } from './ui/Button';
  * usually grey is a permanent invitation to ignore it.
  */
 export function DiagnosticsLog() {
+  const t = useT();
+  const fmt = useFormat();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<DiagEntry[]>([]);
@@ -51,7 +54,7 @@ export function DiagnosticsLog() {
   return (
     <div className="relative">
       <IconButton
-        label={`Hata kaydı — ${entries.length} kayıt`}
+        label={t.diagnostics.button(String(entries.length))}
         size="sm"
         onClick={() => setOpen((v) => !v)}
       >
@@ -73,8 +76,8 @@ export function DiagnosticsLog() {
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute right-0 top-full z-40 mt-1 w-[30rem] max-w-[92vw] rounded-md border border-line bg-surface shadow-panel">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
-              <p className="text-sm font-medium">Hata kaydı</p>
-              <p className="text-2xs text-ink-3">son {entries.length} başarısız istek</p>
+              <p className="text-sm font-medium">{t.diagnostics.title}</p>
+              <p className="text-2xs text-ink-3">{t.diagnostics.recent(String(entries.length))}</p>
             </div>
 
             <div className="kh-scroll max-h-[22rem] overflow-y-auto">
@@ -82,14 +85,14 @@ export function DiagnosticsLog() {
                 <div key={`${e.at}-${i}`} className="border-b border-line/60 px-3 py-2 last:border-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="kh-num text-2xs text-ink-3">
-                      {new Date(e.at).toLocaleString('tr-TR')}
+                      {fmt.dateTime(e.at)}
                     </span>
                     <span
                       className={`kh-num text-2xs font-medium ${
                         e.status === 0 || e.status >= 500 ? 'text-danger' : 'text-warn-text'
                       }`}
                     >
-                      {e.status === 0 ? 'bağlantı yok' : `HTTP ${e.status}`} · {e.code}
+                      {e.status === 0 ? t.http.noConnection : `HTTP ${e.status}`} · {e.code}
                     </span>
                   </div>
                   <p className="mt-0.5 text-sm text-ink">{e.message}</p>
@@ -108,11 +111,11 @@ export function DiagnosticsLog() {
                 onClick={() => {
                   navigator.clipboard
                     ?.writeText(formatFailures(entries))
-                    .then(() => toast.success('Hata kaydı kopyalandı', 'Destek için gönderebilirsiniz.'))
-                    .catch(() => toast.error('Kopyalanamadı'));
+                    .then(() => toast.success(t.diagnostics.copied, t.diagnostics.copiedBody))
+                    .catch(() => toast.error(t.diagnostics.copyFailed));
                 }}
               >
-                Kaydı kopyala
+                {t.diagnostics.copy}
               </Button>
               <Button
                 size="sm"
@@ -122,7 +125,7 @@ export function DiagnosticsLog() {
                   setOpen(false);
                 }}
               >
-                Temizle
+                {t.diagnostics.clear}
               </Button>
             </div>
           </div>

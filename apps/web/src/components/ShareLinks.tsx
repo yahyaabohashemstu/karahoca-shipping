@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useToast } from './ui/Toast';
 import { Button } from './ui/Button';
+import { useFormat, useT } from '@/lib/i18n';
 
 /*
  * The consignee links on a session, and the ability to get one back.
@@ -39,6 +40,8 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
   orderNumber?: string | null;
   customerName?: string | null;
 }) {
+  const t = useT();
+  const fmt = useFormat();
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -51,18 +54,18 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
     mutationFn: () => api.createShareLink(sessionId, {}),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['share-links', sessionId] });
-      toast.success('Takip bağlantısı oluşturuldu', 'Alıcıya gönderebilirsiniz.');
+      toast.success(t.share.created, t.share.createdBody);
     },
-    onError: (e: Error) => toast.error('Bağlantı oluşturulamadı', e.message),
+    onError: (e: Error) => toast.error(t.share.createFailed, e.message),
   });
 
   const revoke = useMutation({
     mutationFn: (id: string) => api.revokeShareLink(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['share-links', sessionId] });
-      toast.success('Bağlantı iptal edildi', 'Bu bağlantı artık açılmıyor.');
+      toast.success(t.share.revoked, t.share.revokedBody);
     },
-    onError: (e: Error) => toast.error('İptal edilemedi', e.message),
+    onError: (e: Error) => toast.error(t.share.revokeFailed, e.message),
   });
 
   const rows = (links.data ?? []) as ShareLink[];
@@ -70,7 +73,7 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
   const dead = rows.filter((r) => !r.active);
 
   const send = (url: string) => {
-    const text = `${customerName ?? ''} — ${orderNumber ?? ''} sevkiyatınızı buradan canlı takip edebilirsiniz:\n${url}`;
+    const text = t.share.whatsappText(customerName ?? '', orderNumber ?? '', url);
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noreferrer');
   };
 
@@ -78,18 +81,18 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
     <section className="m-3 rounded-md border border-line bg-surface-2 p-3.5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
-          Alıcı takip bağlantısı
+          {t.share.heading}
         </p>
         <Button size="sm" variant="ghost" loading={mint.isPending} onClick={() => mint.mutate()}>
-          Yeni bağlantı
+          {t.share.create}
         </Button>
       </div>
 
-      {links.isLoading && <p className="mt-2 text-sm text-ink-3">Yükleniyor…</p>}
+      {links.isLoading && <p className="mt-2 text-sm text-ink-3">{t.common.loading}</p>}
 
       {!links.isLoading && rows.length === 0 && (
         <p className="mt-2 text-sm text-ink-3">
-          Bu sevkiyat için henüz bağlantı yok.
+          {t.share.none}
         </p>
       )}
 
@@ -100,39 +103,39 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
           ) : (
             /* Minted before 0010, or the key rotated. Nothing can recover it. */
             <p className="text-2xs text-ink-3">
-              Bu bağlantının adresi geri getirilemiyor. Yeni bir bağlantı oluşturun.
+              {t.share.unrecoverable}
             </p>
           )}
 
           <p className="mt-1.5 text-2xs text-ink-3">
             {l.viewCount > 0
-              ? `${l.viewCount} kez görüntülendi · son ${new Date(l.lastViewedAt!).toLocaleString('tr-TR')}`
+              ? t.share.viewed(String(l.viewCount), fmt.dateTime(l.lastViewedAt))
               : /* The useful negative: the agent has not looked, so they are
                    about to telephone. */
-                'Alıcı henüz açmadı'}
+                t.share.notOpened}
             {' · '}
-            {new Date(l.expiresAt).toLocaleDateString('tr-TR')} tarihine kadar geçerli
+            {t.share.validUntil(fmt.date(l.expiresAt))}
           </p>
 
           <div className="mt-2 flex flex-wrap gap-1.5">
             {l.url && (
               <>
                 <Button size="sm" variant="primary" onClick={() => send(l.url!)}>
-                  WhatsApp
+                  {t.share.whatsapp}
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => {
                     navigator.clipboard
                       ?.writeText(l.url!)
-                      .then(() => toast.success('Kopyalandı'))
-                      .catch(() => toast.error('Kopyalanamadı', 'Adresi elle seçip kopyalayın.'));
+                      .then(() => toast.success(t.share.copied))
+                      .catch(() => toast.error(t.share.copyFailed, t.share.copyFailedBody));
                   }}
                 >
-                  Kopyala
+                  {t.share.copy}
                 </Button>
                 <a href={l.url} target="_blank" rel="noreferrer">
-                  <Button size="sm" variant="ghost">Önizle</Button>
+                  <Button size="sm" variant="ghost">{t.share.preview}</Button>
                 </a>
               </>
             )}
@@ -143,7 +146,7 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
               loading={revoke.isPending}
               onClick={() => revoke.mutate(l.id)}
             >
-              İptal et
+              {t.share.revoke}
             </Button>
           </div>
         </div>
@@ -151,7 +154,7 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
 
       {dead.length > 0 && (
         <p className="mt-2.5 text-2xs text-ink-3">
-          {dead.length} kapalı bağlantı (iptal edilmiş veya süresi dolmuş)
+          {t.share.closed(String(dead.length))}
         </p>
       )}
     </section>

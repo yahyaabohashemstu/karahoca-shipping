@@ -12,7 +12,7 @@ import { ErrorState } from './ui/Feedback';
 import { Modal } from './ui/Modal';
 import { useToast } from './ui/Toast';
 import { countryOptions } from '@/lib/countries';
-import { useI18n, useT } from '@/lib/i18n';
+import { interpolate, useI18n, useT } from '@/lib/i18n';
 
 /*
  * Loaded on demand, not with the page.
@@ -69,6 +69,7 @@ export function CustomerDialog({
   customer?: Customer | null;
 }) {
   const { locale } = useI18n();
+  const t = useT();
   const qc = useQueryClient();
   const toast = useToast();
   const editing = Boolean(customer);
@@ -134,12 +135,12 @@ export function CustomerDialog({
       // has to invalidate orders too — otherwise a form already on screen keeps
       // the old one.
       qc.invalidateQueries({ queryKey: ['orders'] });
-      toast.success(editing ? 'Müşteri güncellendi' : 'Müşteri eklendi', c.name);
+      toast.success(editing ? t.customer.updated : t.customer.added, c.name);
       onClose();
       if (!editing) onCreated?.(c);
     },
     onError: (e) =>
-      toast.error(editing ? 'Güncellenemedi' : 'Müşteri eklenemedi', (e as Error).message),
+      toast.error(editing ? t.customer.updateFailed : t.customer.addFailed, (e as Error).message),
   });
 
   /*
@@ -182,16 +183,16 @@ export function CustomerDialog({
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? 'Müşteriyi düzenle' : 'Yeni müşteri'}
+      title={editing ? t.customer.editTitle : t.customer.newTitle}
       description={
         editing
-          ? 'Teslim noktası ve ülke, alıcının takip sayfasını doğrudan etkiler'
-          : 'Sevkiyatın teslim edileceği taraf'
+          ? t.customer.editDescription
+          : t.customer.newDescription
       }
       footer={
         <>
           <Button onClick={onClose} disabled={save.isPending}>
-            Vazgeç
+            {t.common.cancel}
           </Button>
           <Button
             variant="primary"
@@ -199,7 +200,7 @@ export function CustomerDialog({
             disabled={!valid}
             onClick={() => save.mutate()}
           >
-            {editing ? 'Kaydet' : 'Ekle'}
+            {editing ? t.common.save : t.common.add}
           </Button>
         </>
       }
@@ -207,37 +208,42 @@ export function CustomerDialog({
       <div className="space-y-3.5">
         <div className="grid grid-cols-[8rem_1fr] gap-3">
           <Input
-            label="Kod"
+            label={t.customer.code}
             required={!editing}
             value={code}
             onChange={(e) => setCode(e.target.value.toLocaleUpperCase('tr'))}
-            placeholder="MGZ-01"
+            placeholder={t.customer.codePlaceholder}
             numeric
             /* The ERP key, and what every order is filed under. Changing it
                would not rename a customer, it would create a second one. */
             disabled={editing}
-            hint={editing ? 'Kod değiştirilemez' : undefined}
+            hint={editing ? t.customer.codeFixed : undefined}
           />
           <Input
-            label="Ünvan"
+            label={t.customer.name}
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Örnek Market A.Ş."
+            placeholder={t.customer.namePlaceholder}
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
           {/* A select, not free text. Typed per shipment, the same firm ends up
               filed under DE, DEU and Almanya and no export report adds up. It
               also decides the language of the consignee's tracking page. */}
-          <Select label="Ülke" required value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
+          <Select label={t.customer.country} required value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
             {countryOptions(locale).map((c) => (
               <option key={c.code} value={c.code}>
                 {c.label}
               </option>
             ))}
           </Select>
-          <Input label="Şehir" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Manisa" />
+          <Input
+              label={t.customer.city}
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder={t.customer.cityPlaceholder}
+            />
         </div>
 
         {/* Says what the country actually does, where it is chosen. Nobody
@@ -245,12 +251,12 @@ export function CustomerDialog({
             consignee in Erbil can read the page they are sent. */}
         {(countryCode === 'IQ' || countryCode === 'SY') && (
           <p className="rounded bg-surface-2 px-3 py-2 text-2xs text-ink-2 ring-1 ring-line">
-            Bu ülke seçiliyken alıcının takip sayfası <strong>Arapça</strong> açılır.
+            {interpolate(t.customer.arabicNote, [<strong key="lang">{t.customer.arabicNoteWord}</strong>])}
           </p>
         )}
 
         <div>
-          <p className="mb-2 text-sm font-medium text-ink">Varsayılan teslim noktası</p>
+          <p className="mb-2 text-sm font-medium text-ink">{t.customer.defaultDestination}</p>
           <LocationPicker
             value={location}
             onChange={setLocation}
@@ -262,12 +268,12 @@ export function CustomerDialog({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Yetkili"
+            label={t.customer.contact}
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
           />
           <Input
-            label="Telefon"
+            label={t.customer.phone}
             type="tel"
             value={contactPhone}
             onChange={(e) => setContactPhone(e.target.value)}

@@ -302,10 +302,17 @@ export class QualityGovernor {
   }
 }
 
-/** Turkish, for the notice over the map. */
-export const QUALITY_LABEL: Record<Quality, string> = {
-  [Quality.Flat]: 'Düz harita',
-  [Quality.Vehicles]: '3B araçlar',
-  [Quality.Buildings]: '3B araçlar ve binalar',
-  [Quality.Terrain]: '3B araçlar, binalar ve arazi',
+/**
+ * Which dictionary entry names each tier, for the notice over the map.
+ *
+ * Keys rather than text. This is a module-level constant evaluated once at
+ * import, so any Turkish written here would be Turkish for every reader for the
+ * life of the process — the text itself lives under `map.quality` in the
+ * dictionary, and FleetMap looks it up when it renders.
+ */
+export const QUALITY_TIER: Record<Quality, 'flat' | 'vehicles' | 'buildings' | 'terrain'> = {
+  [Quality.Flat]: 'flat',
+  [Quality.Vehicles]: 'vehicles',
+  [Quality.Buildings]: 'buildings',
+  [Quality.Terrain]: 'terrain',
 };

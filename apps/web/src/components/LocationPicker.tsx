@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { mapColors, mapStyleFor } from '@/lib/mapStyle';
 import { useTheme } from '@/lib/theme';
 import { Input } from '@/components/ui/Form';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    Choosing a place, without leaving the application
@@ -68,6 +69,7 @@ const MIN_RADIUS = 25;
 const MAX_RADIUS = 20_000;
 
 export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Props) {
+  const t = useT();
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const marker = useRef<Marker | null>(null);
@@ -347,17 +349,17 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
     <div className="space-y-3">
       <div className="relative">
         <Input
-          label="Yer ara"
+          label={t.picker.search}
           value={query}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
-          placeholder="Erbil sanayi, Habur, Bab al-Hawa…"
-          hint="Adı yazın ve seçin, ya da doğrudan haritaya tıklayın."
+          placeholder={t.picker.searchPlaceholder}
+          hint={t.picker.searchHint}
           autoComplete="off"
         />
         {(results.length > 0 || searching) && (
           <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md bg-surface shadow-lg ring-1 ring-line">
             {searching && results.length === 0 && (
-              <li className="px-3 py-2 text-sm text-ink-2">Aranıyor…</li>
+              <li className="px-3 py-2 text-sm text-ink-2">{t.picker.searching}</li>
             )}
             {results.map((p) => (
               <li key={`${p.lat},${p.lon}`}>
@@ -387,15 +389,15 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
       {value ? (
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-2xs uppercase tracking-wide text-ink-2">Seçilen nokta</p>
-            <p dir="auto" className="truncate text-sm text-ink">{value.label ?? 'Haritadan seçildi'}</p>
+            <p className="text-2xs uppercase tracking-wide text-ink-2">{t.picker.selected}</p>
+            <p dir="auto" className="truncate text-sm text-ink">{value.label ?? t.picker.fromMap}</p>
             <p className="font-mono text-2xs text-ink-2">
               {value.lat.toFixed(5)}, {value.lon.toFixed(5)}
             </p>
           </div>
           <div className="w-32">
             <Input
-              label="Varış yarıçapı"
+              label={t.picker.radius}
               type="text"
               inputMode="numeric"
               numeric
@@ -413,7 +415,7 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
             onClick={() => onChange(null)}
             className="h-9 rounded-md px-3 text-sm text-ink-2 ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-ink"
           >
-            Kaldır
+            {t.picker.remove}
           </button>
         </div>
       ) : (

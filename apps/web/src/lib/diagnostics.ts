@@ -1,5 +1,7 @@
 'use client';
 
+import { clientDictionary } from '@/lib/i18n';
+
 /**
  * A ring buffer of failed requests, kept in the browser.
  *
@@ -79,17 +81,18 @@ export function subscribeFailures(fn: Listener): () => void {
 
 /** Plain text, ready to paste into WhatsApp or an e-mail to whoever fixes it. */
 export function formatFailures(entries: DiagEntry[]): string {
-  if (!entries.length) return 'Kayıtlı hata yok.';
+  const t = clientDictionary();
+  if (!entries.length) return t.http.noEntries;
   const head = [
-    `KaraHoca — istemci hata kaydı`,
-    `Oluşturma: ${new Date().toISOString()}`,
-    `Tarayıcı: ${typeof navigator === 'undefined' ? '-' : navigator.userAgent}`,
+    t.http.reportHeading,
+    `${t.http.reportGenerated}: ${new Date().toISOString()}`,
+    `${t.http.reportBrowser}: ${typeof navigator === 'undefined' ? '-' : navigator.userAgent}`,
     '',
   ];
   const rows = entries.map(
     (e) =>
       `${e.at}  ${e.method} ${e.path}\n` +
-      `    HTTP ${e.status || 'bağlantı yok'}  ${e.code}\n` +
+      `    HTTP ${e.status || t.http.noConnection}  ${e.code}\n` +
       `    ${e.message}` +
       (e.requestId ? `\n    requestId: ${e.requestId}` : ''),
   );
@@ -109,19 +112,24 @@ export function describeHttp(status: number, serverMessage?: string): string {
   const trimmed = serverMessage?.trim();
   if (trimmed) return trimmed;
 
-  if (status === 0) return 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.';
-  if (status === 400) return 'Gönderilen bilgilerde eksik veya hatalı alan var.';
-  if (status === 401) return 'Oturumunuz sona ermiş. Yeniden giriş yapın.';
-  if (status === 403) return 'Bu işlem için yetkiniz yok.';
-  if (status === 404) return 'Aranan kayıt bulunamadı.';
-  if (status === 409) return 'Bu kayıt başka bir işlemle çakışıyor.';
-  if (status === 429) return 'Çok fazla deneme yapıldı. Kısa bir süre bekleyin.';
+  /*
+   * clientDictionary rather than a hook: this is called from the API client and
+   * from error boundaries, and neither of those is a component.
+   */
+  const t = clientDictionary();
+  if (status === 0) return t.http.unreachable;
+  if (status === 400) return t.http.badRequest;
+  if (status === 401) return t.http.unauthorised;
+  if (status === 403) return t.http.forbidden;
+  if (status === 404) return t.http.notFound;
+  if (status === 409) return t.http.conflict;
+  if (status === 429) return t.http.rateLimited;
   if (status === 502 || status === 503 || status === 504) {
     // The most likely one in practice, and the least obvious to a dispatcher:
     // a deploy takes the API down for a few seconds and the proxy answers with
     // HTML that json() cannot parse.
-    return 'Sunucu şu anda yanıt vermiyor (güncelleme yapılıyor olabilir). Birkaç saniye sonra tekrar deneyin.';
+    return t.http.unavailable;
   }
-  if (status >= 500) return `Sunucu hatası (HTTP ${status}).`;
-  return `Beklenmeyen yanıt (HTTP ${status}).`;
+  if (status >= 500) return t.http.serverError(String(status));
+  return t.http.unexpected(String(status));
 }

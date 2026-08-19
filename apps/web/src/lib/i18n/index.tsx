@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo } from 'react';
+import { Fragment, createContext, useCallback, useContext, useMemo } from 'react';
+import { makeFormatters, type Formatters } from '../format';
 import { ar } from './ar';
 import { ku } from './ku';
 import { tr, type Dictionary } from './tr';
@@ -79,6 +80,35 @@ export function I18nProvider({
 /** Everything about the current language. */
 export function useI18n(): I18nValue {
   return useContext(I18nContext);
+}
+
+/**
+ * Number and date formatters bound to the current language.
+ *
+ * Memoised on the locale, so a table of sixty rows shares one Intl instance
+ * rather than constructing one per cell.
+ */
+export function useFormat(): Formatters {
+  const { locale } = useI18n();
+  return useMemo(() => makeFormatters(locale), [locale]);
+}
+
+/**
+ * Substitute React nodes into a translated sentence.
+ *
+ * For the case where part of a sentence is styled — an emphasised number, a
+ * link — and the rest is prose. The alternative is to split the sentence into
+ * a lead and a tail in the dictionary, which silently fixes Turkish word order
+ * for every language that does not share it. A placeholder leaves the whole
+ * sentence, and the position of the value inside it, to the translator.
+ *
+ *     interpolate(t.cadence.estimateTime, [<Est>{rows}</Est>])
+ */
+export function interpolate(template: string, values: React.ReactNode[]): React.ReactNode[] {
+  // split with a capture group alternates literal, index, literal, index, …
+  return template.split(/\{(\d+)\}/).map((part, i) =>
+    i % 2 === 0 ? part : <Fragment key={i}>{values[Number(part)]}</Fragment>,
+  );
 }
 
 /** Just the strings — by far the common case. */

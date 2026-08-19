@@ -120,41 +120,14 @@ export function useNow(intervalMs = 15_000): number {
   return now;
 }
 
-// -----------------------------------------------------------------------------
-// Turkish labels, in one place so the map legend, the badges and the filters
-// can never disagree about what a state is called.
-// -----------------------------------------------------------------------------
-
-export const SIGNAL_LABEL: Record<DisplayState, string> = {
-  LIVE: 'Canlı',
-  DELAYED: 'Gecikmeli',
-  STALE: 'Eski',
-  LOST: 'Sinyal yok',
-  NO_SIGNAL: 'Başlamadı',
-  PAUSED: 'Durduruldu',
-};
-
-export const SIGNAL_DESCRIPTION: Record<DisplayState, string> = {
-  LIVE: 'Son 90 saniye içinde konum alındı',
-  DELAYED: 'Son konum 90 saniye – 10 dakika önce',
-  STALE: 'Son konum 10 dakika – 2 saat önce',
-  LOST: 'Son konumun üzerinden 2 saatten fazla geçti',
-  NO_SIGNAL: 'Sürücü henüz takibi başlatmadı',
-  PAUSED: 'Sürücü takibi durdurdu — araç konum göndermiyor',
-};
-
-/** Session lifecycle status, distinct from signal freshness. */
-export const STATUS_LABEL: Record<string, string> = {
-  ASSIGNED: 'Kod bekliyor',
-  CLAIMED: 'Cihaz bağlandı',
-  ACTIVE: 'Yolda',
-  PAUSED: 'Duraklatıldı',
-  COMPLETED: 'Teslim edildi',
-  CANCELLED: 'İptal edildi',
-  EXPIRED: 'Süresi doldu',
-};
-
-export function statusLabel(status: string | null | undefined): string {
-  if (!status) return '—';
-  return STATUS_LABEL[status] ?? status;
-}
+/*
+ * The labels used to live here, as three Record<..., string> maps of Turkish.
+ *
+ * They are in src/lib/i18n now, under `signal.label`, `signal.description` and
+ * `status`, keyed by exactly these state names — so the map legend, the badges
+ * and the filters still cannot disagree about what a state is called, and now
+ * they cannot disagree about it in three languages.
+ *
+ * A module-level constant could not have followed the language anyway: it is
+ * evaluated once at import, long before anyone has chosen one.
+ */

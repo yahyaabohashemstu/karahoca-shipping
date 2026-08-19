@@ -16,6 +16,7 @@ import {
   Spinner,
   useToast,
 } from './ui';
+import { useFormat, useT, type Dictionary } from '@/lib/i18n';
 
 /* =============================================================================
    The exception desk
@@ -46,6 +47,7 @@ import {
    ========================================================================== */
 
 export function AlertCentre() {
+  const t = useT();
   const [panelOpen, setPanelOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -87,10 +89,10 @@ export function AlertCentre() {
   const { unacknowledged, worstOpen, isError } = alerts;
 
   const label = isError
-    ? 'Uyarılar alınamadı'
+    ? t.alerts.loadFailed
     : unacknowledged > 0
-      ? `Uyarılar — ${unacknowledged} bekleyen`
-      : 'Uyarılar — bekleyen yok';
+      ? t.alerts.pending(String(unacknowledged))
+      : t.alerts.nonePending;
 
   return (
     <div ref={rootRef} className="relative">
@@ -137,12 +139,12 @@ export function AlertCentre() {
           onNavigate={() => setPanelOpen(false)}
           onAcknowledgeAll={() =>
             alerts.acknowledgeAll({
-              onError: (e: Error) => toast.error('Uyarılar işaretlenemedi', e.message),
+              onError: (e: Error) => toast.error(t.alerts.ackAllFailed, e.message),
             })
           }
           onAcknowledge={(id) =>
             alerts.acknowledge(id, {
-              onError: (e: Error) => toast.error('Uyarı işaretlenemedi', e.message),
+              onError: (e: Error) => toast.error(t.alerts.ackFailed, e.message),
             })
           }
         />
@@ -166,13 +168,14 @@ function AlertPanel({
   onAcknowledge: (id: string) => void;
   onAcknowledgeAll: () => void;
 }) {
+  const t = useT();
   const { open, resolved, truncated, connected } = alerts;
   const empty = open.length === 0 && resolved.length === 0;
 
   return (
     <div
       role="dialog"
-      aria-label="Uyarı merkezi"
+      aria-label={t.alerts.centre}
       /* z-40 keeps it over the map's own absolutely-positioned furniture — the
          legend, the selected-vehicle panel — and under the toasts at z-50,
          which must stay readable even with this open. */
@@ -180,7 +183,7 @@ function AlertPanel({
     >
       <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-ink">Uyarılar</h2>
+          <h2 className="text-base font-semibold text-ink">{t.alerts.heading}</h2>
           <p className="kh-num mt-0.5 text-2xs text-ink-3">
             {open.length} açık · son 24 saatte {resolved.length} kapandı
           </p>
@@ -190,9 +193,9 @@ function AlertPanel({
             size="sm"
             onClick={onAcknowledgeAll}
             loading={alerts.isAcknowledgingAll}
-            title="Listedeki tüm uyarıları gördüm olarak işaretle"
+            title={t.alerts.ackAllTitle}
           >
-            Tümünü gördüm
+            {t.alerts.ackAll}
           </Button>
         )}
       </div>
@@ -205,7 +208,7 @@ function AlertPanel({
           className="flex items-center gap-1.5 bg-warn-bg px-3 py-1 text-2xs text-warn"
         >
           <span className="kh-pulse h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden />
-          Canlı bağlantı yok — liste 20 saniyede bir yenileniyor.
+          {t.alerts.noSocket}
         </p>
       )}
 
@@ -215,20 +218,20 @@ function AlertPanel({
         ) : alerts.isError ? (
           <ErrorState
             className="m-3"
-            title="Uyarılar alınamadı"
+            title={t.alerts.loadFailed}
             message={alerts.error?.message}
             onRetry={alerts.refetch}
             retrying={alerts.isFetching}
           />
         ) : empty ? (
           <EmptyState
-            title="Açık uyarı yok"
-            description="Bir araç sessizleştiğinde, varışa ulaştığında veya bataryası bittiğinde burada görünür."
+            title={t.alerts.emptyTitle}
+            description={t.alerts.emptyBody}
           />
         ) : (
           <>
             {open.length > 0 && (
-              <Group title="Şu anda açık" count={open.length}>
+              <Group title={t.alerts.groupOpen} count={open.length}>
                 {open.map((a) => (
                   <AlertRow
                     key={a.id}
@@ -246,7 +249,7 @@ function AlertPanel({
               /* Kept, not hidden. A truck that went dark six times on one run
                  looks fine at every single moment you check it; the pattern
                  only exists in the history. */
-              <Group title="Kendiliğinden düzeldi" count={resolved.length}>
+              <Group title={t.alerts.groupResolved} count={resolved.length}>
                 {resolved.map((a) => (
                   <AlertRow
                     key={a.id}
@@ -308,6 +311,8 @@ function AlertRow({
   onAcknowledge: (id: string) => void;
   onNavigate: () => void;
 }) {
+  const t = useT();
+  const fmt = useFormat();
   const resolved = alert.resolvedAt !== null;
   const acknowledged = alert.acknowledgedAt !== null;
 
@@ -340,7 +345,7 @@ function AlertRow({
           <span className={clsx('mt-0.5 shrink-0', SEVERITY_TEXT[alert.severity])}>
             <KindIcon kind={alert.kind} />
             <span className="sr-only">
-              {SEVERITY_LABEL[alert.severity]} — {KIND_LABEL[alert.kind] ?? alert.kind}
+              {t.alerts.severity[alert.severity]} — {t.alerts.kind[alert.kind] ?? alert.kind}
             </span>
           </span>
           <span className="min-w-0 flex-1 text-base font-medium leading-tight text-ink">
@@ -348,10 +353,10 @@ function AlertRow({
           </span>
           <time
             dateTime={alert.raisedAt}
-            title={absolute(alert.raisedAt)}
+            title={fmt.dayTime(alert.raisedAt)}
             className="kh-num shrink-0 text-2xs leading-5 text-ink-3"
           >
-            {formatAgo(alert.raisedAt, now)}
+            {formatAgo(alert.raisedAt, now, t)}
           </time>
         </div>
 
@@ -380,13 +385,13 @@ function AlertRow({
         <div className="mt-1 flex flex-wrap items-center gap-1.5 empty:hidden">
           {alert.resolvedAt && (
             <span className="inline-flex items-center rounded-full bg-surface-3 px-1.5 py-px text-2xs text-ink-2 ring-1 ring-inset ring-line-strong">
-              {formatAgo(alert.resolvedAt, now)} düzeldi
+              {t.alerts.resolvedAgo(formatAgo(alert.resolvedAt, now, t))}
             </span>
           )}
           {acknowledged && (
             <span className="inline-flex items-center gap-1 text-2xs text-ink-3">
               <CheckIcon />
-              {alert.acknowledgedByName ?? 'Görüldü'}
+              {alert.acknowledgedByName ?? t.alerts.seen}
             </span>
           )}
         </div>
@@ -402,25 +407,25 @@ function AlertRow({
         {alert.driverPhone && (
           <a
             href={`tel:${alert.driverPhone}`}
-            title={`Sürücüyü ara — ${alert.driverName ?? alert.driverPhone}`}
+            title={t.alerts.callDriverTitle(alert.driverName ?? alert.driverPhone)}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink"
           >
             <PhoneIcon />
-            <span className="sr-only">Sürücüyü ara</span>
+            <span className="sr-only">{t.alerts.callDriver}</span>
           </a>
         )}
 
         {acknowledged ? (
           <span
-            title={`Gören: ${alert.acknowledgedByName ?? 'bilinmiyor'}`}
+            title={t.alerts.seenBy(alert.acknowledgedByName ?? t.alerts.seenByUnknown)}
             className="inline-flex h-7 w-7 items-center justify-center text-success"
           >
             <CheckIcon />
-            <span className="sr-only">Gördüm olarak işaretlendi</span>
+            <span className="sr-only">{t.alerts.acked}</span>
           </span>
         ) : (
           <IconButton
-            label="Gördüm olarak işaretle"
+            label={t.alerts.ack}
             size="sm"
             disabled={acknowledging}
             onClick={() => onAcknowledge(alert.id)}
@@ -462,23 +467,10 @@ const SEVERITY_TEXT: Record<AlertSeverity, string> = {
   INFO: 'text-ink-3',
 };
 
-const SEVERITY_LABEL: Record<AlertSeverity, string> = {
-  CRITICAL: 'Kritik',
-  WARNING: 'Uyarı',
-  INFO: 'Bilgi',
-};
 
 /* The API writes the visible sentence, so these are for the screen reader and
    the icon's meaning only — duplicating the title in the row would waste the
    one line of width this panel has. */
-const KIND_LABEL: Record<AlertKind, string> = {
-  SIGNAL_LOST: 'Sinyal kesildi',
-  ARRIVED: 'Varışa ulaştı',
-  BATTERY_LOW: 'Batarya düşük',
-  MOCK_LOCATION: 'Sahte konum',
-  NOT_STARTED: 'Takip başlamadı',
-  STOPPED_TOO_LONG: 'Uzun süredir duruyor',
-};
 
 /* -----------------------------------------------------------------------------
    Time
@@ -490,28 +482,18 @@ const KIND_LABEL: Record<AlertKind, string> = {
  * "14:02" is useless for "how long has this truck been dark"; "22 dk önce" is
  * useless in a shift handover note. Both exist, one is visible.
  */
-function formatAgo(iso: string, nowMs: number): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '—';
+function formatAgo(iso: string, nowMs: number, t: Dictionary): string {
+  // `at`, not `t`: `t` is the dictionary everywhere else in this codebase.
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return '—';
   // Clamped: a server a second ahead of the browser must not render "-1 dk".
-  const secs = Math.max(0, Math.round((nowMs - t) / 1000));
-  if (secs < 60) return 'az önce';
-  if (secs < 3600) return `${Math.floor(secs / 60)} dk önce`;
-  if (secs < 86_400) return `${Math.floor(secs / 3600)} sa önce`;
-  return `${Math.floor(secs / 86_400)} gün önce`;
+  const secs = Math.max(0, Math.round((nowMs - at) / 1000));
+  if (secs < 60) return t.alerts.agoJustNow;
+  if (secs < 3600) return t.alerts.agoMinutes(String(Math.floor(secs / 60)));
+  if (secs < 86_400) return t.alerts.agoHours(String(Math.floor(secs / 3600)));
+  return t.alerts.agoDays(String(Math.floor(secs / 86_400)));
 }
 
-function absolute(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ''
-    : d.toLocaleString('tr-TR', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-}
 
 /* -----------------------------------------------------------------------------
    Icons

@@ -63,6 +63,7 @@ export function ConsignmentEditor({
   defaultCustomerId?: string;
 }) {
   const { locale } = useI18n();
+  const t = useT();
   const [dialog, setDialog] = useState(false);
 
   const customers = useQuery({
@@ -104,13 +105,13 @@ export function ConsignmentEditor({
     <div className="rounded-md bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
       {/* ---------------------------------------------------- consignee -- */}
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <span className="text-sm font-medium text-ink-2">Sevk edilen firma</span>
+        <span className="text-sm font-medium text-ink-2">{t.consignment.customer}</span>
         <button
           type="button"
           onClick={() => setDialog(true)}
           className="text-sm text-brand-text hover:underline"
         >
-          + Yeni firma
+          {t.consignment.newCustomer}
         </button>
       </div>
 
@@ -120,9 +121,9 @@ export function ConsignmentEditor({
           onChange={(e) => onChange({ ...value, customerId: e.target.value })}
           disabled={customers.isLoading}
           className="flex-1"
-          aria-label="Sevk edilen firma"
+          aria-label={t.consignment.customer}
         >
-          <option value="">{customers.isLoading ? 'Yükleniyor…' : 'Seçiniz…'}</option>
+          <option value="">{customers.isLoading ? t.common.loading : t.consignment.choose}</option>
           {customers.data?.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -139,19 +140,19 @@ export function ConsignmentEditor({
               {countryLabel(selected.countryCode, locale)}
             </Badge>
           ) : (
-            <span className="text-sm text-ink-3">Ülke —</span>
+            <span className="text-sm text-ink-3">{t.consignment.countryDash}</span>
           )}
         </div>
       </div>
       <p className="mt-1 text-sm text-ink-3">
-        Ülke firma kaydından gelir. Farklıysa firmayı düzenleyin veya yeni firma ekleyin.
+        {t.consignment.countryHint}
       </p>
 
       {/* ----------------------------------------------------- products -- */}
       <div className="mt-4 border-t border-line pt-3">
         <div className="mb-1.5 flex items-baseline justify-between gap-2">
           <span className="text-sm font-medium text-ink-2">
-            Yüklenen ürünler <span className="font-normal text-ink-3">— isteğe bağlı</span>
+            {t.consignment.items} <span className="font-normal text-ink-3">{t.consignment.itemsOptional}</span>
           </span>
           {filled > 0 && (
             <span className="kh-num text-sm text-ink-3">{filled} kalem</span>
@@ -176,7 +177,7 @@ export function ConsignmentEditor({
                 <Input
                   value={line.name}
                   onChange={(e) => setLine(i, { name: e.target.value })}
-                  placeholder="Ürün adı — örn. Bulaşık deterjanı 5 L"
+                  placeholder={t.consignment.itemName}
                   aria-label={`Ürün ${i + 1} adı`}
                 />
               </div>
@@ -184,7 +185,7 @@ export function ConsignmentEditor({
                 <Input
                   value={line.quantity}
                   onChange={(e) => setLine(i, { quantity: e.target.value.replace(/[^\d.,]/g, '') })}
-                  placeholder="Adet"
+                  placeholder={t.consignment.itemQuantity}
                   inputMode="decimal"
                   numeric
                   aria-label={`Ürün ${i + 1} miktarı`}
@@ -220,7 +221,7 @@ export function ConsignmentEditor({
         </div>
 
         <Button type="button" size="sm" onClick={addLine} className="mt-2">
-          + Ürün ekle
+          {t.consignment.addItem}
         </Button>
       </div>
 

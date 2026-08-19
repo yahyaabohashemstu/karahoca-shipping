@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import type { DisplayState } from '@/lib/signal';
-import { SIGNAL_DESCRIPTION, SIGNAL_LABEL, statusLabel } from '@/lib/signal';
+import { useT } from '@/lib/i18n';
 
 /* =============================================================================
    Signal badges
@@ -90,15 +90,16 @@ export function SignalBadge({
   className?: string;
   compact?: boolean;
 }) {
+  const t = useT();
   // Any state the API grows later (PAUSED, CANCELLED) used to interpolate
   // `undefined` into the class string and render an empty transparent pill with
   // no text — a truck with no status at all, which a dispatcher reads as fine.
   const style = SIGNAL_STYLE[state] ?? 'bg-surface-3 text-ink-2 ring-1 ring-inset ring-line-strong';
-  const label = SIGNAL_LABEL[state] ?? state;
+  const label = t.signal.label[state] ?? state;
 
   return (
     <span
-      title={SIGNAL_DESCRIPTION[state] ?? label}
+      title={t.signal.description[state] ?? label}
       className={clsx(
         'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs leading-none',
         style,
@@ -113,6 +114,7 @@ export function SignalBadge({
 
 /** Just the glyph, for dense table cells where the label is a column header. */
 export function SignalDot({ state, className }: { state: DisplayState; className?: string }) {
+  const t = useT();
   const tone: Record<DisplayState, string> = {
     LIVE: 'text-live-ring',
     DELAYED: 'text-delayed-ring',
@@ -124,10 +126,10 @@ export function SignalDot({ state, className }: { state: DisplayState; className
   return (
     <span
       className={clsx('inline-flex items-center', tone[state] ?? 'text-ink-3', className)}
-      title={`${SIGNAL_LABEL[state] ?? state} — ${SIGNAL_DESCRIPTION[state] ?? ''}`}
+      title={`${t.signal.label[state] ?? state} — ${t.signal.description[state] ?? ''}`}
     >
       <Glyph state={state} />
-      <span className="sr-only">{SIGNAL_LABEL[state] ?? state}</span>
+      <span className="sr-only">{t.signal.label[state] ?? state}</span>
     </span>
   );
 }
@@ -149,6 +151,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function StatusBadge({ status, className }: { status: string | null; className?: string }) {
+  const t = useT();
   // The sessions table used to print the raw English enum — ASSIGNED, EXPIRED —
   // in a Turkish interface, in one uniform grey pill, in the single column that
   // says what happened to a shipment.
@@ -161,7 +164,7 @@ export function StatusBadge({ status, className }: { status: string | null; clas
         className,
       )}
     >
-      {statusLabel(status)}
+      {(status && t.status[status as keyof typeof t.status]) || status || '—'}
     </span>
   );
 }

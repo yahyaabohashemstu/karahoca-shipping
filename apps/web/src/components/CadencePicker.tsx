@@ -1,6 +1,9 @@
 'use client';
 
 import { Field, Input, SegmentedControl } from './ui';
+import { clientDictionary, interpolate, useI18n, useT, type Dictionary } from '@/lib/i18n';
+import { formatNumber } from '@/lib/format';
+import type { Locale } from '@/lib/i18n/locale';
 
 /* =============================================================================
    How often a truck reports
@@ -55,16 +58,17 @@ const LIMITS = {
 };
 
 export function validateCadence(c: Cadence): string | null {
+  const t = clientDictionary();
   if (!Number.isFinite(c.intervalSec) || c.intervalSec < LIMITS.intervalSec.min || c.intervalSec > LIMITS.intervalSec.max) {
-    return `Konum aralığı ${LIMITS.intervalSec.min}–${LIMITS.intervalSec.max} saniye arasında olmalı.`;
+    return t.cadence.errInterval(String(LIMITS.intervalSec.min), String(LIMITS.intervalSec.max));
   }
   if (c.mode === 'distance') {
     if (!Number.isFinite(c.distanceM) || c.distanceM < LIMITS.distanceM.min || c.distanceM > LIMITS.distanceM.max) {
-      return `Mesafe ${LIMITS.distanceM.min}–${LIMITS.distanceM.max} metre arasında olmalı.`;
+      return t.cadence.errDistance(String(LIMITS.distanceM.min), String(LIMITS.distanceM.max));
     }
   }
   if (!Number.isFinite(c.idleSec) || c.idleSec < LIMITS.idleSec.min || c.idleSec > LIMITS.idleSec.max) {
-    return `Bekleme aralığı ${LIMITS.idleSec.min}–${LIMITS.idleSec.max} saniye arasında olmalı.`;
+    return t.cadence.errIdle(String(LIMITS.idleSec.min), String(LIMITS.idleSec.max));
   }
   return null;
 }
@@ -90,20 +94,22 @@ export function CadencePicker({
   value: Cadence;
   onChange: (c: Cadence) => void;
 }) {
+  const t = useT();
+  const { locale } = useI18n();
   const set = <K extends keyof Cadence>(k: K, v: Cadence[K]) => onChange({ ...value, [k]: v });
   const error = validateCadence(value);
 
   return (
     <div className="rounded-md bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium text-ink-2">Konum gönderme sıklığı</span>
+        <span className="text-sm font-medium text-ink-2">{t.cadence.heading}</span>
         <SegmentedControl
-          label="Konum gönderme yöntemi"
+          label={t.cadence.modeLabel}
           value={value.mode}
           onChange={(m) => set('mode', m)}
           options={[
-            { value: 'time', label: 'Zamana göre' },
-            { value: 'distance', label: 'Mesafeye göre' },
+            { value: 'time', label: t.cadence.modeTime },
+            { value: 'distance', label: t.cadence.modeDistance },
           ]}
         />
       </div>
@@ -112,39 +118,39 @@ export function CadencePicker({
         {value.mode === 'distance' ? (
           <>
             <NumberField
-              label="Her kaç metrede bir"
-              suffix="m"
+              label={t.cadence.everyMetres}
+              suffix={t.cadence.unitMetre}
               value={value.distanceM}
               onChange={(n) => set('distanceM', n)}
-              hint="Araç bu kadar yol aldığında bir konum kaydedilir."
+              hint={t.cadence.everyMetresHint}
             />
             <NumberField
-              label="En sık örnekleme"
-              suffix="sn"
+              label={t.cadence.maxRate}
+              suffix={t.cadence.unitSec}
               value={value.intervalSec}
               onChange={(n) => set('intervalSec', n)}
-              hint="Mesafe şartı sağlansa bile bundan daha sık kayıt yapılmaz."
+              hint={t.cadence.maxRateHint}
             />
           </>
         ) : (
           <NumberField
-            label="Her kaç saniyede bir"
-            suffix="sn"
+            label={t.cadence.everySeconds}
+            suffix={t.cadence.unitSec}
             value={value.intervalSec}
             onChange={(n) => set('intervalSec', n)}
-            hint="Araç hareket hâlindeyken konum gönderme aralığı."
+            hint={t.cadence.everySecondsHint}
           />
         )}
 
         <NumberField
-          label="Araç dururken"
-          suffix="sn"
+          label={t.cadence.idle}
+          suffix={t.cadence.unitSec}
           value={value.idleSec}
           onChange={(n) => set('idleSec', n)}
           hint={
             value.mode === 'distance'
-              ? 'Duran araç bu aralıkta bir “buradayım” konumu gönderir.'
-              : 'Araç durduğunda uygulama bu seyrek aralığa geçer.'
+              ? t.cadence.idleHintDistance
+              : t.cadence.idleHintTime
           }
         />
       </div>
@@ -158,14 +164,16 @@ export function CadencePicker({
       <p className="mt-2.5 border-t border-line pt-2.5 text-sm text-ink-3">
         {value.mode === 'distance' ? (
           <>
-            Yaklaşık <Est>{estimateDistanceRows(value)}</Est> konum kaydı / 500 km. Duran araç,
-            sinyalsiz sanılmaması için <Est>{fmtDuration(value.idleSec)}</Est> aralıkla kayıt
-            göndermeye devam eder.
+            {interpolate(t.cadence.estimateDistance, [
+              <Est key="rows">{estimateDistanceRows(value, locale)}</Est>,
+              <Est key="idle">{fmtDuration(value.idleSec, t)}</Est>,
+            ])}
           </>
         ) : (
           <>
-            Yaklaşık <Est>{estimateTimeRows(value)}</Est> konum kaydı / saat. Sık aralık daha
-            detaylı rota, daha fazla pil tüketimi demektir.
+            {interpolate(t.cadence.estimateTime, [
+              <Est key="rows">{estimateTimeRows(value, locale)}</Est>,
+            ])}
           </>
         )}
       </p>
@@ -223,25 +231,25 @@ function NumberField({
 
 /* -------------------------------------------------------------------------- */
 
-function estimateTimeRows(c: Cadence): string {
+function estimateTimeRows(c: Cadence, locale: Locale): string {
   if (!Number.isFinite(c.intervalSec) || c.intervalSec <= 0) return '—';
-  return Math.round(3600 / c.intervalSec).toLocaleString('tr-TR');
+  return formatNumber(locale, Math.round(3600 / c.intervalSec));
 }
 
-function estimateDistanceRows(c: Cadence): string {
+function estimateDistanceRows(c: Cadence, locale: Locale): string {
   if (!Number.isFinite(c.distanceM) || c.distanceM <= 0) return '—';
-  return Math.round(500_000 / c.distanceM).toLocaleString('tr-TR');
+  return formatNumber(locale, Math.round(500_000 / c.distanceM));
 }
 
-function fmtDuration(seconds: number): string {
+function fmtDuration(seconds: number, t: Dictionary): string {
   if (!Number.isFinite(seconds)) return '—';
-  if (seconds < 60) return `${seconds} sn`;
+  if (seconds < 60) return `${seconds} ${t.cadence.unitSec}`;
   if (seconds < 3600) {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
-    return s ? `${m} dk ${s} sn` : `${m} dk`;
+    return s ? `${m} ${t.cadence.unitMin} ${s} ${t.cadence.unitSec}` : `${m} ${t.cadence.unitMin}`;
   }
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
-  return m ? `${h} sa ${m} dk` : `${h} sa`;
+  return m ? `${h} ${t.cadence.unitHour} ${m} ${t.cadence.unitMin}` : `${h} ${t.cadence.unitHour}`;
 }

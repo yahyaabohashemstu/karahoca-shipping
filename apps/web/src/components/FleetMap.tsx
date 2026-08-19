@@ -5,7 +5,7 @@ import maplibregl, { type Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FleetPosition } from '@/lib/api';
 import type { LivePositionEvent } from '@/lib/useRealtime';
-import { displayState, SIGNAL_LABEL, type DisplayState } from '@/lib/signal';
+import { displayState, type DisplayState } from '@/lib/signal';
 import { mapColors, mapStyleFor } from '@/lib/mapStyle';
 import { useTheme } from '@/lib/theme';
 import { TruckLayer, TRUCK_3D_MIN_ZOOM, type Truck } from '@/lib/truck3d';
@@ -22,11 +22,12 @@ import {
   loadQuality,
   Quality,
   QualityGovernor,
-  QUALITY_LABEL,
+  QUALITY_TIER,
   saveQuality,
   type GovernorEvent,
 } from '@/lib/mapQuality';
 import { guardRenderQueue } from '@/lib/renderGuard';
+import { useT } from '@/lib/i18n';
 
 /** Remembered across mounts, so the view a dispatcher chose survives a route change. */
 const DIMENSIONAL_KEY = 'kh.map.3d';
@@ -113,6 +114,7 @@ interface Props {
  * bearing — for free.
  */
 export default function FleetMap({ positions, liveUpdates, selectedId, onSelect, now, stale, onMapReady }: Props) {
+  const t = useT();
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   /*
@@ -1017,8 +1019,8 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         }}
         title={
           dimensional
-            ? 'Düz haritaya geç'
-            : 'Üç boyutlu görünüme geç — araçlar, binalar ve arazi'
+            ? t.map.toFlat
+            : t.map.toDimensional
         }
         aria-pressed={dimensional}
         className={`absolute right-2 top-[7.75rem] flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm shadow-sm ring-1 transition-colors ${
@@ -1049,7 +1051,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       */}
       {dimensional && belowModelZoom && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-surface/90 px-2.5 py-1 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
-          Araç modelleri için yakınlaştırın
+          {t.map.zoomForModels}
         </div>
       )}
 
@@ -1063,15 +1065,15 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       {qualityNotice && (
         <div className="pointer-events-none absolute bottom-14 left-1/2 -translate-x-1/2 rounded-md bg-surface/95 px-3 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
           {qualityNotice.direction === 'down'
-            ? `Bu bilgisayar yetişemedi (${qualityNotice.medianMs} ms/kare) — `
-            : 'Performans uygun — '}
-          {QUALITY_LABEL[qualityNotice.quality]}
+            ? t.map.qualityDown(String(qualityNotice.medianMs))
+            : t.map.qualityUp}
+          {t.map.quality[QUALITY_TIER[qualityNotice.quality]]}
         </div>
       )}
 
       {renderFault && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-amber-500/15 px-3 py-1.5 text-2xs font-medium text-amber-700 shadow-sm ring-1 ring-amber-500/40 backdrop-blur dark:text-amber-300">
-          Harita bir kareyi çizemedi ve atladı — takip sürüyor. Sorun tekrarlarsa 3B&apos;yi kapatın.
+          {t.map.renderFault}
         </div>
       )}
 
@@ -1079,7 +1081,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       <button
         type="button"
         onClick={fitAll}
-        title="Tüm araçları haritaya sığdır"
+        title={t.map.fitAll}
         className="absolute right-2 top-[4.75rem] flex h-8 items-center gap-1.5 rounded-md bg-surface px-2.5 text-sm text-ink-2 shadow-sm ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-ink"
       >
         <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
@@ -1092,7 +1094,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
           />
           <circle cx="7" cy="7" r="1.6" fill="currentColor" />
         </svg>
-        Tümünü göster
+        {t.map.showAll}
       </button>
 
       <MapLegend />
@@ -1146,6 +1148,7 @@ function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[], pitch?: numbe
  * learn what graphite means except by asking someone.
  */
 function MapLegend() {
+  const t = useT();
   const items: DisplayState[] = ['LIVE', 'DELAYED', 'PAUSED', 'STALE', 'LOST'];
   const dot: Record<DisplayState, string> = {
     LIVE: 'bg-[rgb(var(--kh-map-live))]',
@@ -1162,7 +1165,7 @@ function MapLegend() {
       {items.map((s) => (
         <span key={s} className="flex items-center gap-1.5">
           <span className={`h-2 w-2 rounded-full ${dot[s]}`} aria-hidden />
-          {SIGNAL_LABEL[s]}
+          {t.signal.label[s]}
         </span>
       ))}
     </div>
