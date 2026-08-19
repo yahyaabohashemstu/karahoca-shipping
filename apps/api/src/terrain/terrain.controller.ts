@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Header,
   Logger,
   NotFoundException,
   Param,
@@ -92,17 +91,26 @@ export class TerrainController {
    * JSON body that a tile loader cannot read; the explicit check returns a 404,
    * which MapLibre already knows how to treat as "no data here".
    */
+  /*
+   * The headers are set on the reply, NOT with @Header decorators, and that is
+   * a bug fix rather than a style choice.
+   *
+   * A decorator pins the response content type for the whole route, including
+   * the paths that do not return an image. So when this threw NotFoundException
+   * — for a malformed coordinate, for an ocean tile the upstream genuinely does
+   * not have, or for a timeout — the exception filter tried to send a JSON body
+   * into a response already declared as image/png, Fastify refused with
+   * "Attempted to send payload of invalid type 'object'", and the client got a
+   * 500. Measured on production: every invalid tile returned 500, and each one
+   * logged an ERROR with a stack.
+   *
+   * That is not cosmetic. MapLibre treats 404 as "no data here" and stops
+   * asking; a 500 is a failure it may retry, and the log fills with errors
+   * about a map panning over water.
+   */
   @Public()
   @RateLimit({ bucket: 'terrain', perIp: 600, windowSec: 60 })
   @Get(':z/:x/:y.png')
-  @Header('Content-Type', 'image/png')
-  // Terrain does not change. A month of browser cache is the whole reason this
-  // proxy is affordable, and `immutable` stops the revalidation round trip that
-  // would otherwise happen on every reload.
-  @Header('Cache-Control', 'public, max-age=2592000, immutable')
-  // The header this entire file exists to add.
-  @Header('Access-Control-Allow-Origin', '*')
-  @Header('Cross-Origin-Resource-Policy', 'cross-origin')
   async tile(
     @Param('z') rawZ: string,
     @Param('x') rawX: string,
@@ -127,13 +135,26 @@ export class TerrainController {
       // Re-insert to move it to the young end of the LRU.
       this.cache.delete(key);
       this.cache.set(key, cached);
-      reply.header('X-KH-Tile-Cache', 'hit').send(cached);
+      this.imageHeaders(reply).header('X-KH-Tile-Cache', 'hit').send(cached);
       return;
     }
 
     const tile = await this.fetchOnce(key);
     if (!tile) throw new NotFoundException();
-    reply.header('X-KH-Tile-Cache', 'miss').send(tile);
+    this.imageHeaders(reply).header('X-KH-Tile-Cache', 'miss').send(tile);
+  }
+
+  /** Everything a successful tile response needs, and only on success. */
+  private imageHeaders(reply: FastifyReply): FastifyReply {
+    return reply
+      .header('Content-Type', 'image/png')
+      // Terrain does not change. A month of browser cache is the whole reason
+      // this proxy is affordable, and `immutable` stops the revalidation round
+      // trip that would otherwise happen on every reload.
+      .header('Cache-Control', 'public, max-age=2592000, immutable')
+      // The header this entire file exists to add.
+      .header('Access-Control-Allow-Origin', '*')
+      .header('Cross-Origin-Resource-Policy', 'cross-origin');
   }
 
   private fetchOnce(key: string): Promise<Buffer | null> {
