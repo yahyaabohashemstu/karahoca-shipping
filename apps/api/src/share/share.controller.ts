@@ -17,6 +17,7 @@ import { RateLimit } from '../common/rate-limit.guard';
 import type { FastifyRequest } from 'fastify';
 import {
   formatDateTime,
+  formatNumber,
   isRtl,
   LOCALE_NAME,
   otherLocale,
@@ -338,7 +339,7 @@ function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
     facts.push({ label: t.destination, value: esc(view.destinationLabel), group: 'shipment' });
   }
 
-  const remaining = formatKm(view.remainingKm);
+  const remaining = formatKm(view.remainingKm, locale);
   if (remaining) {
     // "kuş uçuşu" is not a hedge, it is the truth: kh.v_live_fleet computes a
     // straight-line distance, not a road distance. A consignee planning a
@@ -959,16 +960,21 @@ function signalDetail(signalState: string, t: ShareStrings): string {
 // Formatting and escaping
 // -----------------------------------------------------------------------------
 
-function formatKm(km: number | null): string | null {
+function formatKm(km: number | null, locale: ShareLocale): string | null {
   if (km === null || km === undefined) return null;
   // One decimal only under 10 km. "342,4 km" implies a precision a straight-line
   // distance between two GPS fixes does not have; "8,3 km" is the range where
   // the extra digit tells the receiving warehouse something they can act on.
   const digits = km < 10 ? 1 : 0;
-  return `${new Intl.NumberFormat('tr-TR', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(km)} km`;
+  /*
+   * The reader's own separators, not Turkish ones.
+   *
+   * Hard-coded to tr-TR this produced "1.100 km" on the Arabic page, which a
+   * consignee reads as 1.1 km — the truck a thousand kilometres away looks like
+   * it is at the gate. Gaziantep to Baghdad is over a thousand kilometres, so
+   * that is the ordinary case on this corridor.
+   */
+  return `${formatNumber(locale, km, digits)} km`;
 }
 
 /**

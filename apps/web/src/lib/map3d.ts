@@ -158,7 +158,7 @@ export function installSky(map: MapLibreMap, theme: 'light' | 'dark') {
  * dispatcher on hotel wifi. In every one of those cases the map must still be
  * a working fleet map, tilted, with buildings, minus the hills.
  */
-export function installTerrain(map: MapLibreMap) {
+function installTerrain(map: MapLibreMap) {
   if (map.getTerrain()) return;
   try {
     if (!map.getSource(TERRAIN_SOURCE)) {
@@ -237,32 +237,6 @@ export function syncTerrain(map: MapLibreMap, dimensional: boolean) {
 /** Pitch the 3D view settles at. Steeper hides more map behind the trucks. */
 export const DEFAULT_PITCH = 52;
 
-/**
- * Whether this browser can plausibly carry the 3D view.
- *
- * Not a benchmark — a benchmark on first paint is its own jank. This rules out
- * the two cases where 3D is certain to be bad: a context that never made it to
- * WebGL2 (no instanced draw for the trucks without an extension, and DEM
- * decoding falls back to the slow path), and a device that has told us it
- * wants less motion, where a map that tilts on its own is exactly wrong.
- */
-export function prefers3D(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
-  // A coarse pointer with a small viewport is a phone; the dispatcher screen is
-  // not, and the consignee page has its own decision to make.
-  return true;
-}
-
-/**
- * Switch the camera between flat and dimensional.
- *
- * The interaction handlers move with it. The 2D map disabled drag-rotate
- * deliberately — a dispatcher who rotates the map by accident and cannot find
- * north again is a support call, and that reasoning has not stopped being true
- * just because the map can now tilt. So rotation is enabled exactly when the
- * 3D view is, and the compass appears with it as the way back.
- */
 export function setDimensional(map: MapLibreMap, on: boolean, animate = true) {
   if (on) {
     map.dragRotate.enable();

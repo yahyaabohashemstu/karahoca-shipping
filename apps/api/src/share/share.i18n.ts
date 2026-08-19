@@ -30,8 +30,6 @@
 
 export type ShareLocale = 'tr' | 'ar';
 
-export const SHARE_LOCALES: readonly ShareLocale[] = ['tr', 'ar'] as const;
-
 export function isRtl(locale: ShareLocale): boolean {
   return locale === 'ar';
 }
@@ -144,13 +142,34 @@ export function formatDateTime(locale: ShareLocale, value: Date | string | null)
   return FORMATTERS[locale].format(date);
 }
 
-const NUMBERS: Record<ShareLocale, Intl.NumberFormat> = {
-  tr: new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }),
-  ar: new Intl.NumberFormat('ar-u-nu-latn', { maximumFractionDigits: 1 }),
-};
+/*
+ * Grouping and decimal separators are opposite in the two languages, and on a
+ * distance that is a misreading rather than a cosmetic difference.
+ *
+ *     1100 km    tr-TR  "1.100 km"     ar  "1,100 km"
+ *     8.3 km     tr-TR  "8,3 km"       ar  "8.3 km"
+ *
+ * A consignee in Erbil reading "1.100 km" with the Turkish convention sees a
+ * decimal point and concludes the lorry is 1.1 km away. Gaziantep to Baghdad is
+ * over a thousand kilometres, so this is the ordinary case on this corridor,
+ * not a corner of it.
+ *
+ * Cached per digit count because Intl.NumberFormat is expensive to construct
+ * and this is called on every page render.
+ */
+const NUMBERS = new Map<string, Intl.NumberFormat>();
 
-export function formatNumber(locale: ShareLocale, value: number): string {
-  return NUMBERS[locale].format(value);
+export function formatNumber(locale: ShareLocale, value: number, digits = 0): string {
+  const key = `${locale}:${digits}`;
+  let formatter = NUMBERS.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locale === 'ar' ? 'ar-u-nu-latn' : 'tr-TR', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+    NUMBERS.set(key, formatter);
+  }
+  return formatter.format(value);
 }
 
 /* -----------------------------------------------------------------------------

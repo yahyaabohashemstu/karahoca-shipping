@@ -51,7 +51,7 @@ export enum Quality {
   Terrain = 3,
 }
 
-export const QUALITY_KEY = 'kh.map.quality';
+const QUALITY_KEY = 'kh.map.quality';
 
 /** Where a machine with no history starts. */
 const DEFAULT_QUALITY = Quality.Buildings;
