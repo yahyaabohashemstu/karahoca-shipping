@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.karahoca.tracker.R
+import com.karahoca.tracker.util.AppLocale
 
 /**
  * The resurrection mechanism.
@@ -158,7 +159,11 @@ class WatchdogReceiver : BroadcastReceiver() {
         const val ACTION_RESTART = "com.karahoca.tracker.RESTART"
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(rawContext: Context, intent: Intent) {
+        // A receiver context follows the phone, not the driver. Without this
+        // the two alerts posted from here arrive in the handset's language
+        // while every other screen is in the one the driver chose.
+        val context = AppLocale.wrap(rawContext)
         val pendingResult = goAsync()
         val appContext = context.applicationContext
         Log.i(TAG, "Watchdog fired: ${intent.action}")

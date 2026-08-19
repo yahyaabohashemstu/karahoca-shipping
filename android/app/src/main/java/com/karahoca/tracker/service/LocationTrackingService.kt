@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Resources
 import android.location.Location
 import android.os.Build
 import android.os.IBinder
@@ -31,6 +32,7 @@ import com.karahoca.tracker.data.local.TrackingPolicy
 import com.karahoca.tracker.data.repository.TrackingRepository
 import com.karahoca.tracker.di.ApplicationScope
 import com.karahoca.tracker.sync.SyncScheduler
+import com.karahoca.tracker.util.AppLocale
 import com.karahoca.tracker.util.Destination
 import com.karahoca.tracker.util.DistanceUnit
 import com.karahoca.tracker.util.formatRemaining
@@ -260,6 +262,49 @@ class LocationTrackingService : LifecycleService() {
     // =========================================================================
     // Lifecycle
     // =========================================================================
+
+    /*
+     * The notification is the screen a driver actually reads, for eighteen
+     * hours, and it is posted from here — not from an activity. Neither the
+     * AppCompat backport nor anything else would have reached it, so a driver
+     * on Android 12 who picked Arabic would have had an Arabic app and a
+     * Turkish notification.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
+
+    /*
+     * A Service attaches its base context once and keeps it for its whole life,
+     * which for this service is the length of a shipment. Wrapping in
+     * attachBaseContext therefore pins the language at the moment tracking
+     * started — and a driver who changes it afterwards would go on reading a
+     * notification in the old one until the lorry arrived.
+     *
+     * Context.getString is final, so it cannot be intercepted directly — but it
+     * is a thin call onto getResources(), which can. Overriding that one method
+     * covers every string in this service and every string TrackingNotification
+     * resolves through the service context, without touching a call site.
+     *
+     * Derived from applicationContext rather than from this service, because
+     * this service's own base context is the frozen one we are working around.
+     *
+     * Cached by tag, so the common case — nothing changed — costs a string
+     * comparison rather than a Configuration and a Resources. The fallback
+     * matters: getResources() can be reached before applicationContext exists,
+     * and a service that cannot resolve a string cannot post the foreground
+     * notification, which is a crash inside five seconds of starting.
+     */
+    private var localeTag: String? = null
+    private var localeResources: Resources? = null
+
+    override fun getResources(): Resources = runCatching {
+        val tag = AppLocale.current(applicationContext)
+        localeResources?.takeIf { tag == localeTag } ?: run {
+            localeTag = tag
+            AppLocale.wrap(applicationContext).resources.also { localeResources = it }
+        }
+    }.getOrElse { super.getResources() }
 
     override fun onCreate() {
         super.onCreate()

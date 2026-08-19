@@ -159,7 +159,7 @@ class DeviceInfoProvider @Inject constructor(
         add(
             ReadinessCheck(
                 key = "background_location",
-                label = "Konum izni (her zaman)",
+                label = context.getString(R.string.check_background),
                 satisfied = hasBackgroundLocation(),
                 /*
                  * BLOCKING on API 29+, and this is the most important line in
@@ -186,7 +186,7 @@ class DeviceInfoProvider @Inject constructor(
         add(
             ReadinessCheck(
                 key = "play_services",
-                label = "Google Play Hizmetleri",
+                label = context.getString(R.string.check_play_services),
                 // FusedLocationProviderClient is a Play Services API. On a
                 // Huawei/HarmonyOS or de-Googled phone requestLocationUpdates
                 // fails its Task rather than throwing, so without this row the
@@ -199,10 +199,10 @@ class DeviceInfoProvider @Inject constructor(
         add(
             ReadinessCheck(
                 key = "notifications",
-                label = "Bildirim izni",
+                label = context.getString(R.string.check_notifications),
                 satisfied = hasNotificationPermission(),
                 blocking = false,
-                detail = "Takip bildirimi olmadan Android servisi kapatabilir.",
+                detail = context.getString(R.string.check_notifications_why),
             ),
         )
         add(

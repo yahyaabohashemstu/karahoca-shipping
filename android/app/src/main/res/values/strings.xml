@@ -132,4 +132,13 @@
     <string name="crash_show_all">Tümünü göster</string>
     <string name="crash_send_short">Gönder</string>
     <string name="action_open">Aç</string>
+    <string name="claim_heading">Sevkiyat Takibi</string>
+    <string name="claim_field_label">Oturum Kodu</string>
+    <string name="diag_clear">Temizle</string>
+    <string name="tracking_close_session">Oturumu kapat</string>
+    <string name="crash_collapse">Daralt</string>
+    <string name="check_background">Konum izni (her zaman)</string>
+    <string name="check_play_services">Google Play Hizmetleri</string>
+    <string name="check_notifications">Bildirim izni</string>
+    <string name="check_notifications_why">Takip bildirimi olmadan Android servisi kapatabilir.</string>
 </resources>

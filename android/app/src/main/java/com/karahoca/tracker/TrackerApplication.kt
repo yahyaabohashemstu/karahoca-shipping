@@ -2,6 +2,7 @@ package com.karahoca.tracker
 
 import android.app.Application
 import android.content.Context
+import android.content.res.Resources
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
@@ -10,6 +11,7 @@ import com.karahoca.tracker.service.LocationTrackingService
 import com.karahoca.tracker.service.ServiceWatchdog
 import com.karahoca.tracker.sync.NetworkMonitor
 import com.karahoca.tracker.sync.SyncScheduler
+import com.karahoca.tracker.util.AppLocale
 import com.karahoca.tracker.util.CrashReporter
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +46,37 @@ class TrackerApplication : Application(), Configuration.Provider {
         super.attachBaseContext(base)
         runCatching { CrashReporter.install(base) }
     }
+
+    /*
+     * The driver's language, for everything Hilt hands an @ApplicationContext.
+     *
+     * That is not a small set. TrackerViewModel builds four claim errors from
+     * it, and DeviceInfoProvider builds the entire pre-flight checklist — so a
+     * driver who chose Arabic, then mistyped a code, was answered in Turkish on
+     * the very screen the language picker sits on.
+     *
+     * attachBaseContext is deliberately NOT wrapped here. createConfigurationContext
+     * snapshots the whole Configuration, and freezing the application context's
+     * would pin font scale, dark mode and orientation for the life of the
+     * process. Overriding getResources() instead re-derives from the live base
+     * configuration on every call, so only the locale is ours and everything
+     * else keeps following the phone.
+     *
+     * Cached by tag: this is called on essentially every resource lookup in the
+     * process. The fallback covers the window before a base context exists,
+     * during which Hilt and the crash reporter are already running.
+     */
+    private var localeTag: String? = null
+    private var localeResources: Resources? = null
+
+    override fun getResources(): Resources = runCatching {
+        val base = baseContext!!
+        val tag = AppLocale.current(base)
+        localeResources?.takeIf { tag == localeTag } ?: run {
+            localeTag = tag
+            AppLocale.wrap(base).resources.also { localeResources = it }
+        }
+    }.getOrElse { super.getResources() }
 
     override fun onCreate() {
         super.onCreate()

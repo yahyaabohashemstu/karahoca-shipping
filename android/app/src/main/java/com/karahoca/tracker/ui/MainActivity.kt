@@ -52,11 +52,27 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import com.karahoca.tracker.R
+import com.karahoca.tracker.util.AppLocale
 import com.karahoca.tracker.util.DistanceUnit
 import com.karahoca.tracker.util.formatRemaining
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    /*
+     * The chosen language, applied before a single string is read.
+     *
+     * attachBaseContext runs ahead of onCreate, which is the only point early
+     * enough — a Compose tree that has already resolved its strings does not
+     * re-resolve them because the configuration changed underneath it.
+     *
+     * On API 33+ the platform applies the chosen locale to this activity by
+     * itself and the wrap is a no-op; below 33 there is no such mechanism and
+     * the wrap is the entire feature. See AppLocale.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
 
     /*
      * mutableStateOf, not a plain var — and this is the difference between the
@@ -168,8 +184,11 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
             color = MaterialTheme.colorScheme.primary,
         )
         Spacer(Modifier.height(8.dp))
-        Text("Sevkiyat Takibi", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.claim_heading), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(40.dp))
+
+        LanguagePicker()
+        Spacer(Modifier.height(24.dp))
 
         Text(
             stringResource(R.string.claim_hint),
@@ -182,7 +201,7 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         OutlinedTextField(
             value = state.codeInput,
             onValueChange = viewModel::onCodeChanged,
-            label = { Text("Oturum Kodu") },
+            label = { Text(stringResource(R.string.claim_field_label)) },
             placeholder = { Text("K7H2-9QX4") },
             singleLine = true,
             isError = state.error != null,
@@ -269,10 +288,10 @@ private fun CrashBanner(report: String, onShare: () -> Unit, onDismiss: () -> Un
             )
             Row {
                 TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Daralt" else stringResource(R.string.crash_show_all), color = Color.White)
+                    Text(stringResource(if (expanded) R.string.crash_collapse else R.string.crash_show_all), color = Color.White)
                 }
                 TextButton(onClick = onShare) { Text(stringResource(R.string.crash_send_short), color = Color.White) }
-                TextButton(onClick = onDismiss) { Text("Temizle", color = Color(0xFFFCA5A5)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.diag_clear), color = Color(0xFFFCA5A5)) }
             }
         }
     }
@@ -467,7 +486,7 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
             onClick = { viewModel.endSession(context) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Oturumu kapat")
+            Text(stringResource(R.string.tracking_close_session))
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -574,7 +593,7 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            if (state.online) "Takip Aktif" else stringResource(R.string.tracking_offline),
+            stringResource(if (state.online) R.string.tracking_active else R.string.tracking_offline),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
         )
@@ -704,6 +723,48 @@ private fun RemainingDistance(state: TrackerUiState) {
         textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/**
+ * Language, in the languages themselves.
+ *
+ * On the claim screen because that is the first thing a driver sees and the
+ * moment the choice matters — after this screen they are reading a running
+ * shipment, not deciding anything.
+ *
+ * Every label is written in its own language. A picker offering "Arapça" is no
+ * use to somebody who cannot read Turkish, which is precisely who it is for.
+ *
+ * Changing it recreates the activity, which is what re-resolves a Compose tree
+ * whose strings have already been read. The tracking notification needs no
+ * restart — the service resolves its strings at post time.
+ */
+@Composable
+private fun LanguagePicker() {
+    val context = LocalContext.current
+    var selected by remember { mutableStateOf(AppLocale.current(context)) }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppLocale.options.forEach { (tag, label) ->
+            val active = tag == selected
+            FilterChip(
+                selected = active,
+                onClick = {
+                    if (active) return@FilterChip
+                    selected = tag
+                    AppLocale.set(context, tag)
+                    // On API 33+ the platform recreates us itself once the
+                    // LocaleManager write lands; below that nothing does.
+                    // Calling it either way is harmless and covers both.
+                    (context as? Activity)?.recreate()
+                },
+                label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+            )
+        }
+    }
 }
 
 @Composable

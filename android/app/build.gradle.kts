@@ -28,8 +28,8 @@ android {
         // 15 / 1.2.2 — the claim-failure messages. A driver whose code fails
         // during a deploy is now told the server is unreachable and the code is
         // still valid, instead of being told the code was rejected.
-        versionCode = 16
-        versionName = "1.3.0"
+        versionCode = 17
+        versionName = "1.3.1"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",
@@ -159,7 +159,6 @@ ksp {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.service)

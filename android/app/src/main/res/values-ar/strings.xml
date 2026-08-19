@@ -112,4 +112,13 @@
     <string name="crash_show_all">أظهر الكل</string>
     <string name="crash_send_short">إرسال</string>
     <string name="action_open">فتح</string>
+    <string name="claim_heading">تتبّع الشحنة</string>
+    <string name="claim_field_label">رمز الجلسة</string>
+    <string name="diag_clear">مسح</string>
+    <string name="tracking_close_session">أغلق الجلسة</string>
+    <string name="crash_collapse">طيّ</string>
+    <string name="check_background">إذن الموقع (طوال الوقت)</string>
+    <string name="check_play_services">خدمات Google Play</string>
+    <string name="check_notifications">إذن الإشعارات</string>
+    <string name="check_notifications_why">بدون إشعار التتبّع قد يوقف أندرويد الخدمة.</string>
 </resources>

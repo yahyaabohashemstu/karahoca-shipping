@@ -112,4 +112,13 @@
     <string name="crash_show_all">Hemûyan nîşan bide</string>
     <string name="crash_send_short">Bişîne</string>
     <string name="action_open">Veke</string>
+    <string name="claim_heading">Şopandina Barê</string>
+    <string name="claim_field_label">Koda Danişînê</string>
+    <string name="diag_clear">Pak bike</string>
+    <string name="tracking_close_session">Danişînê bigire</string>
+    <string name="crash_collapse">Kurt bike</string>
+    <string name="check_background">Destûra cihî (her dem)</string>
+    <string name="check_play_services">Karûbarên Google Play</string>
+    <string name="check_notifications">Destûra agahdariyê</string>
+    <string name="check_notifications_why">Bê agahdariya şopandinê Android dikare xizmetê bigire.</string>
 </resources>
