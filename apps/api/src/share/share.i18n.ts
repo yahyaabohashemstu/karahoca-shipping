@@ -28,17 +28,30 @@
    reader in Erbil as much as for one in Gaziantep.
    ========================================================================== */
 
-export type ShareLocale = 'tr' | 'ar';
+export type ShareLocale = 'tr' | 'ar' | 'ckb';
 
 export function isRtl(locale: ShareLocale): boolean {
-  return locale === 'ar';
+  return locale === 'ar' || locale === 'ckb';
 }
 
 /** What the language switcher calls each option, in that language. */
 export const LOCALE_NAME: Record<ShareLocale, string> = {
   tr: 'Türkçe',
   ar: 'العربية',
+  /*
+   * Sorani — Central Kurdish, in Arabic script, which is what Erbil reads.
+   *
+   * Named plainly 'کوردی' rather than 'کوردیی ناوەندی'. It is the only Kurdish
+   * on this page, and a reader scanning a footer looks for the short name. The
+   * driver app's Kurdish is Kurmanji in Latin script and is labelled Kurdî
+   * there — a different surface with a different readership, so the two names
+   * never appear side by side.
+   */
+  ckb: 'کوردی',
 };
+
+/** Every language this page offers, in the order the switcher lists them. */
+export const SHARE_LOCALES: readonly ShareLocale[] = ['tr', 'ar', 'ckb'] as const;
 
 /**
  * Which language to render in.
@@ -67,7 +80,25 @@ export function resolveLocale(input: {
   // The corridor this company ships into. Deliberately a list of countries
   // rather than "not TR": a German consignee should get Turkish and a fallback
   // they can machine-translate, not Arabic.
-  if (country === 'IQ' || country === 'SY' || country === 'JO' || country === 'LB') return 'ar';
+  /*
+   * Iraq is the one code in that list that does not settle the question.
+   * Baghdad and Basra read Arabic, Erbil and Sulaymaniyah read Sorani, and
+   * "IQ" says only Iraq.
+   *
+   * A browser explicitly configured to Sorani breaks the tie, and only that
+   * one. It is not a weakening of the rule above it: the reason country
+   * outranks Accept-Language is that a forwarded link is opened by whatever
+   * device is to hand, reporting whatever language it was shipped with —
+   * Turkish, English, the carrier's. Nobody's device reports Sorani by
+   * accident. Setting it is a deliberate act by someone who reads it.
+   */
+  if (country === 'IQ') {
+    for (const tag of parseAcceptLanguage(input.acceptLanguage)) {
+      if (normaliseLocale(tag) === 'ckb') return 'ckb';
+    }
+    return 'ar';
+  }
+  if (country === 'SY' || country === 'JO' || country === 'LB') return 'ar';
   if (country === 'TR') return 'tr';
 
   for (const tag of parseAcceptLanguage(input.acceptLanguage)) {
@@ -85,6 +116,17 @@ function normaliseLocale(raw: string | null | undefined): ShareLocale | null {
   // Arabic a browser actually sends would fall through to Turkish.
   if (value === 'ar' || value.startsWith('ar-') || value.startsWith('ar_')) return 'ar';
   if (value === 'tr' || value.startsWith('tr-') || value.startsWith('tr_')) return 'tr';
+  /*
+   * Sorani is 'ckb'. 'ku-Arab' is the other spelling browsers send for it and
+   * means the same thing: Kurdish written in Arabic script.
+   *
+   * A bare 'ku' deliberately does NOT match. That tag is Kurmanji, written in
+   * Latin script and read in Turkey, and this page has no Kurmanji — answering
+   * it with Sorani hands the reader a script they cannot read, which is worse
+   * than the Turkish they otherwise fall through to and can.
+   */
+  if (value === 'ckb' || value.startsWith('ckb-') || value.startsWith('ckb_')) return 'ckb';
+  if (value.startsWith('ku-arab') || value.startsWith('ku_arab')) return 'ckb';
   return null;
 }
 
@@ -132,8 +174,42 @@ const FORMATTERS: Record<ShareLocale, Intl.DateTimeFormat> = {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    // See the note below. Arabic defaults to a 12-hour clock, and this page
+    // must not have one.
+    hour12: false,
+  }),
+  /*
+   * Sorani takes the same two extensions as Arabic, for the same two reasons:
+   * without nu-latn a delivery time reads ٢٠٢٦-٠٨-١٩ ١٧:٣٠ beside a Latin plate
+   * number, and without ca-gregory the calendar stops being the one the
+   * purchase order was written against.
+   *
+   * The order that comes back is y-MM-dd rather than the dd.MM.y of the Turkish
+   * page. That is what CLDR says Sorani writes and it is left alone on purpose;
+   * it is unambiguous either way, since no reader takes 2026 for a day.
+   */
+  ckb: new Intl.DateTimeFormat('ckb-u-nu-latn-ca-gregory', {
+    timeZone: 'Europe/Istanbul',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
   }),
 };
+
+/*
+ * hour12: false on both right-to-left locales, and it is a fix rather than a
+ * preference.
+ *
+ * Left to their defaults Arabic renders half past five in the evening as
+ * "05:30 م" and Sorani as "٠٥:٣٠ د.ن", while the Turkish page beside them says
+ * "17:30". Planned delivery is the one field on this page a warehouse rosters
+ * staff around, and a reader who misses a two-character suffix books the
+ * morning for a lorry that arrives twelve hours later. The 24-hour clock is
+ * also what the waybill and the customs paperwork already use.
+ */
 
 export function formatDateTime(locale: ShareLocale, value: Date | string | null): string | null {
   if (!value) return null;
@@ -163,7 +239,11 @@ export function formatNumber(locale: ShareLocale, value: number, digits = 0): st
   const key = `${locale}:${digits}`;
   let formatter = NUMBERS.get(key);
   if (!formatter) {
-    formatter = new Intl.NumberFormat(locale === 'ar' ? 'ar-u-nu-latn' : 'tr-TR', {
+    // Both right-to-left locales group with a comma and point with a dot, and
+    // both need nu-latn or the digits themselves change script.
+    const tag =
+      locale === 'ar' ? 'ar-u-nu-latn' : locale === 'ckb' ? 'ckb-u-nu-latn' : 'tr-TR';
+    formatter = new Intl.NumberFormat(tag, {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     });
@@ -201,6 +281,18 @@ export interface ShareStrings {
   carrier: string;
   items: string;
   quantity: string;
+  /*
+   * Units for the load line, e.g. "22 pallets · 18.4 t".
+   *
+   * These were Turkish literals built into the controller, so a consignee in
+   * Erbil read "22 palet · 18,4 ton" — untranslated, and carrying a Turkish
+   * decimal comma that in Arabic and Kurdish grouping reads as a thousands
+   * separator. The kilogram keeps a local abbreviation rather than the bare
+   * symbol, matching how each language writes it on a waybill.
+   */
+  unitPallets: string;
+  unitTonnes: string;
+  unitKg: string;
   noFixYet: string;
 
   // Status headline and detail
@@ -247,7 +339,14 @@ export interface ShareStrings {
   noticeErrorBody: string;
 
   // Chrome
-  switchLanguage: string;
+  /**
+   * The word "language", for the switcher's accessible name.
+   *
+   * This replaced a `switchLanguage` field that held the name of the OTHER
+   * language — workable while there were exactly two and meaningless the moment
+   * a third arrived. The options name themselves now, from LOCALE_NAME.
+   */
+  languageLabel: string;
   refresh: string;
   footerPrivate: string;
   footerContact: string;
@@ -275,6 +374,9 @@ const TR: ShareStrings = {
   carrier: 'Taşıyıcı firma',
   items: 'Ürünler',
   quantity: 'Miktar',
+  unitPallets: 'palet',
+  unitTonnes: 'ton',
+  unitKg: 'kg',
   noFixYet: 'Henüz konum alınmadı',
 
   statusPreparing: 'Hazırlanıyor',
@@ -320,7 +422,7 @@ const TR: ShareStrings = {
   noticeErrorBody:
     'Geçici bir sorun nedeniyle sevkiyat bilgileri getirilemedi. Lütfen birkaç dakika sonra tekrar deneyin.',
 
-  switchLanguage: 'العربية',
+  languageLabel: 'Dil',
   refresh: 'Yenile',
   footerPrivate:
     'Bu sayfa yalnızca bu sevkiyat için oluşturulmuş özel bir bağlantıdır ve süresi dolduğunda kapanır. Lütfen bağlantıyı üçüncü kişilerle paylaşmayın.',
@@ -368,6 +470,9 @@ const AR: ShareStrings = {
   carrier: 'شركة النقل',
   items: 'الأصناف',
   quantity: 'الكمية',
+  unitPallets: 'منصّة',
+  unitTonnes: 'طن',
+  unitKg: 'كغ',
   noFixYet: 'لم يُستلم موقع بعد',
 
   statusPreparing: 'قيد التجهيز',
@@ -415,20 +520,129 @@ const AR: ShareStrings = {
   noticeErrorBody:
     'تعذّر جلب بيانات الشحنة بسبب مشكلة مؤقتة. يُرجى المحاولة مرة أخرى بعد بضع دقائق.',
 
-  switchLanguage: 'Türkçe',
+  languageLabel: 'اللغة',
   refresh: 'تحديث',
   footerPrivate:
     'هذه الصفحة رابط خاص أُنشئ لهذه الشحنة وحدها، ويُغلق عند انتهاء صلاحيته. يُرجى عدم مشاركته مع أطراف أخرى.',
   footerContact: 'لأي استفسار يُرجى التواصل مع مسؤول الشحن لديكم.',
 };
 
-export const SHARE_STRINGS: Record<ShareLocale, ShareStrings> = { tr: TR, ar: AR };
+/*
+ * Sorani — Central Kurdish, in Arabic script.
+ *
+ * Which Kurdish this is matters more than usual, because the driver app ships a
+ * different one. The readers here are purchasing and warehouse staff in Erbil,
+ * Sulaymaniyah and Duhok, who read Sorani written in Arabic letters. The app's
+ * Kurdish is Kurmanji in Latin letters, which is what the carriers hired in
+ * Gaziantep, Urfa, Mardin and Şırnak read. The two are not interchangeable —
+ * handing either readership the other's script gives them a page they cannot
+ * read at all, which is worse than the Turkish they would otherwise fall back
+ * to and can read.
+ *
+ * Three choices a translator would ask about:
+ *
+ *   لۆری for the vehicle, not بارهەڵگر. Both are correct and the second is the
+ *   more formal compound, but the loanword is what a warehouse clerk in Erbil
+ *   actually says out loud, and the Arabic page beside this one made the same
+ *   call in choosing الشاحنة over المركبة.
+ *
+ *   بە هێڵی ڕاست for kuş uçuşu, matching the Arabic. Kurdish has no idiom that
+ *   reads naturally on a shipping page, and "in a straight line" says the thing
+ *   the qualifier exists to say: the number is not road distance.
+ *
+ *   شوێنپێهەڵگرتن for tracking rather than بەدواداچوون, which means following up
+ *   on a matter rather than following something's position.
+ *
+ * Numbers and dates arrive already formatted with Latin digits — see the
+ * FORMATTERS note — so nothing here should reintroduce Arabic-Indic numerals.
+ */
+const CKB: ShareStrings = {
+  pageTitle: (order) => `شوێنپێهەڵگرتنی بار — ${order}`,
+  brand: 'کارا هۆجا',
+
+  groupNow: 'دۆخ',
+  groupShipment: 'بار',
+  groupCargo: 'کاڵا',
+  groupCarrier: 'گواستنەوە',
+
+  lastFix: 'دوایین نوێکردنەوەی شوێن',
+  remaining: 'دووری ماوە',
+  asTheCrowFlies: 'بە هێڵی ڕاست',
+  destination: 'شوێنی گەیشتن',
+  plannedDelivery: 'کاتی دیاریکراوی گەیاندن',
+  orderNumber: 'ژمارەی داواکاری',
+  consignee: 'وەرگر',
+  plate: 'ژمارەی پلێت',
+  driver: 'شۆفێر',
+  driverPhone: 'تەلەفۆنی شۆفێر',
+  carrier: 'کۆمپانیای گواستنەوە',
+  items: 'کاڵاکان',
+  quantity: 'بڕ',
+  unitPallets: 'پالێت',
+  unitTonnes: 'تەن',
+  unitKg: 'کگم',
+  noFixYet: 'هێشتا هیچ شوێنێک وەرنەگیراوە',
+
+  statusPreparing: 'لە ئامادەکاریدایە',
+  statusOnTheRoadTitle: 'لە ڕێگادایە',
+  statusOnBreakTitle: 'لە پشوودایە',
+  statusDepartingTitle: 'خەریکە بەڕێدەکەوێت',
+  statusDepartingDetail: 'شۆفێر ئامادەیە، شوێنپێهەڵگرتن بەم زووانە دەست پێدەکات.',
+  statusDeliveredTitle: 'گەیەنرا',
+  statusDeliveredDetail: 'بارەکە گەیەنرا.',
+  statusCancelledTitle: 'هەڵوەشێنرایەوە',
+  statusCancelledDetail:
+    'ئەم بارە هەڵوەشێنرایەوە. بۆ وردەکاری تکایە پەیوەندی بە بەرپرسی بارکردنتانەوە بکەن.',
+  statusFinishedTitle: 'شوێنپێهەڵگرتن تەواو بوو',
+  statusFinishedDetail:
+    'شوێنپێهەڵگرتنی لۆرییەکە کۆتایی هات. بۆ پشتڕاستکردنەوەی گەیاندن تکایە پەیوەندی بە بەرپرسی بارکردنتانەوە بکەن.',
+  statusStoppedDetail: 'لۆرییەکە ئێستا وەستاوە. شوێنپێهەڵگرتن بەردەوامە.',
+  statusDriverReady: 'شۆفێر ئامادەیە، شوێنپێهەڵگرتن بەم زووانە دەست پێدەکات.',
+  statusPlannedNotStarted: 'بارەکە خشتەکراوە، لۆرییەکە هێشتا بەڕێنەکەوتووە.',
+
+  signalLive: 'لۆرییەکە لە ڕێگادایە، شوێنەکەی ڕاستەوخۆ نوێدەکرێتەوە.',
+  signalDelayed: 'لۆرییەکە لە ڕێگادایە. چەند خولەکێکە شوێنەکەی نوێ نەکراوەتەوە.',
+  signalStale:
+    'لۆرییەکە لە ڕێگادایە. ماوەیەکە شوێنەکەی وەرناگیرێت، لەوانەیە لە دەرەوەی ناوچەی پەیوەندی بێت.',
+  signalLost:
+    'لۆرییەکە لە ڕێگادایە. ئێستا شوێنەکەی وەرناگیرێت، لەوانەیە لە دەرەوەی ناوچەی پەیوەندی بێت.',
+  signalNone: 'لۆرییەکە لە ڕێگادایە.',
+
+  mapLoading: 'نەخشە بار دەکرێت…',
+  mapFailed: 'نەخشە بار نەکرا. زانیارییەکانی سەرەوە نوێن.',
+  mapNoPosition: 'لۆرییەکە هێشتا شوێنی خۆی ڕانەگەیاندووە.',
+
+  agoJustNow: 'هەر ئێستا',
+  agoMinutes: 'خولەک لەمەوپێش',
+  agoHours: 'کاتژمێر لەمەوپێش',
+  agoDays: 'ڕۆژ لەمەوپێش',
+
+  noticeInvalidTitle: 'بەستەرەکە دروست نییە',
+  noticeInvalidBody:
+    'ئەم بەستەری شوێنپێهەڵگرتنە چیتر کار ناکات. دەتوانن بەستەرێکی نوێ لە بەرپرسی بارکردنتان داوا بکەن.',
+  noticeUnknownBody:
+    'ئەم بەستەری شوێنپێهەڵگرتنە ناکرێتەوە. دڵنیابن کە بەستەرەکەتان بە تەواوی کۆپی کردووە؛ ئەگەر کێشەکە بەردەوام بوو پەیوەندی بە بەرپرسی بارکردنتانەوە بکەن.',
+  noticeExpiredTitle: 'کاتی بەستەرەکە بەسەرچووە',
+  noticeExpiredBody:
+    'ماوەی شوێنپێهەڵگرتنی ئەم بارە بەسەرچووە. بۆ زانیاری نوێ پەیوەندیمان پێوە بکەن.',
+  noticeErrorTitle: 'ئێستا ناتوانرێت پەڕەکە بکرێتەوە',
+  noticeErrorBody:
+    'بەهۆی کێشەیەکی کاتییەوە زانیاری بارەکە نەهێنرا. تکایە دوای چەند خولەکێک دووبارە هەوڵ بدەنەوە.',
+
+  languageLabel: 'زمان',
+  refresh: 'نوێکردنەوە',
+  footerPrivate:
+    'ئەم پەڕەیە بەستەرێکی تایبەتە کە تەنها بۆ ئەم بارە دروستکراوە، و کاتێک بەسەردەچێت دادەخرێت. تکایە بەستەرەکە لەگەڵ کەسی سێیەم هاوبەش مەکەن.',
+  footerContact: 'بۆ هەر پرسیارێک پەیوەندی بە بەرپرسی بارکردنتانەوە بکەن.',
+};
+
+export const SHARE_STRINGS: Record<ShareLocale, ShareStrings> = { tr: TR, ar: AR, ckb: CKB };
 
 export function strings(locale: ShareLocale): ShareStrings {
   return SHARE_STRINGS[locale];
 }
 
-/** The other language, for the switcher. */
-export function otherLocale(locale: ShareLocale): ShareLocale {
-  return locale === 'ar' ? 'tr' : 'ar';
+/** Everything except the one being read, in listed order. */
+export function otherLocales(locale: ShareLocale): ShareLocale[] {
+  return SHARE_LOCALES.filter((l) => l !== locale);
 }

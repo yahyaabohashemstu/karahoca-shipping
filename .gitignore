@@ -49,3 +49,4 @@ backups/
 
 # dev-run.ps1 service logs
 .logs/
+.preview-i18n/

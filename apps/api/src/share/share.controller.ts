@@ -20,7 +20,7 @@ import {
   formatNumber,
   isRtl,
   LOCALE_NAME,
-  otherLocale,
+  otherLocales,
   resolveLocale,
   strings,
   type ShareLocale,
@@ -374,14 +374,21 @@ function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
   }
 
   const load: string[] = [];
-  if (view.palletCount) load.push(`${view.palletCount} palet`);
+  if (view.palletCount) load.push(`${formatNumber(locale, view.palletCount)} ${t.unitPallets}`);
   if (view.totalWeightKg) {
-    // Tonnes above 1000 kg: a receiving clerk reads "12,4 ton" instantly and
-    // has to stop and count digits on "12400 kg".
+    /*
+     * Tonnes above 1000 kg: a receiving clerk reads "12,4 ton" instantly and
+     * has to stop and count digits on "12400 kg".
+     *
+     * Through formatNumber, not toLocaleString('tr-TR'). Pinned to Turkish this
+     * put "18,4 ton" on the Arabic page, where the comma is a thousands
+     * separator — the same misreading formatKm was already fixed for, missed
+     * here because the weight is built inline rather than through a helper.
+     */
     load.push(
       view.totalWeightKg >= 1000
-        ? `${(view.totalWeightKg / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} ton`
-        : `${view.totalWeightKg} kg`,
+        ? `${formatNumber(locale, view.totalWeightKg / 1000, 1)} ${t.unitTonnes}`
+        : `${formatNumber(locale, view.totalWeightKg)} ${t.unitKg}`,
     );
   }
   if (load.length) {
@@ -452,15 +459,41 @@ function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
 
     <p class="fine">${esc(t.footerPrivate)}</p>
     <p class="fine">${esc(t.footerContact)}</p>
-    <p class="fine">
-      <a class="lang" href="?lang=${otherLocale(locale)}" hreflang="${otherLocale(locale)}"
-         lang="${otherLocale(locale)}" dir="${isRtl(otherLocale(locale)) ? 'rtl' : 'ltr'}"
-         >${esc(LOCALE_NAME[otherLocale(locale)])}</a>
-    </p>
+    ${languagePicker(locale, t)}
   `,
     hasPosition ? mapScripts(mapData, t) : agoScript(t),
     locale,
   );
+}
+
+/*
+ * The language switcher.
+ *
+ * A nav rather than a bare link, because there is more than one destination
+ * now, and a screen reader landing on two unlabelled language names in a footer
+ * has no way to know what they are for — hence the aria-label, which is the one
+ * string here that is itself translated.
+ *
+ * Each option carries its own lang and dir. Without them a browser hands
+ * "العربية" to a layout engine that has been told the page is Turkish, which is
+ * how a right-to-left word ends up with its punctuation on the wrong side, and
+ * a screen reader set to Turkish pronounces the Arabic and Kurdish names as
+ * gibberish.
+ *
+ * The language being read is deliberately not listed. This is a footer on a
+ * page read on a phone, the reader can already see which language they are
+ * looking at, and a disabled third entry is one more thing to skip past.
+ */
+function languagePicker(locale: ShareLocale, t: ShareStrings): string {
+  const options = otherLocales(locale)
+    .map(
+      (other) =>
+        `<a class="lang" href="?lang=${other}" hreflang="${other}"
+            lang="${other}" dir="${isRtl(other) ? 'rtl' : 'ltr'}"
+            >${esc(LOCALE_NAME[other])}</a>`,
+    )
+    .join('<span class="lang__sep" aria-hidden="true">·</span>');
+  return `<nav class="fine langs" aria-label="${esc(t.languageLabel)}">${options}</nav>`;
 }
 
 function noticePage(title: string, message: string, locale: ShareLocale): string {
@@ -679,6 +712,23 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
   dd a { color: var(--brand); text-underline-offset: 3px; }
   .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
   .fine { color: var(--ink-3); font-size: 12.5px; margin: 22px 0 0; text-wrap: pretty; }
+
+  /*
+   * The language switcher. Its own rule now that it holds more than one link.
+   *
+   * A flex row rather than inline text, so the options do not reflow into
+   * the middle of a sentence when one of them is right-to-left and the page is
+   * not — the mixed-direction case this footer is now guaranteed to hit, since
+   * the Turkish page lists two right-to-left names side by side.
+   *
+   * No text-align: the flex line follows the page direction on its own, which
+   * puts the switcher under the start of the footer text in every language.
+   */
+  .langs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .lang { color: var(--ink-3); text-decoration: underline; text-underline-offset: 3px; }
+  .lang:hover { color: var(--ink); }
+  .lang:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 3px; }
+  .lang__sep { color: var(--ink-3); opacity: .5; }
 
   /*
    * MapLibre's own control styling is built for a light basemap, so on
