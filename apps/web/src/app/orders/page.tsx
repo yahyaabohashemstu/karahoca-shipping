@@ -24,19 +24,26 @@ import {
   TR,
   TRMessage,
 } from '@/components/ui';
+import { useFormat, useT, type Dictionary } from '@/lib/i18n';
 
 const LIMIT = 50;
 const COLS = 7;
 
-const FILTERS = [
-  { value: 'untracked', label: 'Takipsiz' },
-  { value: 'PENDING', label: 'Bekleyen' },
-  { value: 'IN_TRANSIT', label: 'Yolda' },
-  { value: 'DELIVERED', label: 'Teslim edilen' },
-  { value: '', label: 'Tümü' },
+/*
+ * Values and dictionary keys only. A module-level array is evaluated once at
+ * import, so a label written here would be Turkish for every reader for ever.
+ */
+const FILTERS: Array<{ value: string; key: keyof Dictionary['orders']['filters'] }> = [
+  { value: 'untracked', key: 'untracked' },
+  { value: 'PENDING', key: 'PENDING' },
+  { value: 'IN_TRANSIT', key: 'IN_TRANSIT' },
+  { value: 'DELIVERED', key: 'DELIVERED' },
+  { value: '', key: 'all' },
 ];
 
 export default function OrdersPage() {
+  const t = useT();
+  const fmt = useFormat();
   const authed = useRequireAuth();
   const router = useRouter();
 
@@ -74,29 +81,29 @@ export default function OrdersPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Siparişler"
-        subtitle="Sevk edilecek yükler ve takip durumları"
+        title={t.orders.title}
+        subtitle={t.orders.subtitle}
         actions={
           <Link href="/orders/new">
-            <Button variant="primary">+ Yeni sipariş</Button>
+            <Button variant="primary">{t.orders.create}</Button>
           </Link>
         }
       />
 
       <div className="flex flex-wrap items-center gap-3 px-5 py-3">
         <SegmentedControl
-          label="Sipariş filtresi"
+          label={t.orders.filterLabel}
           value={filter}
           onChange={(v) => {
             setFilter(v);
             setOffset(0);
           }}
-          options={FILTERS}
+          options={FILTERS.map((f) => ({ value: f.value, label: t.orders.filters[f.key] }))}
         />
         <SearchInput
           value={searchInput}
           onValueChange={setSearchInput}
-          placeholder="Sipariş no, müşteri…"
+          placeholder={t.orders.searchPlaceholder}
           className="ml-auto w-72"
         />
       </div>
@@ -106,13 +113,13 @@ export default function OrdersPage() {
           <Table>
             <THead>
               <TR>
-                <TH>Sipariş</TH>
-                <TH>Müşteri</TH>
-                <TH>Varış</TH>
-                <TH>Durum</TH>
-                <TH>Takip</TH>
-                <TH numeric>Ağırlık</TH>
-                <TH numeric>Planlanan teslim</TH>
+                <TH>{t.orders.colOrder}</TH>
+                <TH>{t.orders.colCustomer}</TH>
+                <TH>{t.orders.colDestination}</TH>
+                <TH>{t.orders.colStatus}</TH>
+                <TH>{t.orders.colTracking}</TH>
+                <TH numeric>{t.orders.colWeight}</TH>
+                <TH numeric>{t.orders.colPlanned}</TH>
               </TR>
             </THead>
             <tbody>
@@ -122,7 +129,7 @@ export default function OrdersPage() {
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
                     className="mx-auto max-w-md text-left"
-                    title="Sipariş listesi yüklenemedi"
+                    title={t.orders.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
                     retrying={isFetching}
@@ -131,16 +138,16 @@ export default function OrdersPage() {
               ) : items.length === 0 ? (
                 <TRMessage colSpan={COLS}>
                   <EmptyState
-                    title={search ? 'Eşleşen sipariş yok' : 'Sipariş yok'}
+                    title={search ? t.orders.emptyMatch : t.orders.empty}
                     description={
                       filter === 'untracked'
-                        ? 'Takip oturumu açılmamış sipariş bulunmuyor. Diğer filtreleri deneyin veya yeni bir sipariş oluşturun.'
-                        : 'Sevk edilecek yükleri buraya kaydedin; her sipariş için ayrı bir takip oturumu açılır.'
+                        ? t.orders.emptyUntracked
+                        : t.orders.emptyAll
                     }
                     action={
                       <Link href="/orders/new">
                         <Button variant="primary" size="sm">
-                          Sipariş oluştur
+                          {t.orders.createShort}
                         </Button>
                       </Link>
                     }
@@ -176,20 +183,18 @@ export default function OrdersPage() {
                       ) : (
                         // Not an absence — an action. This is the single most
                         // common thing a dispatcher does on this screen.
-                        <Badge tone="neutral">Oturum yok</Badge>
+                        <Badge tone="neutral">{t.orders.noSession}</Badge>
                       )}
                     </TD>
                     <TD numeric muted>
-                      {o.totalWeightKg !== null ? `${o.totalWeightKg.toLocaleString('tr-TR')} kg` : '—'}
+                      {o.totalWeightKg !== null ? `${fmt.number(o.totalWeightKg)} kg` : '—'}
                     </TD>
                     <TD numeric muted>
-                      {o.plannedDeliveryAt
-                        ? new Date(o.plannedDeliveryAt).toLocaleDateString('tr-TR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: '2-digit',
-                          })
-                        : '—'}
+                      {fmt.date(o.plannedDeliveryAt, {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: '2-digit',
+                      })}
                     </TD>
                   </TR>
                 ))

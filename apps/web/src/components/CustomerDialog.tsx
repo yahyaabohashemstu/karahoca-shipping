@@ -261,8 +261,7 @@ export function CustomerDialog({
             value={location}
             onChange={setLocation}
             emptyHint={
-              'Bu müşterinin siparişleri bu noktayı otomatik devralır. ' +
-              'Boş bırakılırsa kalan mesafe hesaplanamaz ve varış otomatik tespit edilemez.'
+              t.customer.destinationHint
             }
           />
         </div>

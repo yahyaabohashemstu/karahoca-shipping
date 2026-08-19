@@ -20,18 +20,12 @@ import {
   StaleBanner,
   Stat,
 } from '@/components/ui';
+import { useT, type Dictionary } from '@/lib/i18n';
 
 // MapLibre touches `window` at import time — must not be server-rendered.
 const FleetMap = dynamic(() => import('@/components/FleetMap'), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-full place-items-center bg-surface-2">
-      <div className="flex flex-col items-center gap-2 text-ink-3">
-        <span className="kh-skeleton h-8 w-8 rounded-full" />
-        <span className="text-sm">Harita yükleniyor…</span>
-      </div>
-    </div>
-  ),
+  loading: MapLoading,
 });
 
 /** A row plus the freshness we recomputed for it, so nothing downstream re-derives it. */
@@ -43,6 +37,7 @@ interface Row {
 }
 
 export default function LiveDashboard() {
+  const t = useT();
   const authed = useRequireAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -118,10 +113,10 @@ export default function LiveDashboard() {
       fill
       right={
         <div className="flex items-center gap-3">
-          <Stat label="Yolda" value={stats?.activeSessions ?? fleet.length} loading={isLoading} />
-          <Stat label="Kod bekliyor" value={stats?.awaitingClaim ?? 0} />
+          <Stat label={t.fleet.statActive} value={stats?.activeSessions ?? fleet.length} loading={isLoading} />
+          <Stat label={t.fleet.statAwaiting} value={stats?.awaitingClaim ?? 0} />
           <Stat
-            label="Sessiz"
+            label={t.fleet.statSilent}
             value={silentCount}
             tone={silentCount > 0 ? 'warn' : 'neutral'}
             onClick={() => setFilter(filter === 'silent' ? 'all' : 'silent')}
@@ -137,8 +132,8 @@ export default function LiveDashboard() {
         <StaleBanner
           message={
             authFailed
-              ? 'Oturum doğrulanamadı — canlı akış durdu. Sayfayı yenileyin veya yeniden giriş yapın.'
-              : 'Canlı bağlantı kesildi — haritadaki konumlar donmuş olabilir.'
+              ? t.fleet.socketAuthLost
+              : t.fleet.socketLost
           }
           onRetry={() => refetch()}
         />
@@ -151,11 +146,11 @@ export default function LiveDashboard() {
             <SearchInput
               value={search}
               onValueChange={setSearch}
-              placeholder="Plaka, sipariş, müşteri…"
+              placeholder={t.fleet.searchPlaceholder}
               className="flex-1"
             />
             {filter === 'silent' && (
-              <IconButton label="Filtreyi kaldır" size="sm" onClick={() => setFilter('all')}>
+              <IconButton label={t.fleet.clearFilter} size="sm" onClick={() => setFilter('all')}>
                 <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
                   <path d="m3 3 6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
@@ -171,7 +166,7 @@ export default function LiveDashboard() {
             ) : isError ? (
               <ErrorState
                 className="m-3"
-                title="Filo verisi alınamadı"
+                title={t.fleet.loadFailed}
                 message={(error as Error)?.message}
                 onRetry={() => refetch()}
                 retrying={isFetching}
@@ -180,26 +175,26 @@ export default function LiveDashboard() {
               <EmptyState
                 title={
                   rows.length === 0
-                    ? 'Şu anda yolda araç yok'
+                    ? t.fleet.emptyActive
                     : filter === 'silent'
-                      ? 'Sessiz araç yok'
-                      : 'Eşleşen araç yok'
+                      ? t.fleet.emptySilent
+                      : t.fleet.emptyMatch
                 }
                 description={
                   rows.length === 0
-                    ? 'Bir siparişe takip oturumu açtığınızda araç burada görünür.'
+                    ? t.fleet.emptyBody
                     : undefined
                 }
                 action={
                   rows.length === 0 ? (
                     <Link href="/sessions/new">
                       <Button variant="primary" size="sm">
-                        Takip oturumu aç
+                        {t.fleet.openSession}
                       </Button>
                     </Link>
                   ) : (
                     <Button size="sm" onClick={() => { setSearch(''); setFilter('all'); }}>
-                      Filtreleri temizle
+                      {t.fleet.clearFilters}
                     </Button>
                   )
                 }
@@ -260,6 +255,7 @@ export default function LiveDashboard() {
 /* -------------------------------------------------------------------------- */
 
 function FleetRow({ row, selected, onSelect }: { row: Row; selected: boolean; onSelect: () => void }) {
+  const t = useT();
   const { p, state, speedKmh } = row;
   const lowBattery = p.batteryPct !== null && p.batteryPct < 20;
   const paused = state === 'PAUSED';
@@ -311,9 +307,9 @@ function FleetRow({ row, selected, onSelect }: { row: Row; selected: boolean; on
             </span>
           )}
           {p.mockLocationCount > 0 && (
-            <span className="inline-flex items-center gap-1 font-medium text-danger" title="Sahte konum tespit edildi">
+            <span className="inline-flex items-center gap-1 font-medium text-danger" title={t.fleet.mockTitle}>
               <WarnIcon />
-              sahte GPS
+              {t.fleet.mockShort}
             </span>
           )}
         </div>
@@ -347,6 +343,7 @@ function WarnIcon() {
 }
 
 function SelectedPanel({ row, onClose }: { row: Row; onClose: () => void }) {
+  const t = useT();
   const { p, state, secondsSinceFix } = row;
   return (
     <div className="rounded-md bg-surface p-3.5 shadow-panel ring-1 ring-line">
@@ -357,7 +354,7 @@ function SelectedPanel({ row, onClose }: { row: Row; onClose: () => void }) {
           </div>
           <div className="truncate text-sm text-ink-2">{p.carrierName}</div>
         </div>
-        <IconButton label="Paneli kapat" size="sm" onClick={onClose}>
+        <IconButton label={t.fleet.closePanel} size="sm" onClick={onClose}>
           <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
             <path d="m3 3 6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
@@ -367,16 +364,16 @@ function SelectedPanel({ row, onClose }: { row: Row; onClose: () => void }) {
       <div className="mb-2.5 flex items-center gap-2">
         <SignalBadge state={state} />
         {secondsSinceFix !== null && (
-          <span className="kh-num text-sm text-ink-3">{formatAge(secondsSinceFix)} önce</span>
+          <span className="kh-num text-sm text-ink-3">{t.fleet.ago(formatAge(secondsSinceFix, t))}</span>
         )}
       </div>
 
       <dl className="space-y-0.5 border-t border-line pt-2 text-base">
-        <PanelRow label="Sipariş" value={p.orderNumber} mono />
-        <PanelRow label="Müşteri" value={p.customerName} />
-        <PanelRow label="Sürücü" value={p.driverName ?? '—'} />
+        <PanelRow label={t.fleet.order} value={p.orderNumber} mono />
+        <PanelRow label={t.fleet.customer} value={p.customerName} />
+        <PanelRow label={t.fleet.driver} value={p.driverName ?? '—'} />
         <PanelRow
-          label="Telefon"
+          label={t.fleet.phone}
           value={
             p.driverPhone ? (
               // A dispatcher chasing a silent truck should not have to copy a
@@ -389,13 +386,13 @@ function SelectedPanel({ row, onClose }: { row: Row; onClose: () => void }) {
             )
           }
         />
-        <PanelRow label="Kat edilen" value={`${p.distanceKm ?? 0} km`} mono />
-        <PanelRow label="Kalan (kuş uçuşu)" value={p.remainingKm !== null ? `${p.remainingKm} km` : '—'} mono />
+        <PanelRow label={t.fleet.travelled} value={`${p.distanceKm ?? 0} km`} mono />
+        <PanelRow label={t.fleet.remaining} value={p.remainingKm !== null ? `${p.remainingKm} km` : '—'} mono />
       </dl>
 
       <Link href={`/sessions/${p.sessionId}`} className="mt-3 block">
         <Button variant="primary" block size="sm">
-          Detay ve rota geçmişi
+          {t.fleet.detail}
         </Button>
       </Link>
     </div>
@@ -411,10 +408,30 @@ function PanelRow({ label, value, mono }: { label: string; value: React.ReactNod
   );
 }
 
-function formatAge(seconds: number): string {
-  if (seconds < 60) return `${seconds} sn`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} dk`;
+function formatAge(seconds: number, t: Dictionary): string {
+  if (seconds < 60) return t.fleet.ageSec(String(seconds));
+  if (seconds < 3600) return t.fleet.ageMin(String(Math.floor(seconds / 60)));
   const h = Math.floor(seconds / 3600);
-  if (h < 24) return `${h} sa`;
-  return `${Math.floor(h / 24)} gün`;
+  if (h < 24) return t.fleet.ageHour(String(h));
+  return t.fleet.ageDay(String(Math.floor(h / 24)));
+}
+
+/**
+ * The map's loading state, as a named component rather than an inline arrow.
+ *
+ * next/dynamic renders `loading` as a component, so a hook is legal inside it —
+ * but only if it *is* a component. An inline arrow in an options object reads
+ * like a render callback, and the next person to touch it would have no reason
+ * to think a hook belonged there.
+ */
+function MapLoading() {
+  const t = useT();
+  return (
+    <div className="grid h-full place-items-center bg-surface-2">
+      <div className="flex flex-col items-center gap-2 text-ink-3">
+        <span className="kh-skeleton h-8 w-8 rounded-full" />
+        <span className="text-sm">{t.fleet.mapLoading}</span>
+      </div>
+    </div>
+  );
 }

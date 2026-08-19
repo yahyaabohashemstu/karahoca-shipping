@@ -25,22 +25,31 @@ import {
   TR,
   TRMessage,
 } from '@/components/ui';
+import { useI18n, useT, type Dictionary } from '@/lib/i18n';
+import { formatDayTime } from '@/lib/format';
+import type { Locale } from '@/lib/i18n/locale';
 
-const STATUS_FILTERS = [
-  { value: 'LIVE', label: 'Yolda' },
-  { value: 'ASSIGNED', label: 'Kod bekliyor' },
-  { value: 'COMPLETED', label: 'Tamamlanan' },
+/*
+ * Values and dictionary keys only — a module-level array is evaluated once at
+ * import, long before a language has been chosen.
+ */
+const STATUS_FILTERS: Array<{ value: string; key: keyof Dictionary['sessions']['filters'] }> = [
+  { value: 'LIVE', key: 'LIVE' },
+  { value: 'ASSIGNED', key: 'ASSIGNED' },
+  { value: 'COMPLETED', key: 'COMPLETED' },
   // CANCELLED had no option at all, so a stopped shipment was reachable only by
-  // switching to "Tümü" and reading past everything else.
-  { value: 'CANCELLED', label: 'İptal edilen' },
-  { value: 'EXPIRED', label: 'Süresi dolan' },
-  { value: '', label: 'Tümü' },
-] as const;
+  // switching to "all" and reading past everything else.
+  { value: 'CANCELLED', key: 'CANCELLED' },
+  { value: 'EXPIRED', key: 'EXPIRED' },
+  { value: '', key: 'all' },
+];
 
 const LIMIT = 50;
 const COLS = 8;
 
 export default function SessionsPage() {
+  const t = useT();
+  const { locale } = useI18n();
   const authed = useRequireAuth();
   const router = useRouter();
   const now = useNow(30_000);
@@ -83,29 +92,29 @@ export default function SessionsPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Takip oturumları"
-        subtitle="Her sevkiyat için açılan takip kaydı ve son bilinen durumu"
+        title={t.sessions.title}
+        subtitle={t.sessions.subtitle}
         actions={
           <Link href="/sessions/new">
-            <Button variant="primary">+ Yeni oturum</Button>
+            <Button variant="primary">{t.sessions.create}</Button>
           </Link>
         }
       />
 
       <div className="flex flex-wrap items-center gap-3 px-5 py-3">
         <SegmentedControl
-          label="Durum filtresi"
+          label={t.sessions.statusFilter}
           value={status}
           onChange={(v) => {
             setStatus(v);
             setOffset(0);
           }}
-          options={STATUS_FILTERS.map((f) => ({ value: f.value as string, label: f.label }))}
+          options={STATUS_FILTERS.map((f) => ({ value: f.value, label: t.sessions.filters[f.key] }))}
         />
         <SearchInput
           value={searchInput}
           onValueChange={setSearchInput}
-          placeholder="Sipariş, plaka, müşteri…"
+          placeholder={t.sessions.searchPlaceholder}
           className="ml-auto w-72"
         />
       </div>
@@ -115,14 +124,14 @@ export default function SessionsPage() {
           <Table>
             <THead>
               <TR>
-                <TH>Oturum</TH>
-                <TH>Sipariş</TH>
-                <TH>Müşteri</TH>
-                <TH>Nakliyeci</TH>
-                <TH>Araç</TH>
-                <TH>Durum</TH>
-                <TH numeric>Mesafe</TH>
-                <TH numeric>Son sinyal</TH>
+                <TH>{t.sessions.colSession}</TH>
+                <TH>{t.sessions.colOrder}</TH>
+                <TH>{t.sessions.colCustomer}</TH>
+                <TH>{t.sessions.colCarrier}</TH>
+                <TH>{t.sessions.colVehicle}</TH>
+                <TH>{t.sessions.colStatus}</TH>
+                <TH numeric>{t.sessions.colDistance}</TH>
+                <TH numeric>{t.sessions.colLastSignal}</TH>
               </TR>
             </THead>
             <tbody>
@@ -134,7 +143,7 @@ export default function SessionsPage() {
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
                     className="mx-auto max-w-md text-left"
-                    title="Liste yüklenemedi"
+                    title={t.sessions.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
                     retrying={isFetching}
@@ -143,11 +152,11 @@ export default function SessionsPage() {
               ) : items.length === 0 ? (
                 <TRMessage colSpan={COLS}>
                   <EmptyState
-                    title={search || status ? 'Eşleşen oturum yok' : 'Henüz oturum açılmadı'}
+                    title={search || status ? t.sessions.emptyMatch : t.sessions.empty}
                     description={
                       search || status
-                        ? 'Filtreleri değiştirip tekrar deneyin.'
-                        : 'Bir siparişe takip oturumu açtığınızda burada listelenir.'
+                        ? t.sessions.emptyMatchBody
+                        : t.sessions.emptyBody
                     }
                     action={
                       search || status ? (
@@ -158,12 +167,12 @@ export default function SessionsPage() {
                             setStatus('');
                           }}
                         >
-                          Filtreleri temizle
+                          {t.sessions.clearFilters}
                         </Button>
                       ) : (
                         <Link href="/sessions/new">
                           <Button variant="primary" size="sm">
-                            Takip oturumu aç
+                            {t.sessions.createShort}
                           </Button>
                         </Link>
                       )
@@ -196,7 +205,7 @@ export default function SessionsPage() {
                       </TD>
                       <TD numeric>{s.distanceKm ?? 0} km</TD>
                       <TD numeric muted>
-                        {s.recordedAt ? formatWhen(s.recordedAt) : '—'}
+                        {s.recordedAt ? formatWhen(s.recordedAt, t, locale) : '—'}
                       </TD>
                     </TR>
                   );
@@ -219,11 +228,11 @@ export default function SessionsPage() {
  * recent. "3 dk" answers the question a dispatcher is actually asking on a live
  * row; "11.08.2026 22:14" is what they need on a row from last week.
  */
-function formatWhen(iso: string): string {
+function formatWhen(iso: string, t: Dictionary, locale: Locale): string {
   const d = new Date(iso);
   const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 60) return 'az önce';
-  if (diff < 3600) return `${Math.floor(diff / 60)} dk önce`;
-  if (diff < 86_400) return `${Math.floor(diff / 3600)} sa önce`;
-  return d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  if (diff < 60) return t.sessions.agoJustNow;
+  if (diff < 3600) return t.sessions.agoMinutes(String(Math.floor(diff / 60)));
+  if (diff < 86_400) return t.sessions.agoHours(String(Math.floor(diff / 3600)));
+  return formatDayTime(locale, d);
 }

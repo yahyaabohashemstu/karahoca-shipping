@@ -27,6 +27,7 @@ const COLS = 7;
 
 export default function CustomersPage() {
   const { locale } = useI18n();
+  const t = useT();
   const authed = useRequireAuth();
   const [search, setSearch] = useState('');
   const [dialog, setDialog] = useState(false);
@@ -63,11 +64,11 @@ export default function CustomersPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Müşteriler"
-        subtitle="Sevkiyatların teslim edildiği taraflar"
+        title={t.customers.title}
+        subtitle={t.customers.subtitle}
         actions={
           <Button variant="primary" onClick={() => { setEditing(null); setDialog(true); }}>
-            + Yeni müşteri
+            {t.customers.create}
           </Button>
         }
       />
@@ -76,7 +77,7 @@ export default function CustomersPage() {
         <SearchInput
           value={search}
           onValueChange={setSearch}
-          placeholder="Ünvan, kod, şehir…"
+          placeholder={t.customers.searchPlaceholder}
           className="ml-auto w-72"
         />
       </div>
@@ -86,13 +87,13 @@ export default function CustomersPage() {
           <Table>
             <THead>
               <TR>
-                <TH>Kod</TH>
-                <TH>Ünvan</TH>
-                <TH>Ülke</TH>
-                <TH>Şehir</TH>
-                <TH>Yetkili</TH>
-                <TH>Telefon</TH>
-                <TH>Konum</TH>
+                <TH>{t.customers.colCode}</TH>
+                <TH>{t.customers.colName}</TH>
+                <TH>{t.customers.colCountry}</TH>
+                <TH>{t.customers.colCity}</TH>
+                <TH>{t.customers.colContact}</TH>
+                <TH>{t.customers.colPhone}</TH>
+                <TH>{t.customers.colLocation}</TH>
                 <TH></TH>
               </TR>
             </THead>
@@ -103,7 +104,7 @@ export default function CustomersPage() {
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
                     className="mx-auto max-w-md text-left"
-                    title="Müşteri listesi yüklenemedi"
+                    title={t.customers.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
                     retrying={isFetching}
@@ -112,15 +113,15 @@ export default function CustomersPage() {
               ) : items.length === 0 ? (
                 <TRMessage colSpan={COLS}>
                   <EmptyState
-                    title={search ? 'Eşleşen müşteri yok' : 'Henüz müşteri yok'}
+                    title={search ? t.customers.emptyMatch : t.customers.empty}
                     description={
                       search
                         ? undefined
-                        : 'Sipariş oluşturabilmek için önce en az bir müşteri tanımlamalısınız.'
+                        : t.customers.emptyBody
                     }
                     action={
                       <Button variant="primary" size="sm" onClick={() => { setEditing(null); setDialog(true); }}>
-                        Müşteri ekle
+                        {t.customers.createShort}
                       </Button>
                     }
                   />
@@ -163,9 +164,9 @@ export default function CustomersPage() {
                       {/* Whether a customer has coordinates decides whether
                           arrival can ever be detected for their deliveries. */}
                       {c.lat !== null && c.lon !== null ? (
-                        <Badge tone="success">Kayıtlı</Badge>
+                        <Badge tone="success">{t.customers.located}</Badge>
                       ) : (
-                        <Badge tone="warn">Koordinat yok</Badge>
+                        <Badge tone="warn">{t.customers.noCoordinates}</Badge>
                       )}
                     </TD>
                     <TD>
@@ -182,7 +183,7 @@ export default function CustomersPage() {
                           setDialog(true);
                         }}
                       >
-                        Düzenle
+                        {t.common.edit}
                       </Button>
                     </TD>
                   </TR>

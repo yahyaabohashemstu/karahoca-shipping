@@ -21,6 +21,7 @@ import {
 } from '@/components/ui';
 import { CustomerDialog } from '@/components/CustomerDialog';
 import type { PickedLocation } from '@/components/LocationPicker';
+import { useT } from '@/lib/i18n';
 
 /*
  * Loaded on demand, not with the page.
@@ -55,6 +56,7 @@ const LocationPicker = dynamic(
  * leaving it blank.
  */
 export default function NewOrderPage() {
+  const t = useT();
   const authed = useRequireAuth();
   const router = useRouter();
   const qc = useQueryClient();
@@ -145,10 +147,10 @@ export default function NewOrderPage() {
       }),
     onSuccess: (order) => {
       qc.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Sipariş oluşturuldu', order.orderNumber);
+      toast.success(t.orderNew.created, order.orderNumber);
       router.push('/orders');
     },
-    onError: (e) => toast.error('Sipariş oluşturulamadı', (e as Error).message),
+    onError: (e) => toast.error(t.orderNew.createFailed, (e as Error).message),
   });
 
   if (!authed) return null;
@@ -160,10 +162,10 @@ export default function NewOrderPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Yeni sipariş"
+        title={t.orderNew.title}
         breadcrumb={
           <Link href="/orders" className="hover:text-ink-2 hover:underline">
-            ← Siparişler
+            {t.orderNew.back}
           </Link>
         }
       />
@@ -177,26 +179,30 @@ export default function NewOrderPage() {
           className="space-y-4"
         >
           <Card>
-            <CardHeader title="Sevkiyat" subtitle="Hangi yük, kime gidiyor" className="mb-4" />
+            <CardHeader
+                title={t.orderNew.sectionShipment}
+                subtitle={t.orderNew.sectionShipmentSub}
+                className="mb-4"
+              />
             <div className="grid gap-4 sm:grid-cols-2">
               <Input
-                label="Sipariş numarası"
+                label={t.orderNew.orderNumber}
                 required
                 value={orderNumber}
                 onChange={(e) => setOrderNumber(e.target.value)}
-                placeholder="SEV-2026-0001"
+                placeholder={t.orderNew.orderNumberPlaceholder}
                 numeric
                 hint="Kendi sisteminizdeki numara"
               />
               <div className="flex flex-col gap-1">
                 <Select
-                  label="Müşteri"
+                  label={t.orderNew.customer}
                   required
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                   disabled={customers.isLoading}
                 >
-                  <option value="">{customers.isLoading ? 'Yükleniyor…' : 'Seçiniz…'}</option>
+                  <option value="">{customers.isLoading ? t.common.loading : t.consignment.choose}</option>
                   {customers.data?.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -211,14 +217,14 @@ export default function NewOrderPage() {
                   onClick={() => setCustomerDialog(true)}
                   className="self-start text-sm text-brand-text hover:underline"
                 >
-                  + Yeni müşteri ekle
+                  {t.orderNew.newCustomer}
                 </button>
               </div>
             </div>
 
             <div className="mt-4 grid gap-4 sm:grid-cols-3">
               <Input
-                label="Ağırlık (kg)"
+                label={t.orderNew.weight}
                 type="number"
                 min={0}
                 value={weight}
@@ -226,7 +232,7 @@ export default function NewOrderPage() {
                 numeric
               />
               <Input
-                label="Palet sayısı"
+                label={t.orderNew.pallets}
                 type="number"
                 min={0}
                 value={pallets}
@@ -234,7 +240,7 @@ export default function NewOrderPage() {
                 numeric
               />
               <Input
-                label="Planlanan teslim"
+                label={t.orderNew.planned}
                 type="datetime-local"
                 value={plannedDeliveryAt}
                 onChange={(e) => setPlannedDeliveryAt(e.target.value)}
@@ -243,31 +249,31 @@ export default function NewOrderPage() {
 
             <Textarea
               className="mt-4"
-              label="Yük açıklaması"
+              label={t.orderNew.cargo}
               value={cargoSummary}
               onChange={(e) => setCargoSummary(e.target.value)}
-              placeholder="Örn. 24 palet sıvı deterjan"
+              placeholder={t.orderNew.cargoPlaceholder}
               rows={2}
             />
           </Card>
 
           <Card>
             <CardHeader
-              title="Varış noktası"
-              subtitle="Koordinat girilirse kalan mesafe ve varış tespiti çalışır"
+              title={t.orderNew.sectionDestination}
+              subtitle={t.orderNew.sectionDestinationSub}
               className="mb-4"
             />
             <Input
-              label="Varış adı"
+              label={t.orderNew.destinationName}
               value={destinationLabel}
               onChange={(e) => setDestinationLabel(e.target.value)}
-              placeholder="Erbil Deposu"
-              hint="Sevk evrakında görünecek kısa ad."
+              placeholder={t.orderNew.destinationNamePlaceholder}
+              hint={t.orderNew.destinationNameHint}
             />
 
             <Textarea
               className="mt-4"
-              label="Açık adres"
+              label={t.orderNew.address}
               value={destinationAddress}
               onChange={(e) => setDestinationAddress(e.target.value)}
               rows={2}
@@ -275,7 +281,7 @@ export default function NewOrderPage() {
 
             <div className="mt-4">
               <div className="mb-2 flex items-center gap-2">
-                <p className="text-sm font-medium text-ink">Teslim noktası</p>
+                <p className="text-sm font-medium text-ink">{t.orderNew.deliveryPoint}</p>
                 {inherited && (
                   /*
                    * Says where the pin came from.
@@ -285,7 +291,7 @@ export default function NewOrderPage() {
                    * coordinate you do not remember typing is to distrust it.
                    */
                   <span className="rounded bg-surface-2 px-1.5 py-0.5 text-2xs text-ink-2 ring-1 ring-line">
-                    müşteri kartından
+                    {t.orderNew.fromCustomer}
                   </span>
                 )}
               </div>
@@ -297,8 +303,8 @@ export default function NewOrderPage() {
                 }}
                 emptyHint={
                   selectedCustomer && selectedCustomer.lat === null
-                    ? 'Bu müşterinin kayıtlı teslim noktası yok. Buradan seçerseniz yalnızca bu sipariş için geçerli olur — her seferinde tekrarlamamak için müşteri kartına ekleyin.'
-                    : 'Nokta seçilmezse sevkiyat takip edilir, ancak kalan mesafe hesaplanamaz ve varış otomatik tespit edilemez.'
+                    ? t.orderNew.hintNoCustomerPoint
+                    : t.orderNew.hintNoPoint
                 }
               />
             </div>
@@ -311,10 +317,10 @@ export default function NewOrderPage() {
 
           <div className="flex justify-end gap-2">
             <Link href="/orders">
-              <Button>Vazgeç</Button>
+              <Button>{t.common.cancel}</Button>
             </Link>
             <Button type="submit" variant="primary" loading={create.isPending} disabled={!valid}>
-              Siparişi oluştur
+              {t.orderNew.submit}
             </Button>
           </div>
         </form>

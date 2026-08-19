@@ -17,6 +17,7 @@ import {
   TR,
   TRMessage,
 } from '@/components/ui';
+import { interpolate, useT } from '@/lib/i18n';
 
 const COLS = 8;
 
@@ -37,6 +38,7 @@ const COLS = 8;
  * including the ones nobody had promised a date for.
  */
 export default function PerformancePage() {
+  const t = useT();
   const authed = useRequireAuth();
 
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
@@ -53,8 +55,8 @@ export default function PerformancePage() {
   return (
     <AppShell>
       <PageHeader
-        title="Nakliyeci performansı"
-        subtitle="Her firmanın zamanında teslim ve telemetri geçmişi"
+        title={t.performance.title}
+        subtitle={t.performance.subtitle}
       />
 
       <div className="min-h-0 flex-1 px-5 py-4">
@@ -62,14 +64,14 @@ export default function PerformancePage() {
           <Table>
             <THead>
               <TR>
-                <TH>Nakliyeci</TH>
-                <TH numeric>Sevkiyat</TH>
-                <TH numeric>Tamamlanan</TH>
-                <TH numeric>Zamanında</TH>
-                <TH numeric>Örnekleme</TH>
-                <TH numeric>En uzun boşluk</TH>
-                <TH numeric>Ort. mesafe</TH>
-                <TH numeric>Sahte GPS</TH>
+                <TH>{t.performance.colCarrier}</TH>
+                <TH numeric>{t.performance.colSessions}</TH>
+                <TH numeric>{t.performance.colCompleted}</TH>
+                <TH numeric>{t.performance.colOnTime}</TH>
+                <TH numeric>{t.performance.colSampling}</TH>
+                <TH numeric>{t.performance.colLongestGap}</TH>
+                <TH numeric>{t.performance.colAvgDistance}</TH>
+                <TH numeric>{t.performance.colMockGps}</TH>
               </TR>
             </THead>
             <tbody>
@@ -79,7 +81,7 @@ export default function PerformancePage() {
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
                     className="mx-auto max-w-md text-left"
-                    title="Performans verisi yüklenemedi"
+                    title={t.performance.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
                     retrying={isFetching}
@@ -88,8 +90,8 @@ export default function PerformancePage() {
               ) : rows.length === 0 ? (
                 <TRMessage colSpan={COLS}>
                   <EmptyState
-                    title="Henüz performans verisi yok"
-                    description="Tamamlanan sevkiyatlar biriktikçe her nakliyeci için zamanında teslim ve telemetri istatistikleri burada oluşur."
+                    title={t.performance.emptyTitle}
+                    description={t.performance.emptyBody}
                   />
                 </TRMessage>
               ) : (
@@ -101,19 +103,21 @@ export default function PerformancePage() {
 
         <div className="mt-3 max-w-3xl space-y-2 text-sm text-ink-3">
           <p>
-            <strong className="text-ink-2">Zamanında</strong> oranı yalnızca planlı teslim tarihi
-            girilmiş tamamlanmış sevkiyatlar üzerinden hesaplanır; yüzdenin altındaki kesir bu
-            sayıyı gösterir. Teslim tarihi girilmemiş bir sevkiyat geç değil, ölçülemez sayılır ve
-            orana hiç girmez.
+            {interpolate(t.performance.noteOnTime, [
+              <strong key="on-time" className="text-ink-2">
+                {t.performance.colOnTime}
+              </strong>,
+            ])}
           </p>
           <p>
-            <strong className="text-ink-2">Örnekleme</strong>, kaydedilen konum sayısının, araç
-            sevkiyat boyunca kesintisiz hareket hâlinde olsaydı beklenecek sayıya oranıdır. Düşük
-            örnekleme tek başına sürücü hatası değildir: gümrükte veya molada bekleyen bir araç
-            duraklama temposuyla daha seyrek konum gönderir ve bu oranı doğal olarak düşürür.
-            Uygulamanın gerçekten durup durmadığını <strong className="text-ink-2">En uzun boşluk</strong>{' '}
-            sütunu ile oturum detayındaki kapsama boşlukları gösterir. Her N metrede bir konum
-            gönderen mesafe tetiklemeli oturumlar bu ortalamaya dahil edilmez.
+            {interpolate(t.performance.noteSampling, [
+              <strong key="sampling" className="text-ink-2">
+                {t.performance.colSampling}
+              </strong>,
+              <strong key="gap" className="text-ink-2">
+                {t.performance.colLongestGap}
+              </strong>,
+            ])}
           </p>
         </div>
       </div>
@@ -122,6 +126,7 @@ export default function PerformancePage() {
 }
 
 function PerfRow({ r }: { r: CarrierPerformance }) {
+  const t = useT();
   /*
    * The denominator is onTimeMeasurable, never completed.
    *
@@ -145,7 +150,7 @@ function PerfRow({ r }: { r: CarrierPerformance }) {
         {onTimePct === null ? (
           <span
             className="text-ink-3"
-            title="Planlı teslim tarihi girilmiş tamamlanmış sevkiyat yok — ölçülecek bir söz verilmemiş."
+            title={t.performance.noPromise}
           >
             —
           </span>
@@ -171,7 +176,7 @@ function PerfRow({ r }: { r: CarrierPerformance }) {
         {r.avgSamplingPct === null ? (
           <span
             className="text-ink-3"
-            title="Ölçülebilir tamamlanmış sevkiyat yok, veya bu firmanın oturumları mesafe tetiklemeli."
+            title={t.performance.noSampling}
           >
             —
           </span>
