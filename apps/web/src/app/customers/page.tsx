@@ -22,6 +22,7 @@ import {
   TRMessage,
 } from '@/components/ui';
 import { useI18n, useT } from '@/lib/i18n';
+import { searchFold } from '@/lib/search';
 
 const COLS = 7;
 
@@ -49,15 +50,15 @@ export default function CustomersPage() {
   // Client-side: the customer list is a few hundred rows at most, and filtering
   // in the browser is instant where a round trip per keystroke is not.
   const items = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr');
+    const q = searchFold(search.trim());
     const all = data ?? [];
     if (!q) return all;
     return all.filter((c) =>
       [c.name, c.code, c.city, c.contactName, countryLabel(c.countryCode, locale)].filter(Boolean).some((v) =>
-        String(v).toLocaleLowerCase('tr').includes(q),
+        searchFold(String(v)).includes(q),
       ),
     );
-  }, [data, search]);
+  }, [data, search, locale]);
 
   if (!authed) return null;
 

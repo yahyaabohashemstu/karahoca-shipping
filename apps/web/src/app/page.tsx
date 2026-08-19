@@ -21,6 +21,7 @@ import {
   Stat,
 } from '@/components/ui';
 import { useT, type Dictionary } from '@/lib/i18n';
+import { searchFold } from '@/lib/search';
 
 // MapLibre touches `window` at import time — must not be server-rendered.
 const FleetMap = dynamic(() => import('@/components/FleetMap'), {
@@ -94,13 +95,13 @@ export default function LiveDashboard() {
   const silentCount = useMemo(() => rows.filter((r) => isSilent(r.state)).length, [rows]);
 
   const visible = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr');
+    const q = searchFold(search.trim());
     return rows.filter((r) => {
       if (filter === 'silent' && !isSilent(r.state)) return false;
       if (!q) return true;
       return [r.p.vehiclePlate, r.p.reference, r.p.orderNumber, r.p.customerName, r.p.carrierName, r.p.driverName]
         .filter(Boolean)
-        .some((v) => String(v).toLocaleLowerCase('tr').includes(q));
+        .some((v) => searchFold(String(v)).includes(q));
     });
   }, [rows, search, filter]);
 

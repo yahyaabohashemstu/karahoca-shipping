@@ -47,6 +47,13 @@ const EXEMPT_FILES = [
   join('lib', 'i18n', 'ar.ts'),
   join('lib', 'i18n', 'ku.ts'),
   join('lib', 'i18n', 'locale.ts'),
+  /*
+   * A text-normalisation helper has to name the characters it normalises.
+   * The dotless i in searchFold is data, not a label, and the quote-pairing
+   * in the catch-all pattern reads across the two adjacent string literals
+   * it sits between.
+   */
+  join('lib', 'search.ts'),
 ];
 
 /*

@@ -26,6 +26,7 @@ import {
 } from '@/components/ui';
 import { useT } from '@/lib/i18n';
 import { upperIdentifier } from '@/lib/identifier';
+import { searchFold } from '@/lib/search';
 
 const COLS = 6;
 
@@ -50,12 +51,12 @@ export default function CarriersPage() {
   });
 
   const items = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr');
+    const q = searchFold(search.trim());
     const all = data ?? [];
     if (!q) return all;
     return all.filter((c) =>
       [c.name, c.code, c.contactName].filter(Boolean).some((v) =>
-        String(v).toLocaleLowerCase('tr').includes(q),
+        searchFold(String(v)).includes(q),
       ),
     );
   }, [data, search]);
