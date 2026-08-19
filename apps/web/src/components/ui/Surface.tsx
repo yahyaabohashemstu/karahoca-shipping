@@ -65,7 +65,7 @@ export function Row({
       <dt className="shrink-0 text-sm text-ink-2">{label}</dt>
       <dd
         className={clsx(
-          'min-w-0 truncate text-right text-base font-medium text-ink',
+          'min-w-0 truncate text-end text-base font-medium text-ink',
           mono && 'kh-num',
         )}
       >

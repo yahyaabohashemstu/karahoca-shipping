@@ -24,6 +24,7 @@ import {
   TRMessage,
   useToast,
 } from '@/components/ui';
+import { useT } from '@/lib/i18n';
 
 const COLS = 6;
 
@@ -35,6 +36,7 @@ const COLS = 6;
  * carrier has a plate on file is doing it mid-call, not navigating a hierarchy.
  */
 export default function CarriersPage() {
+  const t = useT();
   const authed = useRequireAuth();
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -62,11 +64,11 @@ export default function CarriersPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Nakliyeciler"
-        subtitle="Sevkiyatları taşıyan üçüncü taraf firmalar, araçları ve sürücüleri"
+        title={t.carriers.title}
+        subtitle={t.carriers.subtitle}
         actions={
           <Button variant="primary" onClick={() => setDialog(true)}>
-            + Yeni nakliyeci
+            {t.carriers.create}
           </Button>
         }
       />
@@ -75,8 +77,8 @@ export default function CarriersPage() {
         <SearchInput
           value={search}
           onValueChange={setSearch}
-          placeholder="Firma adı, kod…"
-          className="ml-auto w-72"
+          placeholder={t.carriers.searchPlaceholder}
+          className="ms-auto w-72"
         />
       </div>
 
@@ -85,12 +87,12 @@ export default function CarriersPage() {
           <Table>
             <THead>
               <TR>
-                <TH>Kod</TH>
-                <TH>Firma</TH>
-                <TH>Yetkili</TH>
-                <TH>Telefon</TH>
-                <TH numeric>Araç / Sürücü</TH>
-                <TH numeric>SLA</TH>
+                <TH>{t.carriers.colCode}</TH>
+                <TH>{t.carriers.colName}</TH>
+                <TH>{t.carriers.colContact}</TH>
+                <TH>{t.carriers.colPhone}</TH>
+                <TH numeric>{t.carriers.colFleet}</TH>
+                <TH numeric>{t.carriers.colSla}</TH>
               </TR>
             </THead>
             <tbody>
@@ -99,8 +101,8 @@ export default function CarriersPage() {
               ) : isError ? (
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
-                    className="mx-auto max-w-md text-left"
-                    title="Nakliyeci listesi yüklenemedi"
+                    className="mx-auto max-w-md text-start"
+                    title={t.carriers.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
                     retrying={isFetching}
@@ -109,15 +111,15 @@ export default function CarriersPage() {
               ) : items.length === 0 ? (
                 <TRMessage colSpan={COLS}>
                   <EmptyState
-                    title={search ? 'Eşleşen firma yok' : 'Henüz nakliyeci yok'}
+                    title={search ? t.carriers.emptyMatch : t.carriers.empty}
                     description={
                       search
                         ? undefined
-                        : 'Takip oturumu açabilmek için sevkiyatı taşıyan firmayı tanımlamalısınız.'
+                        : t.carriers.emptyBody
                     }
                     action={
                       <Button variant="primary" size="sm" onClick={() => setDialog(true)}>
-                        Nakliyeci ekle
+                        {t.carriers.createShort}
                       </Button>
                     }
                   />
@@ -153,6 +155,7 @@ function CarrierRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
   return (
     <>
       <TR onClick={onToggle} selected={expanded}>
@@ -172,8 +175,8 @@ function CarrierRow({
         <TD>
           <span className="font-medium">{carrier.name}</span>
           {!carrier.isActive && (
-            <Badge tone="neutral" className="ml-2">
-              Pasif
+            <Badge tone="neutral" className="ms-2">
+              {t.carriers.inactive}
             </Badge>
           )}
         </TD>
@@ -209,6 +212,7 @@ function CarrierRow({
 }
 
 function FleetOfCarrier({ carrier }: { carrier: ShippingCompany }) {
+  const t = useT();
   const [adding, setAdding] = useState<'vehicle' | 'driver' | null>(null);
 
   const vehicles = useQuery({
@@ -224,18 +228,18 @@ function FleetOfCarrier({ carrier }: { carrier: ShippingCompany }) {
     <div className="grid gap-3 lg:grid-cols-2">
       <Card padded={false}>
         <div className="flex items-center justify-between border-b border-line px-3 py-2">
-          <h3 className="text-sm font-semibold">Araçlar</h3>
+          <h3 className="text-sm font-semibold">{t.carriers.vehicles}</h3>
           <Button size="sm" onClick={() => setAdding('vehicle')}>
-            + Araç
+            {t.carriers.addVehicle}
           </Button>
         </div>
         <div className="px-3 py-2">
           {vehicles.isLoading ? (
             <Skeleton className="h-3 w-40" />
           ) : vehicles.isError ? (
-            <ErrorState compact title="Araçlar alınamadı" onRetry={() => vehicles.refetch()} />
+            <ErrorState compact title={t.carriers.vehiclesFailed} onRetry={() => vehicles.refetch()} />
           ) : (vehicles.data?.length ?? 0) === 0 ? (
-            <p className="py-2 text-sm text-ink-3">Kayıtlı araç yok.</p>
+            <p className="py-2 text-sm text-ink-3">{t.carriers.noVehicles}</p>
           ) : (
             <ul className="divide-y divide-line">
               {vehicles.data!.map((v) => (
@@ -254,18 +258,18 @@ function FleetOfCarrier({ carrier }: { carrier: ShippingCompany }) {
 
       <Card padded={false}>
         <div className="flex items-center justify-between border-b border-line px-3 py-2">
-          <h3 className="text-sm font-semibold">Sürücüler</h3>
+          <h3 className="text-sm font-semibold">{t.carriers.drivers}</h3>
           <Button size="sm" onClick={() => setAdding('driver')}>
-            + Sürücü
+            {t.carriers.addDriver}
           </Button>
         </div>
         <div className="px-3 py-2">
           {drivers.isLoading ? (
             <Skeleton className="h-3 w-40" />
           ) : drivers.isError ? (
-            <ErrorState compact title="Sürücüler alınamadı" onRetry={() => drivers.refetch()} />
+            <ErrorState compact title={t.carriers.driversFailed} onRetry={() => drivers.refetch()} />
           ) : (drivers.data?.length ?? 0) === 0 ? (
-            <p className="py-2 text-sm text-ink-3">Kayıtlı sürücü yok.</p>
+            <p className="py-2 text-sm text-ink-3">{t.carriers.noDrivers}</p>
           ) : (
             <ul className="divide-y divide-line">
               {drivers.data!.map((d) => (
@@ -293,6 +297,7 @@ function FleetOfCarrier({ carrier }: { carrier: ShippingCompany }) {
 /* -------------------------------------------------------------------------- */
 
 function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const toast = useToast();
   const [code, setCode] = useState('');
@@ -312,7 +317,7 @@ function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }
       }),
     onSuccess: (c) => {
       qc.invalidateQueries({ queryKey: ['companies'] });
-      toast.success('Nakliyeci eklendi', c.name);
+      toast.success(t.carriers.added, c.name);
       setCode('');
       setName('');
       setContactName('');
@@ -321,7 +326,7 @@ function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }
       create.reset();
       onClose();
     },
-    onError: (e) => toast.error('Eklenemedi', (e as Error).message),
+    onError: (e) => toast.error(t.carriers.addFailed, (e as Error).message),
   });
 
   const valid = code.trim().length >= 2 && name.trim().length >= 2;
@@ -330,15 +335,15 @@ function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }
     <Modal
       open={open}
       onClose={onClose}
-      title="Yeni nakliyeci"
-      description="Sevkiyatı taşıyan üçüncü taraf firma"
+      title={t.carriers.newTitle}
+      description={t.carriers.newDescription}
       footer={
         <>
           <Button onClick={onClose} disabled={create.isPending}>
-            Vazgeç
+            {t.common.cancel}
           </Button>
           <Button variant="primary" loading={create.isPending} disabled={!valid} onClick={() => create.mutate()}>
-            Ekle
+            {t.common.add}
           </Button>
         </>
       }
@@ -346,25 +351,25 @@ function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }
       <div className="space-y-3.5">
         <div className="grid grid-cols-[8rem_1fr] gap-3">
           <Input
-            label="Kod"
+            label={t.carriers.code}
             required
             value={code}
             onChange={(e) => setCode(e.target.value.toLocaleUpperCase('tr'))}
-            placeholder="NAK-01"
+            placeholder={t.carriers.codePlaceholder}
             numeric
           />
           <Input
-            label="Firma ünvanı"
+            label={t.carriers.name}
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Örnek Nakliyat Ltd. Şti."
+            placeholder={t.carriers.namePlaceholder}
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Yetkili" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <Input label={t.carriers.colContact} value={contactName} onChange={(e) => setContactName(e.target.value)} />
           <Input
-            label="Telefon"
+            label={t.carriers.colPhone}
             type="tel"
             value={contactPhone}
             onChange={(e) => setContactPhone(e.target.value)}
@@ -373,15 +378,15 @@ function CarrierDialog({ open, onClose }: { open: boolean; onClose: () => void }
           />
         </div>
         <Input
-          label="SLA (saat)"
+          label={t.carriers.sla}
           type="number"
           min={0}
           value={slaHours}
           onChange={(e) => setSlaHours(e.target.value)}
           numeric
-          hint="Teslimatın kaç saat içinde tamamlanması beklendiği. Performans raporunda kullanılır."
+          hint={t.carriers.slaHint}
         />
-        {create.isError && <ErrorState compact title="Eklenemedi" message={(create.error as Error).message} />}
+        {create.isError && <ErrorState compact title={t.carriers.addFailed} message={(create.error as Error).message} />}
       </div>
     </Modal>
   );
@@ -396,6 +401,7 @@ function VehicleOrDriverDialog({
   carrier: ShippingCompany;
   onClose: () => void;
 }) {
+  const t = useT();
   const qc = useQueryClient();
   const toast = useToast();
   const [a, setA] = useState('');
@@ -427,11 +433,11 @@ function VehicleOrDriverDialog({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [kind === 'vehicle' ? 'vehicles' : 'drivers', carrier.id] });
       qc.invalidateQueries({ queryKey: ['companies'] });
-      toast.success(kind === 'vehicle' ? 'Araç eklendi' : 'Sürücü eklendi');
+      toast.success(kind === 'vehicle' ? t.carriers.vehicleAdded : t.carriers.driverAdded);
       reset();
       onClose();
     },
-    onError: (e) => toast.error('Eklenemedi', (e as Error).message),
+    onError: (e) => toast.error(t.carriers.addFailed, (e as Error).message),
   });
 
   const valid =
@@ -444,7 +450,7 @@ function VehicleOrDriverDialog({
         reset();
         onClose();
       }}
-      title={kind === 'vehicle' ? 'Araç ekle' : 'Sürücü ekle'}
+      title={kind === 'vehicle' ? t.carriers.vehicleDialog : t.carriers.driverDialog}
       description={carrier.name}
       size="sm"
       footer={
@@ -456,10 +462,10 @@ function VehicleOrDriverDialog({
             }}
             disabled={create.isPending}
           >
-            Vazgeç
+            {t.common.cancel}
           </Button>
           <Button variant="primary" loading={create.isPending} disabled={!valid} onClick={() => create.mutate()}>
-            Ekle
+            {t.common.add}
           </Button>
         </>
       }
@@ -468,16 +474,21 @@ function VehicleOrDriverDialog({
         {kind === 'vehicle' ? (
           <>
             <Input
-              label="Plaka"
+              label={t.carriers.plate}
               required
               value={a}
               onChange={(e) => setA(e.target.value.toLocaleUpperCase('tr'))}
-              placeholder="34 ABC 123"
+              placeholder={t.carriers.platePlaceholder}
               numeric
             />
-            <Input label="Marka / model" value={b} onChange={(e) => setB(e.target.value)} placeholder="Mercedes Actros" />
             <Input
-              label="Kapasite (kg)"
+              label={t.carriers.model}
+              value={b}
+              onChange={(e) => setB(e.target.value)}
+              placeholder={t.carriers.modelPlaceholder}
+            />
+            <Input
+              label={t.carriers.capacity}
               type="number"
               min={0}
               value={c}
@@ -487,9 +498,9 @@ function VehicleOrDriverDialog({
           </>
         ) : (
           <>
-            <Input label="Ad soyad" required value={a} onChange={(e) => setA(e.target.value)} />
+            <Input label={t.carriers.fullName} required value={a} onChange={(e) => setA(e.target.value)} />
             <Input
-              label="Telefon"
+              label={t.carriers.colPhone}
               required
               type="tel"
               value={b}
@@ -498,16 +509,16 @@ function VehicleOrDriverDialog({
               numeric
             />
             <Input
-              label="TC son 4 hane"
+              label={t.carriers.idLast4}
               value={c}
               onChange={(e) => setC(e.target.value.replace(/\D/g, '').slice(0, 4))}
               maxLength={4}
               numeric
-              hint="Kapıda kimlik doğrulaması için. Tam kimlik numarası saklanmaz."
+              hint={t.carriers.idLast4Hint}
             />
           </>
         )}
-        {create.isError && <ErrorState compact title="Eklenemedi" message={(create.error as Error).message} />}
+        {create.isError && <ErrorState compact title={t.carriers.addFailed} message={(create.error as Error).message} />}
       </div>
     </Modal>
   );

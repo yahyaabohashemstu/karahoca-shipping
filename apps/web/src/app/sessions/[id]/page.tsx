@@ -22,26 +22,43 @@ import {
   StatusBadge,
   useToast,
 } from '@/components/ui';
+import { useFormat, useI18n, useT, type Dictionary } from '@/lib/i18n';
+import { formatNumber } from '@/lib/format';
+import type { Locale } from '@/lib/i18n/locale';
 
 // MapLibre is ~215 kB. Loading it on demand keeps this route's first-load JS in
 // line with every other screen instead of nearly tripling it.
 const SessionMap = dynamic(() => import('@/components/SessionMap'), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-full place-items-center bg-surface-2 text-sm text-ink-3">
-      Harita yükleniyor…
-    </div>
-  ),
+  loading: MapLoading,
 });
 
 type Action = 'pause' | 'resume' | 'complete' | 'cancel';
 
-const ACTION_COPY: Record<Action, { title: string; verb: string; tone: 'primary' | 'danger' | 'success' }> = {
-  pause: { title: 'Takibi duraklat', verb: 'Duraklat', tone: 'primary' },
-  resume: { title: 'Takibi sürdür', verb: 'Devam et', tone: 'primary' },
-  complete: { title: 'Sevkiyatı teslim edildi olarak kapat', verb: 'Teslim edildi', tone: 'success' },
-  cancel: { title: 'Sevkiyatı iptal et', verb: 'İptal et', tone: 'danger' },
+/*
+ * Tone here, wording in the dictionary. A module-level table is evaluated once
+ * at import, so any Turkish written here would outlive every language choice.
+ */
+const ACTION_TONE: Record<Action, 'primary' | 'danger' | 'success'> = {
+  pause: 'primary',
+  resume: 'primary',
+  complete: 'success',
+  cancel: 'danger',
 };
+
+function actionCopy(t: Dictionary, action: Action): { title: string; verb: string } {
+  const a = t.sessionDetail.actions;
+  switch (action) {
+    case 'pause':
+      return { title: a.pauseTitle, verb: a.pauseVerb };
+    case 'resume':
+      return { title: a.resumeTitle, verb: a.resumeVerb };
+    case 'complete':
+      return { title: a.completeTitle, verb: a.completeVerb };
+    case 'cancel':
+      return { title: a.cancelTitle, verb: a.cancelVerb };
+  }
+}
 
 /**
  * Session detail: live position, full route, coverage gaps, and the audit trail.
@@ -52,6 +69,9 @@ const ACTION_COPY: Record<Action, { title: string; verb: string; tone: 'primary'
  * argument into a fact.
  */
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = useT();
+  const { locale } = useI18n();
+  const f = useFormat();
   const { id } = use(params);
   const authed = useRequireAuth();
   const qc = useQueryClient();
@@ -105,9 +125,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
       setConfirming(null);
       qc.invalidateQueries({ queryKey: ['session', id] });
       qc.invalidateQueries({ queryKey: ['live-fleet'] });
-      toast.success(`${ACTION_COPY[a].verb} uygulandı`, session?.reference);
+      toast.success(t.sessionDetail.actionApplied(actionCopy(t, a).verb), session?.reference);
     },
-    onError: (e) => toast.error('İşlem başarısız', (e as Error).message),
+    onError: (e) => toast.error(t.sessionDetail.actionFailed, (e as Error).message),
   });
 
   /*
@@ -128,18 +148,18 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
       // it reads as proof that the shipment was never tracked, when it in fact
       // means this session never received a single point. Say which it is.
       bytes === 0
-        ? toast.error('Dosya boş', 'Bu oturumda kayıtlı konum noktası yok.')
-        : toast.success('Ham veri indirildi', `${filename} · ${formatBytes(bytes)}`),
-    onError: (e) => toast.error('Ham veri indirilemedi', (e as Error).message),
+        ? toast.error(t.sessionDetail.rawEmpty, t.sessionDetail.rawEmptyBody)
+        : toast.success(t.sessionDetail.rawDownloaded, `${filename} · ${formatBytes(bytes, locale)}`),
+    onError: (e) => toast.error(t.sessionDetail.rawFailed, (e as Error).message),
   });
 
   const regenerate = useMutation({
     mutationFn: () => api.regenerateCode(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['session', id] });
-      toast.success('Yeni kod üretildi', 'Önceki cihazın bağlantısı kesildi.');
+      toast.success(t.sessionDetail.codeRegenerated, t.sessionDetail.codeRegeneratedBody);
     },
-    onError: (e) => toast.error('Kod üretilemedi', (e as Error).message),
+    onError: (e) => toast.error(t.sessionDetail.regenerateFailed, (e as Error).message),
   });
 
   const signal = useMemo(
@@ -179,9 +199,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
       {/* --------------------------------------------------------- toolbar -- */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2">
         <Link href="/" className="text-sm text-brand-text hover:underline">
-          ← Canlı harita
+          {t.sessionDetail.back}
         </Link>
-        <span className="kh-num ml-2 font-semibold tracking-tight">
+        <span className="kh-num ms-2 font-semibold tracking-tight">
           {loading ? <Skeleton className="inline-block h-3.5 w-24 align-middle" /> : session?.reference ?? id.slice(0, 8)}
         </span>
         <StatusBadge status={currentStatus} />
@@ -190,20 +210,20 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         )}
         <ConnectionPill connected={connected} />
 
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div className="ms-auto flex flex-wrap items-center gap-1.5">
           <Button
             size="sm"
             onClick={() => setConfirming('pause')}
             disabled={closed || currentStatus === 'PAUSED' || action.isPending}
           >
-            Duraklat
+            {t.sessionDetail.actions.pauseVerb}
           </Button>
           <Button
             size="sm"
             onClick={() => setConfirming('resume')}
             disabled={closed || currentStatus !== 'PAUSED' || action.isPending}
           >
-            Devam
+            {t.sessionDetail.actions.resumeVerb}
           </Button>
           <Button
             size="sm"
@@ -211,7 +231,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             onClick={() => setConfirming('complete')}
             disabled={closed || action.isPending}
           >
-            Teslim edildi
+            {t.sessionDetail.actions.completeVerb}
           </Button>
           <Button
             size="sm"
@@ -220,10 +240,10 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             disabled={closed || action.isPending}
             className="text-danger hover:bg-danger-bg"
           >
-            İptal
+            {t.sessionDetail.actions.cancelVerb}
           </Button>
           <Button size="sm" loading={exportRaw.isPending} onClick={() => exportRaw.mutate()}>
-            Ham veri
+            {t.sessionDetail.rawData}
           </Button>
         </div>
       </div>
@@ -231,7 +251,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
       {sessionQ.isError && (
         <ErrorState
           className="m-4"
-          title="Oturum bilgileri alınamadı"
+          title={t.sessionDetail.loadFailed}
           message={(sessionQ.error as Error)?.message}
           onRetry={() => sessionQ.refetch()}
           retrying={sessionQ.isFetching}
@@ -250,11 +270,11 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* ------------------------------------------------------ sidebar -- */}
-        <aside className="kh-scroll w-[23rem] shrink-0 overflow-y-auto border-l border-line bg-surface">
+        <aside className="kh-scroll w-[23rem] shrink-0 overflow-y-auto border-s border-line bg-surface">
           {session?.handoff && (
             <section className="m-3 rounded-md border-2 border-dashed border-brand/40 bg-brand-soft/60 p-3.5 text-center">
               <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand-text">
-                Sürücüye verilecek kod
+                {t.sessionDetail.codeForDriver}
               </p>
               <p className="my-2 select-all font-mono text-[1.9rem] font-bold leading-none tracking-[0.16em]">
                 {session.handoff.prettyCode}
@@ -262,7 +282,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={session.handoff.qrDataUrl}
-                alt="Oturum QR kodu"
+                alt={t.sessionDetail.qrAlt}
                 className="mx-auto h-36 w-36 rounded bg-white p-1"
               />
               <Button
@@ -272,7 +292,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 loading={regenerate.isPending}
                 onClick={() => regenerate.mutate()}
               >
-                Yeni kod üret (mevcut cihazı iptal eder)
+                {t.sessionDetail.regenerate}
               </Button>
             </section>
           )}
@@ -287,10 +307,10 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           {session && !session.handoff && (
             <section className="m-3 rounded-md border border-line bg-surface-2 p-3.5 text-center">
               <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
-                Sürücü kodu
+                {t.sessionDetail.driverCode}
               </p>
               <p className="mt-1.5 text-sm text-ink-2">
-                Kod kullanıldı ve geçersiz kılındı. Sürücü bu oturuma bağlandı.
+                {t.sessionDetail.codeUsed}
               </p>
               <Button
                 size="sm"
@@ -299,7 +319,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 loading={regenerate.isPending}
                 onClick={() => regenerate.mutate()}
               >
-                Yeni kod üret (mevcut cihazı iptal eder)
+                {t.sessionDetail.regenerate}
               </Button>
             </section>
           )}
@@ -317,14 +337,14 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             />
           )}
 
-          <Section title="Sevkiyat">
-            <Row label="Sipariş" value={session?.orderNumber ?? '—'} loading={loading} mono />
-            <Row label="Müşteri" value={session?.customerName ?? '—'} loading={loading} />
-            <Row label="Nakliyeci" value={session?.carrierName ?? '—'} loading={loading} />
-            <Row label="Araç" value={session?.vehiclePlate ?? '—'} loading={loading} mono />
-            <Row label="Sürücü" value={session?.driverName ?? '—'} loading={loading} />
+          <Section title={t.sessionDetail.sectionShipment}>
+            <Row label={t.sessionDetail.order} value={session?.orderNumber ?? '—'} loading={loading} mono />
+            <Row label={t.sessionDetail.customer} value={session?.customerName ?? '—'} loading={loading} />
+            <Row label={t.sessionDetail.carrier} value={session?.carrierName ?? '—'} loading={loading} />
+            <Row label={t.sessionDetail.vehicle} value={session?.vehiclePlate ?? '—'} loading={loading} mono />
+            <Row label={t.sessionDetail.driver} value={session?.driverName ?? '—'} loading={loading} />
             <Row
-              label="Telefon"
+              label={t.sessionDetail.phone}
               loading={loading}
               value={
                 session?.driverPhone ? (
@@ -338,13 +358,13 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             />
           </Section>
 
-          <Section title="Telemetri">
-            <Row label="Toplam nokta" value={fmt(session?.pointsTotal)} loading={loading} mono />
-            <Row label="Mesafe" value={`${session?.distanceKm ?? 0} km`} loading={loading} mono />
-            <Row label="Çevrimdışı senkron" value={fmt(session?.offlineBatches)} loading={loading} mono />
-            <Row label="Reddedilen nokta" value={fmt(session?.pointsRejected)} loading={loading} mono />
+          <Section title={t.sessionDetail.sectionTelemetry}>
+            <Row label={t.sessionDetail.pointsTotal} value={fmt(session?.pointsTotal)} loading={loading} mono />
+            <Row label={t.sessionDetail.distance} value={`${session?.distanceKm ?? 0} km`} loading={loading} mono />
+            <Row label={t.sessionDetail.offlineBatches} value={fmt(session?.offlineBatches)} loading={loading} mono />
+            <Row label={t.sessionDetail.pointsRejected} value={fmt(session?.pointsRejected)} loading={loading} mono />
             <Row
-              label="Rota noktası"
+              label={t.sessionDetail.routePoints}
               loading={routeQ.isLoading}
               mono
               value={
@@ -355,7 +375,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             />
             {(session?.mockLocationCount ?? 0) > 0 && (
               <div className="mt-2 flex items-center justify-between gap-2 rounded bg-danger-bg px-2 py-1.5 ring-1 ring-inset ring-danger-ring">
-                <span className="text-sm font-medium text-danger">Sahte konum tespit edildi</span>
+                <span className="text-sm font-medium text-danger">{t.sessionDetail.mockDetected}</span>
                 <span className="kh-num text-sm font-semibold text-danger">
                   {session?.mockLocationCount}
                 </span>
@@ -364,31 +384,31 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           </Section>
 
           {session?.device && (
-            <Section title="Cihaz">
+            <Section title={t.sessionDetail.sectionDevice}>
               <Row
-                label="Model"
+                label={t.sessionDetail.model}
                 value={
                   `${session.device.manufacturer ?? ''} ${session.device.model ?? ''}`.trim() || '—'
                 }
               />
-              <Row label="Android" value={String(session.device.os_version ?? '—')} mono />
+              <Row label={t.sessionDetail.android} value={String(session.device.os_version ?? '—')} mono />
               <DeviceFlag
-                label="Pil optimizasyonu"
+                label={t.sessionDetail.batteryOptimisation}
                 ok={Boolean(session.device.battery_optimisation_ignored)}
-                okText="Muaf"
-                badText="Açık — takip durabilir"
+                okText={t.sessionDetail.batteryOk}
+                badText={t.sessionDetail.batteryBad}
               />
               <DeviceFlag
-                label="Arka plan konumu"
+                label={t.sessionDetail.backgroundLocation}
                 ok={Boolean(session.device.has_background_location)}
-                okText="İzin var"
-                badText="İzin yok — takip durabilir"
+                okText={t.sessionDetail.backgroundOk}
+                badText={t.sessionDetail.backgroundBad}
               />
             </Section>
           )}
 
           {gapsQ.data && gapsQ.data.length > 0 && (
-            <Section title={`Kapsama boşlukları (${gapsQ.data.length})`}>
+            <Section title={t.sessionDetail.sectionGaps(String(gapsQ.data.length))}>
               <div className="space-y-1.5">
                 {gapsQ.data.slice(0, 10).map((gap) => (
                   <div
@@ -396,36 +416,33 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                     className="rounded bg-warn-bg px-2 py-1.5 text-sm ring-1 ring-inset ring-delayed-ring/35"
                   >
                     <div className="kh-num font-medium text-warn">
-                      {Math.round(gap.durationSec / 60)} dakika sinyalsiz
+                      {t.sessionDetail.gapMinutes(String(Math.round(gap.durationSec / 60)))}
                     </div>
                     <div className="kh-num mt-0.5 text-sm text-ink-2">
-                      {new Date(gap.from).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                      {f.time(gap.from)}
                       {' → '}
-                      {new Date(gap.to).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                      {f.time(gap.to)}
                       {' · '}
-                      {Math.round(gap.straightLineM / 1000)} km yol
+                      {t.sessionDetail.gapDistance(String(Math.round(gap.straightLineM / 1000)))}
                     </div>
                   </div>
                 ))}
                 {gapsQ.data.length > 10 && (
-                  <p className="text-sm text-ink-3">+{gapsQ.data.length - 10} boşluk daha</p>
+                  <p className="text-sm text-ink-3">{t.sessionDetail.gapsMore(String(gapsQ.data.length - 10))}</p>
                 )}
               </div>
             </Section>
           )}
 
-          <Section title="Olay geçmişi">
+          <Section title={t.sessionDetail.sectionEvents}>
             {timeline.length === 0 ? (
-              <p className="text-sm text-ink-3">Henüz olay yok.</p>
+              <p className="text-sm text-ink-3">{t.sessionDetail.noEvents}</p>
             ) : (
               <ol className="space-y-1.5">
                 {timeline.map((event, i) => (
                   <li key={`${event.at}-${i}`} className="flex gap-2 text-sm">
                     <span className="kh-num shrink-0 text-ink-3">
-                      {new Date(event.at).toLocaleTimeString('tr-TR', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {f.time(event.at)}
                     </span>
                     <span className="min-w-0">
                       <Badge tone="neutral">{event.type}</Badge>
@@ -445,9 +462,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         open={confirming !== null}
         onCancel={() => setConfirming(null)}
         onConfirm={() => confirming && action.mutate(confirming)}
-        title={confirming ? ACTION_COPY[confirming].title : ''}
-        confirmLabel={confirming ? ACTION_COPY[confirming].verb : ''}
-        tone={confirming ? ACTION_COPY[confirming].tone : 'primary'}
+        title={confirming ? actionCopy(t, confirming).title : ''}
+        confirmLabel={confirming ? actionCopy(t, confirming).verb : ''}
+        tone={confirming ? ACTION_TONE[confirming] : 'primary'}
         loading={action.isPending}
         error={action.isError ? (action.error as Error).message : null}
         detail={
@@ -460,11 +477,11 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             </p>
             {(confirming === 'complete' || confirming === 'cancel') && (
               <p className="text-danger">
-                Bu işlem geri alınamaz. Oturum kapanır ve sürücünün cihazı konum göndermeyi durdurur.
+                {t.sessionDetail.irreversible}
               </p>
             )}
             {confirming === 'resume' && currentStatus !== 'PAUSED' && (
-              <p className="text-warn">Bu oturum duraklatılmış değil.</p>
+              <p className="text-warn">{t.sessionDetail.notPaused}</p>
             )}
           </div>
         }
@@ -501,11 +518,11 @@ function exportFilename(session: SessionDetail | undefined, id: string): string 
     .concat('.ndjson');
 }
 
-function formatBytes(bytes: number): string {
+function formatBytes(bytes: number, locale: Locale): string {
   if (bytes < 1024) return `${bytes} B`;
   const [value, unit] =
     bytes < 1024 * 1024 ? [bytes / 1024, 'KB'] : [bytes / (1024 * 1024), 'MB'];
-  return `${value.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} ${unit}`;
+  return `${formatNumber(locale, value, { maximumFractionDigits: 1 })} ${unit}`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -537,6 +554,16 @@ function DeviceFlag({
     <div className="flex items-baseline justify-between gap-3 py-1">
       <span className="shrink-0 text-sm text-ink-2">{label}</span>
       <Badge tone={ok ? 'success' : 'danger'}>{ok ? okText : badText}</Badge>
+    </div>
+  );
+}
+
+/** See the note on the live map's copy of this. */
+function MapLoading() {
+  const t = useT();
+  return (
+    <div className="grid h-full place-items-center bg-surface-2 text-sm text-ink-3">
+      {t.fleet.mapLoading}
     </div>
   );
 }

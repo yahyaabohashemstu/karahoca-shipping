@@ -490,6 +490,17 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       setRenderFault(true);
     });
 
+    /*
+     * These corners are physical, and so are the overlay buttons and the legend
+     * this component draws over the map.
+     *
+     * MapLibre pins its controls to 'top-right' and 'bottom-left' and does not
+     * mirror them for a right-to-left document — there is no dir-aware option.
+     * Converting our own overlays to logical properties would therefore split
+     * them from the zoom control they sit directly beneath, leaving the Arabic
+     * map with buttons down the left and MapLibre's own controls down the
+     * right. Physical is the consistent choice here, and only here.
+     */
     instance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
     instance.addControl(new maplibregl.AttributionControl(), 'bottom-left');

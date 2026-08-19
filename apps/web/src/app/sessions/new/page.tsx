@@ -28,6 +28,7 @@ import {
   consignmentToItems,
   type Consignment,
 } from '@/components/ConsignmentEditor';
+import { useFormat, useT } from '@/lib/i18n';
 
 /**
  * Create a tracking session and print the hand-off.
@@ -37,6 +38,8 @@ import {
  * over a bad phone line, or hands them a printed slip at the gate.
  */
 export default function NewSessionPage() {
+  const t = useT();
+  const fmt = useFormat();
   const authed = useRequireAuth();
   const toast = useToast();
   const qc = useQueryClient();
@@ -106,9 +109,9 @@ export default function NewSessionPage() {
     onSuccess: (s) => {
       setCreated(s);
       qc.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Oturum oluşturuldu', s.reference);
+      toast.success(t.sessionNew.created, s.reference);
     },
-    onError: (e) => toast.error('Oturum oluşturulamadı', (e as Error).message),
+    onError: (e) => toast.error(t.sessionNew.createFailed, (e as Error).message),
   });
 
   if (!authed) return null;
@@ -122,11 +125,11 @@ export default function NewSessionPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Yeni takip oturumu"
-        subtitle="Sürücünün telefonuna girecek tek kullanımlık kodu üretir"
+        title={t.sessionNew.title}
+        subtitle={t.sessionNew.subtitle}
         breadcrumb={
           <Link href="/sessions" className="hover:text-ink-2 hover:underline">
-            ← Oturumlar
+            {t.sessionNew.back}
           </Link>
         }
       />
@@ -135,7 +138,7 @@ export default function NewSessionPage() {
         {loadFailed && (
           <ErrorState
             className="mb-4"
-            title="Sipariş ve nakliyeci listesi alınamadı"
+            title={t.sessionNew.loadFailed}
             message={((orders.error ?? companies.error) as Error)?.message}
             onRetry={() => {
               orders.refetch();
@@ -149,16 +152,16 @@ export default function NewSessionPage() {
         {!loadFailed && (noOrders || noCompanies) ? (
           <Card>
             <EmptyState
-              title={noOrders ? 'Takip edilebilecek sipariş yok' : 'Kayıtlı nakliyeci yok'}
+              title={noOrders ? t.sessionNew.noOrders : t.sessionNew.noCarriers}
               description={
                 noOrders
-                  ? 'Takip oturumu açabilmek için önce bir sipariş oluşturmalısınız. Halihazırda canlı oturumu olan siparişler bu listede görünmez.'
-                  : 'Sevkiyatı hangi nakliye firmasının taşıdığını kaydedebilmek için önce firmayı tanımlayın.'
+                  ? t.sessionNew.noOrdersBody
+                  : t.sessionNew.noCarriersBody
               }
               action={
                 <Link href={noOrders ? '/orders/new' : '/carriers/new'}>
                   <Button variant="primary" size="sm">
-                    {noOrders ? 'Sipariş oluştur' : 'Nakliyeci ekle'}
+                    {noOrders ? t.orders.createShort : t.carriers.createShort}
                   </Button>
                 </Link>
               }
@@ -174,13 +177,13 @@ export default function NewSessionPage() {
               className="space-y-4"
             >
               <Select
-                label="Sipariş"
+                label={t.sessionNew.order}
                 required
                 value={orderId}
                 onChange={(e) => setOrderId(e.target.value)}
                 disabled={orders.isLoading}
               >
-                <option value="">{orders.isLoading ? 'Yükleniyor…' : 'Seçiniz…'}</option>
+                <option value="">{orders.isLoading ? t.common.loading : t.consignment.choose}</option>
                 {orders.data?.items.map((o) => (
                   <option key={String(o.id)} value={String(o.id)}>
                     {String(o.orderNumber)} — {String(o.customerName)}
@@ -190,13 +193,13 @@ export default function NewSessionPage() {
               </Select>
 
               <Select
-                label="Nakliye firması"
+                label={t.sessionNew.carrier}
                 required
                 value={shippingCompanyId}
                 onChange={(e) => setShippingCompanyId(e.target.value)}
                 disabled={companies.isLoading}
               >
-                <option value="">{companies.isLoading ? 'Yükleniyor…' : 'Seçiniz…'}</option>
+                <option value="">{companies.isLoading ? t.common.loading : t.consignment.choose}</option>
                 {companies.data?.map((c) => (
                   <option key={String(c.id)} value={String(c.id)}>
                     {String(c.name)}
@@ -206,27 +209,27 @@ export default function NewSessionPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Sürücü adı"
+                  label={t.sessionNew.driverName}
                   value={driverName}
                   onChange={(e) => setDriverName(e.target.value)}
-                  placeholder="Kapıda değişebilir"
+                  placeholder={t.sessionNew.driverNamePlaceholder}
                 />
                 <Input
-                  label="Sürücü telefonu"
+                  label={t.sessionNew.driverPhone}
                   type="tel"
                   inputMode="tel"
                   value={driverPhone}
                   onChange={(e) => setDriverPhone(e.target.value)}
                   placeholder="+90…"
-                  hint="Araç sessizleşirse aranacak numara"
+                  hint={t.sessionNew.driverPhoneHint}
                 />
               </div>
 
               <Input
-                label="Plaka"
+                label={t.sessionNew.plate}
                 value={vehiclePlate}
                 onChange={(e) => setVehiclePlate(e.target.value.toLocaleUpperCase('tr'))}
-                placeholder="34 ABC 123"
+                placeholder={t.sessionNew.platePlaceholder}
                 numeric
               />
 
@@ -247,7 +250,7 @@ export default function NewSessionPage() {
               {mutation.isError && (
                 <ErrorState
                   compact
-                  title="Oturum oluşturulamadı"
+                  title={t.sessionNew.createFailed}
                   message={(mutation.error as Error).message}
                 />
               )}
@@ -260,7 +263,7 @@ export default function NewSessionPage() {
                 loading={mutation.isPending}
                 disabled={!orderId || !shippingCompanyId || validateCadence(cadence) !== null}
               >
-                {mutation.isPending ? 'Oluşturuluyor…' : 'Oturum oluştur ve kod üret'}
+                {mutation.isPending ? t.sessionNew.creating : t.sessionNew.submit}
               </Button>
             </form>
           </Card>
@@ -282,6 +285,8 @@ export default function NewSessionPage() {
  * from inside a truck cab.
  */
 function Handoff({ session }: { session: SessionDetail }) {
+  const t = useT();
+  const fmt = useFormat();
   const toast = useToast();
   const handoff = session.handoff!;
 
@@ -289,7 +294,7 @@ function Handoff({ session }: { session: SessionDetail }) {
     <AppShell>
       <div className="mx-auto w-full max-w-lg px-5 py-8 print:max-w-none print:py-0">
         <div className="mb-5 text-center print:mb-3">
-          <p className="text-sm text-ink-2 print:hidden">Oturum oluşturuldu</p>
+          <p className="text-sm text-ink-2 print:hidden">{t.sessionNew.created}</p>
           <h1 className="kh-num text-xl font-semibold tracking-tight">{session.reference}</h1>
           <p className="mt-0.5 text-sm text-ink-2">
             <span className="kh-num">{session.orderNumber}</span> · {session.customerName}
@@ -298,7 +303,7 @@ function Handoff({ session }: { session: SessionDetail }) {
 
         <div className="rounded-lg border-2 border-dashed border-brand/40 bg-brand-soft/60 p-7 text-center print:border-black print:bg-white">
           <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-brand-text print:text-black">
-            Sürücü oturum kodu
+            {t.sessionNew.driverCode}
           </p>
 
           <p className="my-4 select-all font-mono text-[2.6rem] font-bold leading-none tracking-[0.18em] text-ink print:text-black">
@@ -313,11 +318,11 @@ function Handoff({ session }: { session: SessionDetail }) {
           />
 
           <p className="mt-4 text-sm text-ink-2 print:text-black">
-            QR okutulduğunda uygulama açılır ve kod otomatik yazılır.
+            {t.sessionNew.qrHint}
           </p>
           {handoff.expiresAt && (
             <p className="kh-num mt-1 text-sm text-ink-3 print:text-black">
-              Geçerlilik: {new Date(handoff.expiresAt).toLocaleString('tr-TR')}
+              {t.sessionNew.validUntil(fmt.dateTime(handoff.expiresAt))}
             </p>
           )}
           {/*
@@ -348,7 +353,7 @@ function Handoff({ session }: { session: SessionDetail }) {
         {handoff.shareUrl && (
           <div className="mt-5 rounded-lg border border-line bg-surface-2 p-4 print:hidden">
             <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
-              Alıcıya gönderilecek takip bağlantısı
+              {t.sessionNew.consigneeLink}
             </p>
             <p className="mt-2 select-all break-all font-mono text-xs text-ink-2">
               {handoff.shareUrl}
@@ -370,21 +375,21 @@ function Handoff({ session }: { session: SessionDetail }) {
                   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noreferrer');
                 }}
               >
-                WhatsApp ile gönder
+                {t.sessionNew.sendWhatsapp}
               </Button>
               <Button
                 size="sm"
                 onClick={() => {
                   navigator.clipboard
                     ?.writeText(handoff.shareUrl!)
-                    .then(() => toast.success('Takip bağlantısı kopyalandı', 'Alıcıya gönderebilirsiniz.'))
-                    .catch(() => toast.error('Kopyalanamadı', 'Bağlantıyı elle seçip kopyalayın.'));
+                    .then(() => toast.success(t.sessionNew.trackCopied, t.sessionNew.trackCopiedBody))
+                    .catch(() => toast.error(t.share.copyFailed, t.sessionNew.copyLinkFailedBody));
                 }}
               >
-                Kopyala
+                {t.share.copy}
               </Button>
               <a href={handoff.shareUrl} target="_blank" rel="noreferrer">
-                <Button size="sm" variant="ghost">Önizle</Button>
+                <Button size="sm" variant="ghost">{t.share.preview}</Button>
               </a>
             </div>
           </div>
@@ -395,11 +400,11 @@ function Handoff({ session }: { session: SessionDetail }) {
             onClick={() => {
               navigator.clipboard
                 ?.writeText(handoff.prettyCode)
-                .then(() => toast.success('Kod kopyalandı', handoff.prettyCode))
-                .catch(() => toast.error('Kopyalanamadı', 'Kodu elle seçip kopyalayın.'));
+                .then(() => toast.success(t.sessionNew.codeCopied, handoff.prettyCode))
+                .catch(() => toast.error(t.share.copyFailed, t.sessionNew.copyCodeFailedBody));
             }}
           >
-            Kodu kopyala
+            {t.sessionNew.copyCode}
           </Button>
           {/*
             The same URL the QR encodes. Pasted into WhatsApp it behaves
@@ -411,15 +416,15 @@ function Handoff({ session }: { session: SessionDetail }) {
             onClick={() => {
               navigator.clipboard
                 ?.writeText(handoff.webLink)
-                .then(() => toast.success('Bağlantı kopyalandı', 'Sürücüye gönderebilirsiniz.'))
-                .catch(() => toast.error('Kopyalanamadı', 'Bağlantıyı elle seçip kopyalayın.'));
+                .then(() => toast.success(t.sessionNew.linkCopied, t.sessionNew.linkCopiedBody))
+                .catch(() => toast.error(t.share.copyFailed, t.sessionNew.copyLinkFailedBody));
             }}
           >
-            Bağlantıyı kopyala
+            {t.sessionNew.copyLink}
           </Button>
-          <Button onClick={() => window.print()}>Yazdır</Button>
+          <Button onClick={() => window.print()}>{t.sessionNew.print}</Button>
           <Link href={`/sessions/${session.sessionId}`}>
-            <Button variant="primary">Oturuma git</Button>
+            <Button variant="primary">{t.sessionNew.goToSession}</Button>
           </Link>
         </div>
       </div>

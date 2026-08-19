@@ -80,7 +80,7 @@ export default function PerformancePage() {
               ) : isError ? (
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
-                    className="mx-auto max-w-md text-left"
+                    className="mx-auto max-w-md text-start"
                     title={t.performance.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
@@ -219,7 +219,7 @@ function SamplingBar({ pct }: { pct: number }) {
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-3" aria-hidden>
         <span className="block h-full rounded-full bg-brand" style={{ width: `${v}%` }} />
       </span>
-      <span className="w-9 text-right">{v}%</span>
+      <span className="w-9 text-end">{v}%</span>
     </span>
   );
 }

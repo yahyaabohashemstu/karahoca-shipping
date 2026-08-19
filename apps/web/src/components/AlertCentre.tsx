@@ -179,7 +179,7 @@ function AlertPanel({
       /* z-40 keeps it over the map's own absolutely-positioned furniture — the
          legend, the selected-vehicle panel — and under the toasts at z-50,
          which must stay readable even with this open. */
-      className="kh-enter absolute right-0 top-full z-40 mt-1.5 w-[26rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md bg-surface shadow-panel ring-1 ring-line"
+      className="kh-enter absolute end-0 top-full z-40 mt-1.5 w-[26rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md bg-surface shadow-panel ring-1 ring-line"
     >
       <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
         <div className="min-w-0">
@@ -319,11 +319,11 @@ function AlertRow({
   return (
     <li
       className={clsx(
-        'flex items-start gap-1 border-b border-line/70 py-2 pr-1.5 transition-colors last:border-b-0',
+        'flex items-start gap-1 border-b border-line/70 py-2 pe-1.5 transition-colors last:border-b-0',
         // A coloured left edge, the same device the fleet list uses for a
         // paused truck: it is what a dispatcher notices while scanning a
         // column, which a badge at the far right of the row is not.
-        'border-l-[3px] pl-[9px]',
+        'border-s-[3px] ps-[9px]',
         SEVERITY_STRIPE[alert.severity],
         // Handled work recedes but never disappears — it is still the record of
         // who owns this shipment.
@@ -454,11 +454,11 @@ const BADGE_TONE: Record<AlertSeverity, string> = {
 };
 
 const SEVERITY_STRIPE: Record<AlertSeverity, string> = {
-  CRITICAL: 'border-l-danger',
+  CRITICAL: 'border-s-danger',
   // The amber ring rather than the warn text colour: `warn` is a dark brown in
   // the light theme and reads as a smudge at 3px wide.
-  WARNING: 'border-l-delayed-ring',
-  INFO: 'border-l-line-strong',
+  WARNING: 'border-s-delayed-ring',
+  INFO: 'border-s-line-strong',
 };
 
 const SEVERITY_TEXT: Record<AlertSeverity, string> = {

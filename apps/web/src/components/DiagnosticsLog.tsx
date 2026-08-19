@@ -74,7 +74,7 @@ export function DiagnosticsLog() {
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-40 mt-1 w-[30rem] max-w-[92vw] rounded-md border border-line bg-surface shadow-panel">
+          <div className="absolute end-0 top-full z-40 mt-1 w-[30rem] max-w-[92vw] rounded-md border border-line bg-surface shadow-panel">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <p className="text-sm font-medium">{t.diagnostics.title}</p>
               <p className="text-2xs text-ink-3">{t.diagnostics.recent(String(entries.length))}</p>

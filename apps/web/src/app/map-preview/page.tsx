@@ -183,7 +183,7 @@ export default function MapPreviewPage() {
             zoom {camera.zoom} · arazi {camera.terrain ? 'açık' : 'kapalı'}
           </span>
         )}
-        <label className="ml-auto flex items-center gap-2 text-ink-2">
+        <label className="ms-auto flex items-center gap-2 text-ink-2">
           Araç
           <input
             type="range"

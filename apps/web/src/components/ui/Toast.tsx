@@ -118,7 +118,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       <button
         onClick={onDismiss}
         aria-label={t.common.close}
-        className="-mr-1 shrink-0 rounded p-1 opacity-60 transition-opacity hover:opacity-100"
+        className="-me-1 shrink-0 rounded p-1 opacity-60 transition-opacity hover:opacity-100"
       >
         <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
           <path d="m3 3 6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

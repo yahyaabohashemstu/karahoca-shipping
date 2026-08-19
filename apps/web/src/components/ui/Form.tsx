@@ -125,7 +125,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         className={clsx(
           CONTROL,
           SIZED,
-          'cursor-pointer appearance-none pr-8',
+          'cursor-pointer appearance-none pe-8',
           error && 'ring-2 ring-danger focus:ring-danger',
           className,
         )}
@@ -136,7 +136,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       {/* The native arrow is a different colour in every browser and does not
           follow the dark theme. */}
       <svg
-        className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-ink-3"
+        className="pointer-events-none absolute end-2 top-1/2 h-3 w-3 -translate-y-1/2 text-ink-3"
         viewBox="0 0 12 12"
         fill="none"
         aria-hidden
@@ -198,7 +198,7 @@ export function SearchInput({
   return (
     <div className={clsx('relative', className)}>
       <svg
-        className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
+        className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
         viewBox="0 0 16 16"
         fill="none"
         aria-hidden
@@ -211,14 +211,14 @@ export function SearchInput({
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={placeholder ?? t.common.search}
-        className={clsx(CONTROL, 'h-8 pl-8 pr-2.5 text-base', '[&::-webkit-search-cancel-button]:hidden')}
+        className={clsx(CONTROL, 'h-8 ps-8 pe-2.5 text-base', '[&::-webkit-search-cancel-button]:hidden')}
       />
       {value && (
         <button
           type="button"
           onClick={() => onValueChange('')}
           aria-label={t.common.clearSearch}
-          className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded text-ink-3 hover:bg-surface-3 hover:text-ink"
+          className="absolute end-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded text-ink-3 hover:bg-surface-3 hover:text-ink"
         >
           <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
             <path d="m3 3 6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

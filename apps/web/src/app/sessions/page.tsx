@@ -115,7 +115,7 @@ export default function SessionsPage() {
           value={searchInput}
           onValueChange={setSearchInput}
           placeholder={t.sessions.searchPlaceholder}
-          className="ml-auto w-72"
+          className="ms-auto w-72"
         />
       </div>
 
@@ -142,7 +142,7 @@ export default function SessionsPage() {
                    exact claim a carrier makes when a shipment goes missing. */
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
-                    className="mx-auto max-w-md text-left"
+                    className="mx-auto max-w-md text-start"
                     title={t.sessions.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}

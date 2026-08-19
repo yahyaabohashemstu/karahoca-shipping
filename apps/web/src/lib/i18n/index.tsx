@@ -17,6 +17,16 @@ import {
 export * from './locale';
 export type { Dictionary } from './tr';
 
+/*
+ * All three languages ship to every reader, deliberately.
+ *
+ * Together they gzip to about 23 kB, which on an internal dashboard is not
+ * worth splitting for — and splitting is not as easy as it looks. The
+ * dictionaries hold functions, for the strings that interpolate a value, and a
+ * function cannot cross the server/client boundary in an RSC payload. Loading
+ * one per locale would mean a dynamic import and a loading state on every page,
+ * to save a few kilobytes on an office network.
+ */
 const DICTIONARIES: Record<Locale, Dictionary> = { tr, ar, ku };
 
 interface I18nValue {

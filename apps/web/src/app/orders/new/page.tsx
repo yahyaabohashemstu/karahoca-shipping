@@ -312,7 +312,7 @@ export default function NewOrderPage() {
           </Card>
 
           {create.isError && (
-            <ErrorState title="Sipariş oluşturulamadı" message={(create.error as Error).message} />
+            <ErrorState title={t.orderNew.createFailed} message={(create.error as Error).message} />
           )}
 
           <div className="flex justify-end gap-2">

@@ -78,7 +78,7 @@ export default function CustomersPage() {
           value={search}
           onValueChange={setSearch}
           placeholder={t.customers.searchPlaceholder}
-          className="ml-auto w-72"
+          className="ms-auto w-72"
         />
       </div>
 
@@ -103,7 +103,7 @@ export default function CustomersPage() {
               ) : isError ? (
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
-                    className="mx-auto max-w-md text-left"
+                    className="mx-auto max-w-md text-start"
                     title={t.customers.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}
@@ -135,8 +135,8 @@ export default function CustomersPage() {
                     <TD>
                       <span className="font-medium">{c.name}</span>
                       {!c.isActive && (
-                        <Badge tone="neutral" className="ml-2">
-                          Pasif
+                        <Badge tone="neutral" className="ms-2">
+                          {t.carriers.inactive}
                         </Badge>
                       )}
                     </TD>

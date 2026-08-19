@@ -70,7 +70,7 @@ export function TH({
       aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : undefined}
       className={clsx(
         'border-b border-line px-3 py-2 text-2xs font-semibold uppercase tracking-wider text-ink-3',
-        numeric ? 'text-right' : 'text-left',
+        numeric ? 'text-end' : 'text-start',
         onSort && 'cursor-pointer select-none hover:text-ink-2',
         className,
       )}
@@ -140,7 +140,7 @@ export function TD({
       colSpan={colSpan}
       className={clsx(
         'px-3 py-2 align-middle',
-        numeric && 'kh-num text-right',
+        numeric && 'kh-num text-end',
         muted && 'text-ink-2',
         className,
       )}

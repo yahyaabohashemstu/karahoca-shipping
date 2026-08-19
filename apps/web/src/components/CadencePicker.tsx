@@ -218,10 +218,10 @@ function NumberField({
             const digits = e.target.value.replace(/[^\d]/g, '');
             onChange(digits === '' ? NaN : Number(digits));
           }}
-          className="pr-9"
+          className="pe-9"
           aria-label={`${label} (${suffix})`}
         />
-        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-ink-3">
+        <span className="pointer-events-none absolute end-2.5 top-1/2 -translate-y-1/2 text-sm text-ink-3">
           {suffix}
         </span>
       </div>

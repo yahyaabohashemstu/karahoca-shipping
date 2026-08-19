@@ -75,7 +75,41 @@ export default {
       },
 
       fontFamily: {
-        sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        /*
+         * Interleaved by face name, not by next/font's CSS variables, and the
+         * reason is worth the paragraph.
+         *
+         * A browser walks this list per character and skips any face whose
+         * unicode-range excludes it. Two facts make the obvious orderings wrong:
+         *
+         *   var(--font-inter) expands to `Inter, "Inter Fallback"`, and that
+         *   generated fallback is a metric-adjusted local("Arial") carrying NO
+         *   unicode-range. It matches Arabic. Put the variable first and Arabic
+         *   renders in Arial wearing Inter's metrics, with the correct face
+         *   loaded and unused.
+         *
+         *   Noto Sans Arabic's webfont is not Arabic-only — Google subsets it
+         *   with U+0000-00FF and U+0100-02BA as well. Put it first and every
+         *   Latin word on the dashboard, in all three languages, silently moves
+         *   off Inter.
+         *
+         * Naming the four faces directly threads between both. Latin takes
+         * Inter, Arabic falls past Inter's ranges to Noto, and each keeps its
+         * own metric-adjusted fallback for the window before it loads. The
+         * @font-face rules are global once next/font has emitted them, so the
+         * variables are no longer needed here — only on <html>, which is where
+         * they still are.
+         */
+        sans: [
+          'Inter',
+          'Noto Sans Arabic',
+          'Inter Fallback',
+          'Noto Sans Arabic Fallback',
+          'system-ui',
+          '-apple-system',
+          'Segoe UI',
+          'sans-serif',
+        ],
         mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
       },
 

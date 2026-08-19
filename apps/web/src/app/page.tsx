@@ -141,7 +141,7 @@ export default function LiveDashboard() {
 
       <div className="flex min-h-0 flex-1">
         {/* -------------------------------------------------- sidebar -------- */}
-        <aside className="flex w-[22rem] shrink-0 flex-col border-r border-line bg-surface">
+        <aside className="flex w-[22rem] shrink-0 flex-col border-e border-line bg-surface">
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
             <SearchInput
               value={search}
@@ -274,8 +274,8 @@ function FleetRow({ row, selected, onSelect }: { row: Row; selected: boolean; on
          * Selection still wins visually — you must be able to see which row you
          * clicked — but the left edge survives, so the state is never lost.
          */
-        className={`block w-full border-b border-line/70 px-3 py-2.5 text-left transition-colors ${
-          paused ? 'border-l-[3px] border-l-paused-ring pl-[9px]' : ''
+        className={`block w-full border-b border-line/70 px-3 py-2.5 text-start transition-colors ${
+          paused ? 'border-s-[3px] border-s-paused-ring ps-[9px]' : ''
         } ${
           selected
             ? 'bg-brand-soft'
@@ -403,7 +403,7 @@ function PanelRow({ label, value, mono }: { label: string; value: React.ReactNod
   return (
     <div className="flex items-baseline justify-between gap-3 py-0.5">
       <dt className="shrink-0 text-sm text-ink-2">{label}</dt>
-      <dd className={`min-w-0 truncate text-right font-medium ${mono ? 'kh-num' : ''}`}>{value}</dd>
+      <dd className={`min-w-0 truncate text-end font-medium ${mono ? 'kh-num' : ''}`}>{value}</dd>
     </div>
   );
 }

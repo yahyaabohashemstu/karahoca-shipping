@@ -104,7 +104,7 @@ export default function OrdersPage() {
           value={searchInput}
           onValueChange={setSearchInput}
           placeholder={t.orders.searchPlaceholder}
-          className="ml-auto w-72"
+          className="ms-auto w-72"
         />
       </div>
 
@@ -128,7 +128,7 @@ export default function OrdersPage() {
               ) : isError ? (
                 <TRMessage colSpan={COLS} tone="danger">
                   <ErrorState
-                    className="mx-auto max-w-md text-left"
+                    className="mx-auto max-w-md text-start"
                     title={t.orders.loadFailed}
                     message={(error as Error)?.message}
                     onRetry={() => refetch()}

@@ -49,7 +49,7 @@ export default function RouteError({
         <p className="mt-1.5 text-base text-ink-2">{t.errors.routeBody}</p>
 
         {error.message && (
-          <pre className="kh-scroll mt-4 max-h-28 overflow-auto rounded bg-surface-2 px-3 py-2 text-left text-sm text-ink-2">
+          <pre className="kh-scroll mt-4 max-h-28 overflow-auto rounded bg-surface-2 px-3 py-2 text-start text-sm text-ink-2">
             {error.message}
             {error.digest ? `\n\n(${error.digest})` : ''}
           </pre>
