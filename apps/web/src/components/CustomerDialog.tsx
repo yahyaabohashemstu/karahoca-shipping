@@ -46,9 +46,14 @@ const LocationPicker = dynamic(
  * It gained an edit mode for a reason worth recording. The default delivery
  * point was built, the PATCH endpoint was built, and neither could ever reach a
  * consignee who already existed — every customer in production predated the
- * picker, so the feature applied to nobody currently shipping. Create-only is
- * also why all three of them are still filed under Turkey, and therefore sent a
- * Turkish tracking page.
+ * picker, so the feature applied to nobody currently shipping.
+ *
+ * An earlier version of this note added that all three were filed under Turkey
+ * and would therefore be sent a Turkish tracking page. That was wrong and is
+ * corrected here rather than quietly deleted: the real consignee, altunsa in
+ * Kirkuk, is filed under IQ and already receives the Arabic page. The two
+ * without a delivery point are a German customer with no orders and a test
+ * record.
  */
 export function CustomerDialog({
   open,
@@ -76,9 +81,10 @@ export function CustomerDialog({
    * A picked place, not a typed coordinate.
    *
    * The text field this replaces was correct, warned honestly about what was
-   * lost by leaving it blank, and was left blank on three consignees out of
-   * three — because filling it in meant leaving the application to find a
-   * warehouse on somebody else's map.
+   * lost by leaving it blank, and was left blank on three orders out of four —
+   * because filling it in meant leaving the application to find a warehouse on
+   * somebody else's map. Three of those four were for a consignee whose own
+   * delivery point was already on file and simply never inherited.
    */
   const [location, setLocation] = useState<PickedLocation | null>(null);
 

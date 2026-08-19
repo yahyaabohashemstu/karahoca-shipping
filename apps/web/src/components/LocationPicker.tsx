@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/Form';
    Production, measured before this was written: 4 orders, 1 with a destination.
    Three shipments in four cannot compute distance remaining, cannot raise an
    ARRIVED alert, and cannot show the consignee the one number they opened the
-   page for.
+   page for. Three of those four were for a consignee who already had a delivery
+   point on file — nothing inherited it, so it was retyped by hand or not at all.
 
    The old form asked for the coordinate as raw text and warned, in a yellow
    box, exactly what was lost by leaving it blank. The warning was true, it was

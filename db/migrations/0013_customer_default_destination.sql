@@ -2,8 +2,22 @@
 -- 0013 — the customer's own delivery point, made usable
 -- =============================================================================
 -- kh.customers.location has existed since 0002, commented "default delivery
--- point", and has never held a value. Measured on production today: 3 customers,
--- 0 with a location; 4 orders, 1 with a destination.
+-- point", and nothing has ever read it.
+--
+-- CORRECTION, added after the fact. This header first claimed "3 customers, 0
+-- with a location", stated as a measurement. It was not one — the query that
+-- would have produced it errored on an enum cast and the figure was assumed
+-- from the absence of any UI. Read properly afterwards, production holds:
+--
+--     IRQ        altunsa, Kirkuk    IQ   delivery point SET   3 orders
+--     DE-HAM-01  Hamburg Handels    DE   none                 0 orders
+--     TEST-001   Saha Denemesi      TR   none                 1 order
+--
+-- So the only real consignee already had a delivery point, set at creation on
+-- 12 August. The argument for this migration is not weakened by that, it is
+-- sharpened: altunsa's point existed and three of their four orders were still
+-- created with no destination, because nothing inherited it. 4 orders, 1 with a
+-- destination — that half was measured and is accurate.
 --
 -- That single empty column is what gates the most valuable half of this product.
 -- Without a destination there is no distance remaining, no arrival radius, so
