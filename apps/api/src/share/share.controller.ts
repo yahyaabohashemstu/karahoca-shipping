@@ -296,7 +296,28 @@ function renderGroups(facts: Fact[], t: ShareStrings): string {
       <p class="group__label">${heading}</p>
       <dl class="facts">
         ${rows
-          .map((f) => `<div class="fact"><dt>${esc(f.label)}</dt><dd>${f.value}</dd></div>`)
+          /*
+           * <bdi> around every value, and it is not decoration.
+           *
+           * On the Arabic page the document direction is RTL, and the browser's
+           * bidirectional algorithm reorders any run of neutral characters —
+           * digits, spaces, punctuation — against the surrounding direction.
+           * Seen on the live page: a plate stored as "77 ADF 5824" rendered as
+           * "ADF 5824 77", "520 km" rendered as "km 520", and "500 palet ·
+           * 27 ton" came out as "palet · 27 ton 500". The data was correct in
+           * every case; the display was not.
+           *
+           * A wrong plate number is the serious one. It is the field a
+           * consignee reads to identify the lorry at their gate.
+           *
+           * <bdi> isolates the value from the paragraph direction and resolves
+           * its own from its first strong character — so a Latin plate stays
+           * left-to-right inside an RTL page, and an Arabic destination name
+           * still reads right-to-left. dir="auto" on a <dd> would do the same
+           * thing, but <bdi> carries the isolation even where a value is
+           * concatenated with markup, which several of these are.
+           */
+          .map((f) => `<div class="fact"><dt>${esc(f.label)}</dt><dd><bdi>${f.value}</bdi></dd></div>`)
           .join('\n        ')}
       </dl>
     </section>`;
@@ -411,11 +432,11 @@ function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
     `
     <header class="head">
       <div class="logo">${esc(t.brand)}</div>
-      <button class="refresh" type="button" onclick="location.reload()">Yenile</button>
+      <button class="refresh" type="button" onclick="location.reload()">${esc(t.refresh)}</button>
     </header>
 
     <section class="status status--${state.tone}">
-      <p class="status__ref">${esc(view.orderNumber)}</p>
+      <p class="status__ref"><bdi>${esc(view.orderNumber)}</bdi></p>
       <h1 class="status__title"><span class="status__dot" aria-hidden="true"></span>${esc(state.title)}</h1>
       <p class="status__detail">${esc(state.detail)}</p>
     </section>

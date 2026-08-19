@@ -229,6 +229,7 @@ export interface ShareStrings {
 
   // Chrome
   switchLanguage: string;
+  refresh: string;
   footerPrivate: string;
   footerContact: string;
 }
@@ -301,6 +302,7 @@ const TR: ShareStrings = {
     'Geçici bir sorun nedeniyle sevkiyat bilgileri getirilemedi. Lütfen birkaç dakika sonra tekrar deneyin.',
 
   switchLanguage: 'العربية',
+  refresh: 'Yenile',
   footerPrivate:
     'Bu sayfa yalnızca bu sevkiyat için oluşturulmuş özel bir bağlantıdır ve süresi dolduğunda kapanır. Lütfen bağlantıyı üçüncü kişilerle paylaşmayın.',
   footerContact: 'Sorularınız için sevkiyat sorumlunuzla iletişime geçin.',
@@ -395,6 +397,7 @@ const AR: ShareStrings = {
     'تعذّر جلب بيانات الشحنة بسبب مشكلة مؤقتة. يُرجى المحاولة مرة أخرى بعد بضع دقائق.',
 
   switchLanguage: 'Türkçe',
+  refresh: 'تحديث',
   footerPrivate:
     'هذه الصفحة رابط خاص أُنشئ لهذه الشحنة وحدها، ويُغلق عند انتهاء صلاحيته. يُرجى عدم مشاركته مع أطراف أخرى.',
   footerContact: 'لأي استفسار يُرجى التواصل مع مسؤول الشحن لديكم.',
