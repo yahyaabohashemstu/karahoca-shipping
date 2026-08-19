@@ -6,10 +6,12 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.karahoca.tracker.util.Keystore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.karahoca.tracker.util.Destination
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -60,6 +62,38 @@ class SessionStore @Inject constructor(
         val ORDER_NUMBER    = stringPreferencesKey("order_number")
         val CUSTOMER_NAME   = stringPreferencesKey("customer_name")
         val DESTINATION     = stringPreferencesKey("destination_label")
+
+        /*
+         * The delivery point, which the server has always sent and this store
+         * has always thrown away.
+         *
+         * Kept as three keys rather than one encoded string so a partial write
+         * cannot produce a coordinate with no radius, and so a schema that
+         * gains a field later does not have to parse its own history.
+         */
+        val DEST_LAT        = doublePreferencesKey("destination_lat")
+        val DEST_LON        = doublePreferencesKey("destination_lon")
+        val DEST_RADIUS_M   = intPreferencesKey("destination_radius_m")
+
+        /*
+         * Whether the driver has already been told they arrived.
+         *
+         * Persisted rather than held in the service, because the service is
+         * restarted by the watchdog, by the OS reclaiming memory, and by the
+         * boot receiver — and a driver parked at the gate for three hours of
+         * customs would otherwise be told they had arrived once per restart.
+         */
+        val ARRIVAL_ANNOUNCED = booleanPreferencesKey("arrival_announced")
+
+        /*
+         * Straight-line metres left, published for the UI.
+         *
+         * The service computes this per fix and holds it in memory; only the
+         * value the notification actually displays is written here, so a phone
+         * driving for eighteen hours does not do four thousand disk writes to
+         * move a number the driver is not looking at.
+         */
+        val REMAINING_M     = doublePreferencesKey("remaining_m")
     }
 
     // ---------------------------------------------------------------------------
@@ -167,12 +201,68 @@ class SessionStore @Inject constructor(
         )
     }
 
-    suspend fun saveShipment(orderNumber: String?, customerName: String?, destination: String?) {
+    /**
+     * Everything about the load, including where it is going.
+     *
+     * The coordinate is written unconditionally rather than through the
+     * `?.let` the string fields use, because null here is meaningful: an order
+     * whose destination was removed must clear the stored one, or the app would
+     * keep announcing arrival at a warehouse that is no longer the delivery
+     * point.
+     */
+    suspend fun saveShipment(
+        orderNumber: String?,
+        customerName: String?,
+        destination: String?,
+        destinationLat: Double? = null,
+        destinationLon: Double? = null,
+        destinationRadiusM: Int? = null,
+    ) {
         context.dataStore.edit {
             orderNumber?.let { v -> it[Keys.ORDER_NUMBER] = v }
             customerName?.let { v -> it[Keys.CUSTOMER_NAME] = v }
             destination?.let { v -> it[Keys.DESTINATION] = v }
+
+            if (destinationLat != null && destinationLon != null) {
+                it[Keys.DEST_LAT] = destinationLat
+                it[Keys.DEST_LON] = destinationLon
+                destinationRadiusM?.let { r -> it[Keys.DEST_RADIUS_M] = r }
+            } else {
+                it.remove(Keys.DEST_LAT)
+                it.remove(Keys.DEST_LON)
+                it.remove(Keys.DEST_RADIUS_M)
+            }
         }
+    }
+
+    /**
+     * The delivery point, or null when the order has none.
+     *
+     * Three orders in four in production have no destination, so null is the
+     * ordinary case: the screen says nothing about distance rather than showing
+     * a number it cannot stand behind.
+     */
+    suspend fun setRemainingM(metres: Double?) {
+        context.dataStore.edit {
+            if (metres == null) it.remove(Keys.REMAINING_M) else it[Keys.REMAINING_M] = metres
+        }
+    }
+
+    suspend fun arrivalAnnounced(): Boolean =
+        context.dataStore.data.first()[Keys.ARRIVAL_ANNOUNCED] ?: false
+
+    suspend fun setArrivalAnnounced(value: Boolean) {
+        context.dataStore.edit { it[Keys.ARRIVAL_ANNOUNCED] = value }
+    }
+
+    suspend fun destination(): Destination? {
+        val prefs = context.dataStore.data.first()
+        return Destination.of(
+            lat = prefs[Keys.DEST_LAT],
+            lon = prefs[Keys.DEST_LON],
+            radiusM = prefs[Keys.DEST_RADIUS_M],
+            label = prefs[Keys.DESTINATION],
+        )
     }
 
     suspend fun shipment(): Triple<String?, String?, String?> {
@@ -222,6 +312,14 @@ class SessionStore @Inject constructor(
         orderNumber = prefs[Keys.ORDER_NUMBER],
         customerName = prefs[Keys.CUSTOMER_NAME],
         destination = prefs[Keys.DESTINATION],
+        remainingM = prefs[Keys.REMAINING_M],
+        arrived = prefs[Keys.ARRIVAL_ANNOUNCED] ?: false,
+        destinationPoint = Destination.of(
+            lat = prefs[Keys.DEST_LAT],
+            lon = prefs[Keys.DEST_LON],
+            radiusM = prefs[Keys.DEST_RADIUS_M],
+            label = prefs[Keys.DESTINATION],
+        ),
         clockOffsetMs = prefs[Keys.CLOCK_OFFSET_MS] ?: 0,
     )
 
@@ -238,6 +336,8 @@ class SessionStore @Inject constructor(
                 Keys.SESSION_ID, Keys.REFERENCE, Keys.ACCESS_TOKEN, Keys.REFRESH_TOKEN,
                 Keys.INGEST_KEY, Keys.TOKEN_EXPIRES, Keys.ORDER_NUMBER,
                 Keys.CUSTOMER_NAME, Keys.DESTINATION,
+                Keys.DEST_LAT, Keys.DEST_LON, Keys.DEST_RADIUS_M,
+                Keys.ARRIVAL_ANNOUNCED, Keys.REMAINING_M,
             ).forEach { prefs.remove(it) }
             prefs[Keys.TRACKING_ACTIVE] = false
         }
@@ -259,5 +359,11 @@ data class StoredStatus(
     val orderNumber: String?,
     val customerName: String?,
     val destination: String?,
+    /** Where the load is going, or null when the order carries no coordinate. */
+    val destinationPoint: Destination? = null,
+    /** Straight-line metres left, or null before the first fix. */
+    val remainingM: Double? = null,
+    /** Whether the driver has been told they reached the delivery point. */
+    val arrived: Boolean = false,
     val clockOffsetMs: Long,
 )

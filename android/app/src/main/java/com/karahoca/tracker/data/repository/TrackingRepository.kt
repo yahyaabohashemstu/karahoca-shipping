@@ -606,9 +606,14 @@ class TrackingRepository @Inject constructor(
             body.policy.minDistanceM,
         )
         store.saveShipment(
-            body.shipment.orderNumber,
-            body.shipment.customerName,
-            body.shipment.destinationLabel ?: body.shipment.destinationAddress,
+            orderNumber = body.shipment.orderNumber,
+            customerName = body.shipment.customerName,
+            destination = body.shipment.destinationLabel ?: body.shipment.destinationAddress,
+            // The coordinate the server has always sent and this app has never
+            // read. Without it there is no distance remaining and no arrival.
+            destinationLat = body.shipment.destinationLat,
+            destinationLon = body.shipment.destinationLon,
+            destinationRadiusM = body.shipment.destinationRadiusM,
         )
         body.reference
     }
@@ -650,9 +655,22 @@ class TrackingRepository @Inject constructor(
     // 4. UI / notification snapshot
     // =========================================================================
 
+    /**
+     * Facts, not sentences.
+     *
+     * This used to carry a composed Turkish `title` and `body`, built here —
+     * in a class with no Context and therefore no access to string resources,
+     * which made the persistent notification the one part of the app that
+     * could never be translated. It is also the only place a driver looks for
+     * eighteen hours.
+     *
+     * The service composes the wording now, because the service has resources
+     * and knows the remaining distance, which this class does not.
+     */
     data class Snapshot(
-        val title: String,
-        val body: String,
+        val reference: String?,
+        val orderNumber: String?,
+        val destination: String?,
         val pendingCount: Int,
         val totalCount: Int,
         val lastFixAt: Long,
@@ -666,19 +684,16 @@ class TrackingRepository @Inject constructor(
         val total = pointDao.total()
         val online = network.isOnline()
 
-        val title = status.reference?.let { "Takip aktif · $it" } ?: "Takip aktif"
-        val body = buildString {
-            status.orderNumber?.let { append(it).append(" · ") }
-            status.destination?.let { append(it).append(" · ") }
-            when {
-                !online && pending > 0 -> append("Çevrimdışı · $pending konum bekliyor")
-                pending > 0 -> append("$pending konum gönderiliyor")
-                status.lastFixAt > 0 -> append("Son konum gönderildi")
-                else -> append("GPS bekleniyor")
-            }
-        }
-
-        return Snapshot(title, body, pending, total, status.lastFixAt, status.lastSyncAt, online)
+        return Snapshot(
+            reference = status.reference,
+            orderNumber = status.orderNumber,
+            destination = status.destination,
+            pendingCount = pending,
+            totalCount = total,
+            lastFixAt = status.lastFixAt,
+            lastSyncAt = status.lastSyncAt,
+            online = online,
+        )
     }
 
     // =========================================================================

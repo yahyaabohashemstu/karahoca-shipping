@@ -50,6 +50,10 @@ import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import com.karahoca.tracker.R
+import com.karahoca.tracker.util.DistanceUnit
+import com.karahoca.tracker.util.formatRemaining
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -588,6 +592,8 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        RemainingDistance(state)
+
         Spacer(Modifier.height(28.dp))
 
         ElevatedCard(Modifier.fillMaxWidth()) {
@@ -647,6 +653,58 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
 // =============================================================================
 // Bits
 // =============================================================================
+
+/**
+ * How far is left, and whether we are there.
+ *
+ * The server has sent this coordinate to the phone since the first version of
+ * the claim response and the app never looked at it, so a driver eighteen hours
+ * into a run to Erbil had no idea how much was left and nothing ever told them
+ * they had arrived. If they forgot to stop, the session ran on — flattening
+ * their battery and showing the dispatcher a shipment that looked live long
+ * after it was delivered.
+ *
+ * Placed above the fact card rather than inside it because it is the only thing
+ * on this screen that changes as the lorry moves, and putting it in a list of
+ * static identifiers would bury it. Absent entirely when the order has no
+ * destination, which is three orders in four — a screen that says nothing is
+ * better than one showing a number it cannot stand behind.
+ */
+@Composable
+private fun RemainingDistance(state: TrackerUiState) {
+    if (state.arrived) {
+        Spacer(Modifier.height(20.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                stringResource(R.string.arrival_banner),
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.padding(vertical = 14.dp),
+            )
+        }
+        return
+    }
+
+    val metres = state.remainingM ?: return
+    val (value, unit) = formatRemaining(metres)
+    Spacer(Modifier.height(20.dp))
+    Text(
+        when (unit) {
+            DistanceUnit.METRES -> stringResource(R.string.distance_metres, value)
+            DistanceUnit.KILOMETRES -> stringResource(R.string.distance_kilometres, value)
+        },
+        // Deliberately the largest text on the screen after the status line.
+        // A driver glancing at a phone in a cradle reads exactly one thing.
+        style = MaterialTheme.typography.headlineMedium,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
 
 @Composable
 private fun InfoRow(label: String, value: String) {

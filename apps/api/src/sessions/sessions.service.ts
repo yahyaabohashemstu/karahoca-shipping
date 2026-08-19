@@ -51,6 +51,16 @@ export interface DriverCredentials {
     destinationAddress: string | null;
     destinationLat: number | null;
     destinationLon: number | null;
+    /*
+     * The arrival radius, sent so the phone and the server can agree on what
+     * "arrived" means.
+     *
+     * Without it the app would have to pick its own number, and a driver told
+     * "you have arrived" at 300 m while kh.alerts raises ARRIVED at 800 m gives
+     * the dispatcher and the driver two different truths about the same moment
+     * — which is worse than the app saying nothing.
+     */
+    destinationRadiusM: number | null;
     cargoSummary: string | null;
     plannedDeliveryAt: string | null;
   };
@@ -609,6 +619,7 @@ export class SessionsService {
                 o.destination_address       AS "destinationAddress",
                 ST_Y(o.destination::geometry) AS "destinationLat",
                 ST_X(o.destination::geometry) AS "destinationLon",
+                o.destination_radius_m      AS "destinationRadiusM",
                 o.cargo_summary             AS "cargoSummary",
                 o.planned_delivery_at       AS "plannedDeliveryAt"
          FROM kh.tracking_sessions s

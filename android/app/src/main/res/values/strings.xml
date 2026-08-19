@@ -1,4 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Turkish, the default.
+
+    Every user-facing string in this app lives here so that values-ar/ and
+    values-ku/ can exist at all. Before this file grew, most of the wording was
+    hard-coded in MainActivity and — worse — composed inside TrackingRepository,
+    a class with no Context and therefore no way to reach a resource, which made
+    the persistent notification the one screen a driver stares at for eighteen
+    hours and the one that could never be translated.
+
+    Two conventions worth keeping:
+
+      Distances and counts are passed in as already-formatted strings, not as
+      numbers, so the formatter can pin Latin digits. %1$s not %1$d. An Arabic
+      phone formatting "%d" yields ٨ beside a Latin plate number.
+
+      Nothing here interpolates a plate, a reference or an order number into the
+      middle of a sentence. Those are identifiers, they are never translated,
+      and a sentence built around them reads badly in a language whose word
+      order differs from Turkish.
+-->
 <resources>
     <string name="app_name">KaraHoca Takip</string>
 
@@ -11,8 +32,58 @@
     <!-- Foreground service notification -->
     <string name="notification_starting">Takip başlatılıyor…</string>
     <string name="notification_acquiring_gps">GPS sinyali aranıyor</string>
-    <string name="notification_buffered">%1$d konum bekliyor</string>
+    <string name="notification_buffered">%1$s konum bekliyor</string>
+    <string name="notification_title">Takip aktif</string>
+    <string name="notification_title_ref">Takip aktif · %1$s</string>
+    <string name="notification_offline">Çevrimdışı · %1$s konum bekliyor</string>
+    <string name="notification_sending">%1$s konum gönderiliyor</string>
+    <string name="notification_sent">Son konum gönderildi</string>
+    <string name="notification_waiting_gps">GPS bekleniyor</string>
 
     <string name="action_stop">Durdur</string>
     <string name="action_sync_now">Şimdi gönder</string>
+
+    <!-- Distance to the delivery point -->
+    <string name="distance_metres">%1$s m kaldı</string>
+    <string name="distance_kilometres">%1$s km kaldı</string>
+
+    <!-- Arrival -->
+    <string name="arrival_title">Varış noktasına ulaştınız</string>
+    <string name="arrival_body">Teslimat tamamlandıysa takibi bitirebilirsiniz.</string>
+    <string name="arrival_action_finish">Takibi bitir</string>
+    <string name="arrival_banner">Varış noktasındasınız</string>
+
+    <!-- Claim screen -->
+    <string name="claim_heading">Sevkiyat Takibi</string>
+    <string name="claim_hint">Sevkiyat sorumlunuzdan aldığınız oturum kodunu girin.</string>
+    <string name="claim_field_label">Oturum Kodu</string>
+    <string name="claim_submit">Oturumu Aç</string>
+
+    <!-- Readiness screen -->
+    <string name="readiness_heading">Başlamadan Önce</string>
+    <string name="readiness_warning">Bu ayarlar yapılmazsa telefon takibi durdurabilir.</string>
+    <string name="readiness_ready">Sevkiyat Hazır</string>
+    <string name="readiness_start">TAKİBİ BAŞLAT</string>
+    <string name="readiness_grant">Her zaman izin ver</string>
+    <string name="readiness_location_off">Konum servisi kapalı</string>
+    <string name="readiness_open_location">KONUMU AÇ</string>
+
+    <!-- Tracking screen -->
+    <string name="tracking_heading">Takip Aktif</string>
+    <string name="tracking_subtitle">Konumunuz merkeze gönderiliyor.</string>
+    <string name="tracking_stop">TAKİBİ DURDUR</string>
+    <string name="tracking_close_session">Oturumu kapat</string>
+    <string name="label_order">Sipariş</string>
+    <string name="label_customer">Müşteri</string>
+    <string name="label_destination">Teslimat</string>
+    <string name="label_session">Oturum</string>
+    <string name="label_pending">Bekleyen konum</string>
+    <string name="label_last_fix">Son konum</string>
+    <string name="label_last_sync">Son gönderim</string>
+
+    <!-- Diagnostics -->
+    <string name="diag_send_report">Hata raporunu gönder</string>
+    <string name="diag_clear">Temizle</string>
+    <string name="diag_collapse">Daralt</string>
+    <string name="diag_send">Gönder</string>
 </resources>

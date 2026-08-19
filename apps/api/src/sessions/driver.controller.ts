@@ -77,6 +77,7 @@ export class DriverController {
               o.destination_address AS "destinationAddress",
               ST_Y(o.destination::geometry) AS "destinationLat",
               ST_X(o.destination::geometry) AS "destinationLon",
+              o.destination_radius_m        AS "destinationRadiusM",
               o.planned_delivery_at AS "plannedDeliveryAt",
               c.name               AS "customerName",
               c.contact_phone      AS "customerPhone"

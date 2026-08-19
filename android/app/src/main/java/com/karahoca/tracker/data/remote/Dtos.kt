@@ -44,6 +44,14 @@ data class ShipmentDto(
     val destinationAddress: String? = null,
     val destinationLat: Double? = null,
     val destinationLon: Double? = null,
+    /**
+     * The server's own arrival radius, in metres.
+     *
+     * Sent so the phone and kh.alerts agree on what "arrived" means. A driver
+     * told they have arrived while the dispatcher's board still says in transit
+     * is worse than neither saying anything.
+     */
+    val destinationRadiusM: Int? = null,
     val cargoSummary: String? = null,
     val plannedDeliveryAt: String? = null,
 )

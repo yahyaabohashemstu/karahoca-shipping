@@ -38,6 +38,16 @@ data class TrackerUiState(
     val pendingCount: Int = 0,
     val totalCount: Int = 0,
     val lastFixAt: Long = 0,
+    /**
+     * Straight-line metres to the delivery point, or null.
+     *
+     * Null for three orders in four, because most have no destination — and
+     * when it is null the screen says nothing about distance rather than
+     * showing a number it cannot stand behind.
+     */
+    val remainingM: Double? = null,
+    /** Whether the vehicle has reached the delivery point. */
+    val arrived: Boolean = false,
     val lastSyncAt: Long = 0,
 
     val checks: List<ReadinessCheck> = emptyList(),
@@ -157,6 +167,10 @@ class TrackerViewModel @Inject constructor(
                 totalCount = snapshot.totalCount,
                 lastFixAt = snapshot.lastFixAt,
                 lastSyncAt = snapshot.lastSyncAt,
+                // Written by the tracking service on the notification's own
+                // cadence, so this follows the lorry without polling anything.
+                remainingM = status.remainingM,
+                arrived = status.arrived,
                 trackingActive = status.trackingActive,
                 checks = deviceInfo.readinessChecks(),
                 screen = when {

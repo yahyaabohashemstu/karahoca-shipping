@@ -25,11 +25,15 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.karahoca.tracker.BuildConfig
+import com.karahoca.tracker.R
 import com.karahoca.tracker.data.local.SessionStore
 import com.karahoca.tracker.data.local.TrackingPolicy
 import com.karahoca.tracker.data.repository.TrackingRepository
 import com.karahoca.tracker.di.ApplicationScope
 import com.karahoca.tracker.sync.SyncScheduler
+import com.karahoca.tracker.util.Destination
+import com.karahoca.tracker.util.DistanceUnit
+import com.karahoca.tracker.util.formatRemaining
 import com.karahoca.tracker.util.DeviceInfoProvider
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -96,6 +100,32 @@ class LocationTrackingService : LifecycleService() {
     private lateinit var fused: FusedLocationProviderClient
     private var wakeLock: PowerManager.WakeLock? = null
     private var locationCallback: LocationCallback? = null
+
+    /*
+     * Where the load is going, loaded once when tracking starts.
+     *
+     * Null for three orders in four — most have no destination — and every use
+     * below has to cope with that rather than guess a coordinate.
+     */
+    @Volatile private var destination: Destination? = null
+
+    /** Straight-line metres to the delivery point, or null until the first fix. */
+    @Volatile private var remainingM: Double? = null
+
+    /*
+     * Consecutive fixes that qualified as arrival.
+     *
+     * Two are required before the driver is told anything. One is enough to be
+     * wrong: a single fix that drifts inside the radius while the lorry is
+     * still on the ring road would invite a driver to stop tracking mid-run,
+     * and the cost of that is the rest of the route. Two consecutive fixes,
+     * each already required to be inside the circle even at the worst its own
+     * accuracy admits, is cheap and far harder to fake.
+     */
+    private var arrivalStreak = 0
+
+    /** Fires once per session; survives a restart via SessionStore. */
+    private var arrivalAnnounced = false
     private var pumpJob: Job? = null
 
     // ---- Adaptive-interval state --------------------------------------------
@@ -174,6 +204,17 @@ class LocationTrackingService : LifecycleService() {
 
         /** Reject fixes we cannot trust enough to move a truck marker. */
         private const val MAX_ACCEPTABLE_ACCURACY_M = 200f
+        /**
+         * Consecutive qualifying fixes before the driver is told they arrived.
+         *
+         * One is enough to be wrong. A single fix drifting inside the radius while
+         * the lorry is still on the ring road would invite a driver to stop
+         * tracking mid-run, and the cost of that is the rest of the route. Two is
+         * cheap — at the default ten-second cadence it delays the prompt by ten
+         * seconds — and far harder for noise to produce.
+         */
+        private const val ARRIVAL_FIXES_REQUIRED = 2
+
 
         fun start(context: Context) {
             val intent = Intent(context, LocationTrackingService::class.java)
@@ -376,6 +417,9 @@ class LocationTrackingService : LifecycleService() {
         // Before the first fix arrives, so the very first callback already knows
         // whether it is running a distance trigger.
         cachePolicy(store.policy())
+        // Read once, held for the life of the service. See loadDestination —
+        // the per-fix path must not touch DataStore.
+        loadDestination()
         acquireWakeLock()
         ServiceWatchdog.schedule(this)
 
@@ -515,6 +559,69 @@ class LocationTrackingService : LifecycleService() {
      * The hot path. Deliberately tiny: validate, classify movement, write to
      * SQLite, return. No network, no JSON, no allocation storms.
      */
+    /**
+     * Read the delivery point into memory, once.
+     *
+     * On the per-fix path there must be no I/O — the comment on storeFix is
+     * emphatic about that and it is right — so the destination is fetched here
+     * and held in a field for the life of the service.
+     */
+    private suspend fun loadDestination() {
+        destination = store.destination()
+        arrivalAnnounced = store.arrivalAnnounced()
+        Log.i(TAG, "Destination: " + (destination?.let { "%.5f,%.5f r=%dm".format(it.lat, it.lon, it.radiusM) } ?: "none"))
+    }
+
+    /**
+     * Distance to the gate, and whether we are at it.
+     *
+     * Called from the per-fix path, so it does arithmetic and nothing else: a
+     * haversine is a handful of trig operations and costs nothing next to the
+     * Room insert already happening there. The announcement, which does I/O,
+     * happens at most once per session.
+     */
+    private fun updateDestinationProgress(location: Location) {
+        val target = destination ?: return
+        remainingM = target.distanceFrom(location.latitude, location.longitude)
+
+        if (arrivalAnnounced) return
+
+        val accuracy = if (location.hasAccuracy()) location.accuracy else null
+        if (!target.hasArrived(location.latitude, location.longitude, accuracy)) {
+            arrivalStreak = 0
+            return
+        }
+
+        arrivalStreak++
+        if (arrivalStreak < ARRIVAL_FIXES_REQUIRED) return
+
+        arrivalAnnounced = true
+        lifecycleScope.launch { announceArrival(target) }
+    }
+
+    /**
+     * Tell the driver they have arrived, once.
+     *
+     * Deliberately does NOT stop tracking. The lorry being inside the radius is
+     * not the same as the load being handed over — there is a gate, a queue, a
+     * weighbridge and paperwork between the two, and a tracker that switched
+     * itself off on arrival would lose exactly the part of the route a
+     * short-delivery argument turns on. The driver is offered the button; the
+     * decision stays theirs.
+     */
+    private suspend fun announceArrival(target: Destination) {
+        store.setArrivalAnnounced(true)
+        repository.recordLocalEvent(
+            type = "ARRIVED",
+            message = "Within " + target.radiusM + "m of the delivery point",
+        )
+        notifications.alert(
+            title = getString(R.string.arrival_title),
+            body = getString(R.string.arrival_body),
+        )
+        Log.i(TAG, "Arrival announced")
+    }
+
     private fun handleLocation(location: Location) {
         // Drop fixes too vague to be worth a row — but keep the very first one
         // regardless, so the map has something to show immediately.
@@ -525,6 +632,7 @@ class LocationTrackingService : LifecycleService() {
         }
 
         updateMovementState(location)
+        updateDestinationProgress(location)
         fixCount++
         /*
          * Updated on every RECEIVED fix, not every stored one.
@@ -729,19 +837,73 @@ class LocationTrackingService : LifecycleService() {
      */
     private suspend fun maybeUpdateNotification(force: Boolean = false) {
         val snapshot = repository.snapshot()
-        val key = Triple(snapshot.title, snapshot.body, snapshot.pendingCount)
+        val title = snapshot.reference
+            ?.let { getString(R.string.notification_title_ref, it) }
+            ?: getString(R.string.notification_title)
+        val body = notificationBody(snapshot)
+
+        val key = Triple(title, body, snapshot.pendingCount)
         if (!force && key == lastPostedNotification) return
         lastPostedNotification = key
+
+        /*
+         * Published only when the notification actually changes.
+         *
+         * The distance is recomputed per fix, but writing it to DataStore that
+         * often would be four thousand disk writes over an eighteen-hour run to
+         * move a number nobody is watching. The notification text is already
+         * throttled by the key above — it changes when the rounded distance
+         * does, roughly once a minute at motorway speed — and that is exactly
+         * the cadence the screen needs.
+         */
+        store.setRemainingM(remainingM)
 
         notifications.update(
             NOTIFICATION_ID,
             notifications.build(
-                title = snapshot.title,
-                body = snapshot.body,
+                title = title,
+                body = body,
                 buffered = snapshot.pendingCount,
                 ongoing = true,
             ),
         )
+    }
+
+    /**
+     * The one line a driver reads for eighteen hours.
+     *
+     * Composed here rather than in the repository, which has no Context and so
+     * could never reach a translated string — that is why this notification was
+     * the only screen in the app locked to Turkish.
+     *
+     * The remaining distance goes first when it is known, because it is the
+     * only part that changes as the lorry moves and the only part the driver is
+     * actually watching for.
+     */
+    private fun notificationBody(snapshot: TrackingRepository.Snapshot): String = buildString {
+        remainingText()?.let { append(it).append(" · ") }
+        snapshot.orderNumber?.let { append(it).append(" · ") }
+        snapshot.destination?.let { append(it).append(" · ") }
+        append(
+            when {
+                !snapshot.online && snapshot.pendingCount > 0 ->
+                    getString(R.string.notification_offline, snapshot.pendingCount.toString())
+                snapshot.pendingCount > 0 ->
+                    getString(R.string.notification_sending, snapshot.pendingCount.toString())
+                snapshot.lastFixAt > 0 -> getString(R.string.notification_sent)
+                else -> getString(R.string.notification_waiting_gps)
+            },
+        )
+    }
+
+    /** "340 km kaldı", or null when the order has no destination or no fix yet. */
+    private fun remainingText(): String? {
+        val metres = remainingM ?: return null
+        val (value, unit) = formatRemaining(metres)
+        return when (unit) {
+            DistanceUnit.METRES -> getString(R.string.distance_metres, value)
+            DistanceUnit.KILOMETRES -> getString(R.string.distance_kilometres, value)
+        }
     }
 
     // =========================================================================
