@@ -85,6 +85,8 @@ export const ar: Dictionary = {
     sessionDetail: 'تفاصيل الجلسة',
   },
   common: {
+    hidePanel: 'إخفاء اللوحة',
+    showPanel: 'إظهار اللوحة',
     loading: 'جارٍ التحميل…',
     loadFailed: 'تعذّر جلب البيانات',
     retry: 'أعد المحاولة',

@@ -84,6 +84,8 @@ export const ku: Dictionary = {
     sessionDetail: 'Hûrgiliyên danişînê',
   },
   common: {
+    hidePanel: 'Panelê veşêre',
+    showPanel: 'Panelê nîşan bide',
     loading: 'Tê barkirin…',
     loadFailed: 'Dane nehatin girtin',
     retry: 'Dîsa biceribîne',

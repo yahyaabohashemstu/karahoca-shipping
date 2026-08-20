@@ -109,7 +109,7 @@ export default function OrdersPage() {
       </div>
 
       <div className="min-h-0 flex-1 px-5 pb-5">
-        <div className="overflow-hidden rounded-md bg-surface ring-1 ring-line">
+        <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-line">
           <Table>
             <THead>
               <TR>

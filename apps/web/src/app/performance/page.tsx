@@ -60,7 +60,7 @@ export default function PerformancePage() {
       />
 
       <div className="min-h-0 flex-1 px-5 py-4">
-        <div className="overflow-hidden rounded-md bg-surface ring-1 ring-line">
+        <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-line">
           <Table>
             <THead>
               <TR>

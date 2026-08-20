@@ -22,9 +22,11 @@ import {
   StatusBadge,
   useToast,
 } from '@/components/ui';
-import { useFormat, useI18n, useT, type Dictionary } from '@/lib/i18n';
+import { dirOf, useFormat, useI18n, useT, type Dictionary } from '@/lib/i18n';
 import { formatNumber } from '@/lib/format';
 import type { Locale } from '@/lib/i18n/locale';
+import { Tip } from '@/components/ui/Hint';
+import { IconChevron } from '@/components/shell/Icons';
 
 // MapLibre is ~215 kB. Loading it on demand keeps this route's first-load JS in
 // line with every other screen instead of nearly tripling it.
@@ -32,6 +34,14 @@ const SessionMap = dynamic(() => import('@/components/SessionMap'), {
   ssr: false,
   loading: MapLoading,
 });
+
+/* Layout geometry, in the same units and for the same reason as the live
+   screen: the panel is authored in rem, the camera is padded in pixels. */
+const REM = 14;
+const PANEL_W = 23;
+const GAP = 0.75;
+
+const PANEL_KEY = 'kh.session.panel';
 
 type Action = 'pause' | 'resume' | 'complete' | 'cancel';
 
@@ -79,6 +89,22 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const now = useNow();
 
   const [confirming, setConfirming] = useState<Action | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
+
+  /*
+   * Restored after mount, never seeded into useState: localStorage does not
+   * exist on the server, and disagreeing with it about a 23rem panel would make
+   * React discard the tree and rebuild it. Default open — somebody arriving at
+   * a record has usually come to read it.
+   */
+  useEffect(() => {
+    setPanelOpen(window.localStorage.getItem(PANEL_KEY) !== '0');
+  }, []);
+
+  function showPanel(open: boolean) {
+    setPanelOpen(open);
+    window.localStorage.setItem(PANEL_KEY, open ? '1' : '0');
+  }
 
   const { live, backfills, events, status, connected, needsRefetch } = useSessionStream(
     authed ? id : null,
@@ -192,16 +218,45 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const currentStatus = status ?? session?.status ?? null;
   const closed = currentStatus === 'COMPLETED' || currentStatus === 'CANCELLED' || currentStatus === 'EXPIRED';
 
+  /*
+   * The facts panel floats over the route rather than sitting beside it, which
+   * means it has to be dismissible — the same rule the live screen's fleet rail
+   * follows, for the same reason. A journey across a 1,400 km corridor is worth
+   * looking at without 23rem of it behind a column of numbers.
+   */
+  const rtl = dirOf(locale) === 'rtl';
+  const panelPx = panelOpen ? (PANEL_W + GAP * 2) * REM : 2.75 * REM;
+  const mapInset = {
+    top: GAP * REM,
+    bottom: GAP * REM,
+    left: rtl ? panelPx : GAP * REM,
+    right: rtl ? GAP * REM : panelPx,
+  };
+
   if (!authed) return null;
 
   return (
     <AppShell fill>
       {/* --------------------------------------------------------- toolbar -- */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2">
-        <Link href="/" className="text-sm text-brand-text hover:underline">
+      {/*
+        A header, not a floating bar.
+
+        The live screen's chrome floats because the map there is the resting
+        state of the whole application. This is a record that happens to have a
+        map on it: a dispatcher arrives to do something to one shipment, and the
+        identity of that shipment plus the five things they can do to it belong
+        at the top of the page, in a fixed place, at a fixed height — not
+        wrapping over the route at whatever height the buttons happen to need.
+      */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5">
+        <Link
+          href="/"
+          className="-ms-1.5 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-sm text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+        >
+          <IconChevron back className="h-3.5 w-3.5" />
           {t.sessionDetail.back}
         </Link>
-        <span className="kh-num ms-2 font-semibold tracking-tight">
+        <span className="kh-num ms-1 font-semibold tracking-tight">
           {loading ? <Skeleton className="inline-block h-3.5 w-24 align-middle" /> : session?.reference ?? id.slice(0, 8)}
         </span>
         <StatusBadge status={currentStatus} />
@@ -233,6 +288,16 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           >
             {t.sessionDetail.actions.completeVerb}
           </Button>
+          <Button size="sm" loading={exportRaw.isPending} onClick={() => exportRaw.mutate()}>
+            {t.sessionDetail.rawData}
+          </Button>
+          {/*
+            Cancelling is the one irreversible thing on this bar and it used to
+            sit between "mark delivered" and "export raw data", which is how a
+            mis-click happens. A hairline and the end of the row is the cheapest
+            separation that still keeps it reachable.
+          */}
+          <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
           <Button
             size="sm"
             variant="ghost"
@@ -242,15 +307,12 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           >
             {t.sessionDetail.actions.cancelVerb}
           </Button>
-          <Button size="sm" loading={exportRaw.isPending} onClick={() => exportRaw.mutate()}>
-            {t.sessionDetail.rawData}
-          </Button>
         </div>
       </div>
 
       {sessionQ.isError && (
         <ErrorState
-          className="m-4"
+          className="m-3 shrink-0"
           title={t.sessionDetail.loadFailed}
           message={(sessionQ.error as Error)?.message}
           onRetry={() => sessionQ.refetch()}
@@ -258,21 +320,67 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         />
       )}
 
-      <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+        {/*
+          The route is the ground on this screen too.
+
+          It used to be a column beside a 23rem sidebar, which on a 1280px window
+          left it 900px wide for a line that runs 1,400 km. Everything the
+          dispatcher acts on now floats over it, so the map gets the whole
+          surface and the panel can be pushed aside when the question is
+          geographic rather than clerical.
+        */}
+        <div className="absolute inset-0">
           <SessionMap
             route={routeQ.data}
             backfills={backfills}
             live={live}
             fallbackLat={session?.lat}
             fallbackLon={session?.lon}
+            inset={mapInset}
           />
         </div>
 
-        {/* ------------------------------------------------------ sidebar -- */}
-        <aside className="kh-scroll w-[23rem] shrink-0 overflow-y-auto border-s border-line bg-surface">
+        {!panelOpen && (
+          <button
+            type="button"
+            onClick={() => showPanel(true)}
+            aria-expanded={false}
+            className="kh-glass kh-aside-in group absolute end-3 top-3 z-overlay grid h-9 w-9 place-items-center rounded-xl text-ink-2 transition-colors hover:text-ink"
+          >
+            <IconChevron back />
+            <Tip side="start">{t.common.showPanel}</Tip>
+          </button>
+        )}
+
+        {/* -------------------------------------------------------- panel -- */}
+        <aside
+          hidden={!panelOpen}
+          aria-label={t.sessionDetail.sectionShipment}
+          className="kh-glass kh-aside-in absolute bottom-3 end-3 top-3 z-overlay flex w-[23rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl"
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3 py-2">
+            <span className="kh-num truncate text-sm font-semibold tracking-tight">
+              {loading ? (
+                <Skeleton className="inline-block h-3 w-24 align-middle" />
+              ) : (
+                (session?.orderNumber ?? '—')
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => showPanel(false)}
+              aria-expanded
+              className="group relative -me-1 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-3/70 hover:text-ink"
+            >
+              <IconChevron />
+              <Tip side="start">{t.common.hidePanel}</Tip>
+            </button>
+          </div>
+
+          <div className="kh-scroll min-h-0 flex-1 overflow-y-auto">
           {session?.handoff && (
-            <section className="m-3 rounded-md border-2 border-dashed border-brand/40 bg-brand-soft/60 p-3.5 text-center">
+            <section className="m-3 rounded-xl border-2 border-dashed border-brand/40 bg-brand-soft/60 p-3.5 text-center">
               <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand-text">
                 {t.sessionDetail.codeForDriver}
               </p>
@@ -283,7 +391,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               <img
                 src={session.handoff.qrDataUrl}
                 alt={t.sessionDetail.qrAlt}
-                className="mx-auto h-36 w-36 rounded bg-white p-1"
+                className="mx-auto h-36 w-36 rounded-lg bg-white p-1"
               />
               <Button
                 size="sm"
@@ -305,7 +413,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             happened, and offer the one action that still makes sense.
           */}
           {session && !session.handoff && (
-            <section className="m-3 rounded-md border border-line bg-surface-2 p-3.5 text-center">
+            <section className="m-3 rounded-xl border border-line bg-surface-2 p-3.5 text-center">
               <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
                 {t.sessionDetail.driverCode}
               </p>
@@ -374,7 +482,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               }
             />
             {(session?.mockLocationCount ?? 0) > 0 && (
-              <div className="mt-2 flex items-center justify-between gap-2 rounded bg-danger-bg px-2 py-1.5 ring-1 ring-inset ring-danger-ring">
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-danger-bg px-2 py-1.5 ring-1 ring-inset ring-danger-ring">
                 <span className="text-sm font-medium text-danger">{t.sessionDetail.mockDetected}</span>
                 <span className="kh-num text-sm font-semibold text-danger">
                   {session?.mockLocationCount}
@@ -413,7 +521,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 {gapsQ.data.slice(0, 10).map((gap) => (
                   <div
                     key={gap.from}
-                    className="rounded bg-warn-bg px-2 py-1.5 text-sm ring-1 ring-inset ring-delayed-ring/35"
+                    className="rounded-lg bg-warn-bg px-2 py-1.5 text-sm ring-1 ring-inset ring-delayed-ring/35"
                   >
                     <div className="kh-num font-medium text-warn">
                       {t.sessionDetail.gapMinutes(String(Math.round(gap.durationSec / 60)))}
@@ -453,6 +561,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               </ol>
             )}
           </Section>
+          </div>
         </aside>
       </div>
 

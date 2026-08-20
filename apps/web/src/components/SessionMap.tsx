@@ -17,6 +17,11 @@ import type { BackfillEvent, LivePositionEvent } from '@/lib/useRealtime';
  */
 
 interface Props {
+  /**
+   * Pixels of each edge hidden behind floating chrome. Physical left/right,
+   * because a camera has never heard of inline-start.
+   */
+  inset?: { top: number; right: number; bottom: number; left: number };
   route: (GeoJSON.FeatureCollection & { pointCount: number; renderedPointCount: number }) | undefined;
   backfills: BackfillEvent[];
   live: LivePositionEvent | null;
@@ -24,7 +29,20 @@ interface Props {
   fallbackLon: number | null | undefined;
 }
 
-export default function SessionMap({ route, backfills, live, fallbackLat, fallbackLon }: Props) {
+export default function SessionMap({
+  route,
+  backfills,
+  live,
+  fallbackLat,
+  fallbackLon,
+  inset,
+}: Props) {
+  /*
+   * Read through a ref by the framing effect, which must not re-run — and so
+   * re-frame the camera — merely because the dispatcher collapsed the panel.
+   */
+  const insetRef = useRef(inset);
+  insetRef.current = inset;
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -89,9 +107,28 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
       zoom: 6,
       dragRotate: false,
       pitchWithRotate: false,
+      // Disabled here and re-added below on the side nothing floats over.
+      attributionControl: false,
     });
-    instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    /*
+     * Every control on the inline-START edge, because the facts panel occupies
+     * the whole inline-end edge of this screen.
+     *
+     * MapLibre names four physical corners and offers no direction-aware
+     * placement, so the corner is chosen here instead. Left alone it put the
+     * zoom control at top-right and the attribution at bottom-right — directly
+     * underneath a 23rem panel, which hid the zoom entirely and covered the
+     * OpenFreeMap credit. The credit is a licence term.
+     *
+     * Reading the document's dir once, at construction, is safe: changing the
+     * language reloads the page (see I18nProvider), so this component is never
+     * alive across a direction flip.
+     */
+    const start =
+      typeof document !== 'undefined' && document.documentElement.dir === 'rtl' ? 'right' : 'left';
+    instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), `top-${start}`);
+    instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), `bottom-${start}`);
+    instance.addControl(new maplibregl.AttributionControl(), `bottom-${start}`);
     // Same third-party sprite gaps as FleetMap; see the comment there.
     instance.on('styleimagemissing', (e) => {
       if (instance.hasImage(e.id)) return;
@@ -164,7 +201,24 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
       (acc, c) => acc.extend(c as [number, number]),
       new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number]),
     );
-    map.current?.fitBounds(bounds, { padding: 60, duration: 600 });
+    /*
+     * Padded by what is actually covering the map, not by one number.
+     *
+     * The facts panel floats over the route rather than sitting beside it, so a
+     * symmetric 60px pad framed the journey underneath it — on a Gaziantep to
+     * Kirkuk run the destination end of the line landed behind the panel every
+     * time the page loaded.
+     */
+    const pad = insetRef.current;
+    map.current?.fitBounds(bounds, {
+      padding: {
+        top: 24 + (pad?.top ?? 0),
+        right: 24 + (pad?.right ?? 0),
+        bottom: 24 + (pad?.bottom ?? 0),
+        left: 24 + (pad?.left ?? 0),
+      },
+      duration: 600,
+    });
     fitted.current = true;
   }, [ready, route]);
 

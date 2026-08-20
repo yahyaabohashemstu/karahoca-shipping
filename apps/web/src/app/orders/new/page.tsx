@@ -40,7 +40,7 @@ const LocationPicker = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-64 w-full animate-pulse rounded-md bg-surface-2 ring-1 ring-line" />
+      <div className="h-64 w-full animate-pulse rounded-xl bg-surface-2 ring-1 ring-line" />
     ),
   },
 );
@@ -290,7 +290,7 @@ export default function NewOrderPage() {
                    * dispatcher entered and forgot, and the honest reaction to a
                    * coordinate you do not remember typing is to distrust it.
                    */
-                  <span className="rounded bg-surface-2 px-1.5 py-0.5 text-2xs text-ink-2 ring-1 ring-line">
+                  <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-2xs text-ink-2 ring-1 ring-line">
                     {t.orderNew.fromCustomer}
                   </span>
                 )}

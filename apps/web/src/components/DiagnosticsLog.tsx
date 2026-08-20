@@ -58,7 +58,7 @@ export function DiagnosticsLog({ placement = 'below' }: { placement?: PopoverPla
         label={t.diagnostics.button(String(entries.length))}
         size="sm"
         className={
-          placement === 'inline-end' ? '!h-9 !w-9 !rounded-xl hover:!bg-surface-3/70' : undefined
+          placement === 'inline-end' ? '!h-10 !w-10 !rounded-xl hover:!bg-surface-3/70' : undefined
         }
         onClick={() => setOpen((v) => !v)}
       >

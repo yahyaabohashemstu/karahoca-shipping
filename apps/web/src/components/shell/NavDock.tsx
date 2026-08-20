@@ -77,7 +77,7 @@ export function NavDock({
   return (
     <nav
       aria-label={t.shell.navigation}
-      className="kh-glass kh-rail-in fixed bottom-3 start-3 top-3 z-dock flex w-[3.4rem] flex-col items-center rounded-2xl py-2"
+      className="kh-glass kh-rail-in fixed bottom-3 start-3 top-3 z-dock flex w-[3.8rem] flex-col items-center rounded-2xl py-2.5"
     >
       <BrandMark />
 
@@ -163,7 +163,7 @@ function BrandMark() {
       href="/"
       aria-label={t.shell.brandAria}
       title={t.shell.brandAria}
-      className="group relative grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[0.72rem] font-bold tracking-tight text-ink-inverse shadow-glow transition-transform hover:scale-[1.06] active:scale-95"
+      className="group relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[0.8rem] font-bold tracking-tight text-ink-inverse shadow-glow transition-transform hover:scale-[1.06] active:scale-95"
       style={{
         // A gradient rather than a flat fill: 32 square pixels is too small to
         // read as a considered mark on one colour, and the second stop is the
@@ -179,7 +179,7 @@ function BrandMark() {
 }
 
 const TILE =
-  'group relative grid h-9 w-9 place-items-center rounded-xl transition-colors ' +
+  'group relative grid h-[2.5rem] w-[2.5rem] place-items-center rounded-xl transition-colors ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2';
 
 const TILE_IDLE = 'text-ink-2 hover:bg-surface-3/70 hover:text-ink';
@@ -267,7 +267,7 @@ function LanguagePicker() {
 
   return (
     <div className={clsx(TILE, TILE_IDLE)}>
-      <span aria-hidden className="text-2xs font-bold tracking-wide" lang={locale}>
+      <span aria-hidden className="text-xs font-bold tracking-wide" lang={locale}>
         {LOCALE_SHORT[locale]}
       </span>
       <select
@@ -295,7 +295,7 @@ function ThemeToggle() {
 
   // Rendering the icon before mount would make the server's guess visible for
   // one frame and produce a hydration mismatch warning.
-  if (!mounted) return <span className="h-9 w-9" />;
+  if (!mounted) return <span className="h-10 w-10" />;
 
   const next =
     pref === 'system' ? (resolved === 'dark' ? 'light' : 'dark') : pref === 'dark' ? 'light' : 'dark';

@@ -110,3 +110,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useTheme = () => useContext(Ctx);
+
+/**
+ * The resolved theme, without a provider.
+ *
+ * For the one screen that cannot use the context: the global error boundary
+ * replaces `<html>` itself, so it renders above ThemeProvider and above every
+ * generated stylesheet. Without this it painted white — a full-screen flash
+ * into the eyes of a dispatcher who has been on the dark theme for eight hours,
+ * delivered at the exact moment something has already gone wrong.
+ *
+ * The same reads the blocking script does, in the same order, with the same
+ * try/catch: localStorage throws in private-mode Safari, and a throw inside an
+ * error boundary is how a recoverable failure becomes a blank page.
+ */
+export function clientTheme(): Resolved {
+  if (typeof window === 'undefined') return 'light';
+  try {
+    const pref = (localStorage.getItem(KEY) as ThemePref | null) ?? 'system';
+    if (pref === 'dark') return 'dark';
+    if (pref === 'light') return 'light';
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}

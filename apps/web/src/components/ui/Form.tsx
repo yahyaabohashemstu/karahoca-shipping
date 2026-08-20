@@ -14,13 +14,19 @@ import { useT } from '@/lib/i18n';
    ========================================================================== */
 
 const CONTROL =
-  'w-full rounded bg-surface text-ink placeholder:text-ink-3 ' +
+  'w-full rounded-lg bg-surface text-ink placeholder:text-ink-3 ' +
   'ring-1 ring-inset ring-line-strong transition-shadow ' +
   'hover:ring-ink-3/60 ' +
   'focus:outline-none focus:ring-2 focus:ring-brand ' +
   'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-3';
 
-const SIZED = 'h-8 px-2.5 text-base';
+/**
+ * h-9 — 31.5px at this app's 14px root, the same as a md Button.
+ *
+ * It was h-8, which put a 28px input beside a 32px button in every form in the
+ * product. Matching them is the whole point of stating the size in one place.
+ */
+const SIZED = 'h-9 px-3 text-base';
 
 export function Field({
   label,
@@ -41,7 +47,7 @@ export function Field({
 }) {
   return (
     <div className={clsx('flex flex-col gap-1', className)}>
-      <label htmlFor={htmlFor} className="flex items-baseline gap-1 text-sm font-medium text-ink-2">
+      <label htmlFor={htmlFor} className="flex items-baseline gap-1 text-sm font-medium text-ink">
         {label}
         {required && (
           <span className="text-danger" aria-hidden>
@@ -170,7 +176,7 @@ export const Textarea = forwardRef<
       rows={rows}
       required={required}
       aria-invalid={error ? true : undefined}
-      className={clsx(CONTROL, 'px-2.5 py-1.5 text-base', error && 'ring-2 ring-danger', className)}
+      className={clsx(CONTROL, 'px-3 py-2 text-base', error && 'ring-2 ring-danger', className)}
       {...rest}
     />
   );
@@ -211,14 +217,14 @@ export function SearchInput({
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={placeholder ?? t.common.search}
-        className={clsx(CONTROL, 'h-8 ps-8 pe-2.5 text-base', '[&::-webkit-search-cancel-button]:hidden')}
+        className={clsx(CONTROL, 'h-9 ps-8 pe-2.5 text-base', '[&::-webkit-search-cancel-button]:hidden')}
       />
       {value && (
         <button
           type="button"
           onClick={() => onValueChange('')}
           aria-label={t.common.clearSearch}
-          className="absolute end-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded text-ink-3 hover:bg-surface-3 hover:text-ink"
+          className="absolute end-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-md text-ink-3 hover:bg-surface-3 hover:text-ink"
         >
           <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
             <path d="m3 3 6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -247,7 +253,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={clsx('inline-flex rounded bg-surface-2 p-0.5 ring-1 ring-inset ring-line', className)}
+      className={clsx('inline-flex rounded-xl bg-surface-2 p-1 ring-1 ring-inset ring-line', className)}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -259,9 +265,9 @@ export function SegmentedControl<T extends string>({
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={clsx(
-              'rounded-sm px-2.5 py-1 text-sm font-medium transition-colors',
+              'rounded-lg px-3 py-1 text-sm font-medium transition-colors',
               active
-                ? 'bg-surface text-ink shadow-xs'
+                ? 'bg-surface text-ink shadow-xs ring-1 ring-line'
                 : 'text-ink-2 hover:text-ink',
             )}
           >

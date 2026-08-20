@@ -25,7 +25,14 @@ export function Table({ children, className }: { children: React.ReactNode; clas
 
 export function THead({ children }: { children: React.ReactNode }) {
   return (
-    <thead className="sticky top-0 z-10 bg-surface-2/95 backdrop-blur supports-[backdrop-filter]:bg-surface-2/80">
+    /*
+     * The header is the one part of a table that also floats — it stays put
+     * while forty rows scroll under it — so it gets the same translucent
+     * treatment as the panels that float over the map. Same material, same
+     * reason: what sits still while content moves beneath it should look like
+     * it is above the content rather than part of it.
+     */
+    <thead className="sticky top-0 z-10 bg-surface-2/85 backdrop-blur-md supports-[backdrop-filter]:bg-surface-2/75">
       {children}
     </thead>
   );
@@ -69,7 +76,7 @@ export function TH({
       scope="col"
       aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : undefined}
       className={clsx(
-        'border-b border-line px-3 py-2 text-2xs font-semibold uppercase tracking-wider text-ink-3',
+        'border-b border-line px-3.5 py-2.5 text-2xs font-semibold uppercase tracking-[0.12em] text-ink-3',
         numeric ? 'text-end' : 'text-start',
         onSort && 'cursor-pointer select-none hover:text-ink-2',
         className,
@@ -111,8 +118,8 @@ export function TR({
           : undefined
       }
       className={clsx(
-        'border-b border-line/70 transition-colors',
-        onClick && 'cursor-pointer hover:bg-surface-2 focus-visible:bg-surface-2',
+        'border-b border-line/60 transition-colors',
+        onClick && 'cursor-pointer hover:bg-surface-2/70 focus-visible:bg-surface-2',
         selected && 'bg-brand-soft hover:bg-brand-soft',
         className,
       )}
@@ -139,7 +146,7 @@ export function TD({
     <td
       colSpan={colSpan}
       className={clsx(
-        'px-3 py-2 align-middle',
+        'px-3.5 py-2.5 align-middle',
         numeric && 'kh-num text-end',
         muted && 'text-ink-2',
         className,
@@ -179,11 +186,11 @@ export function TableSkeletonRows({ rows = 8, cols }: { rows?: number; cols: num
   return (
     <>
       {Array.from({ length: rows }).map((_, r) => (
-        <tr key={r} className="border-b border-line/70">
+        <tr key={r} className="border-b border-line/60">
           {Array.from({ length: cols }).map((_, c) => (
-            <td key={c} className="px-3 py-2">
+            <td key={c} className="px-3.5 py-2.5">
               <div
-                className="kh-skeleton h-3 rounded"
+                className="kh-skeleton h-3 rounded-md"
                 style={{ width: `${[70, 55, 80, 45, 60, 50, 65, 40][c % 8]}%` }}
               />
             </td>
@@ -224,7 +231,7 @@ export function Pagination({
           type="button"
           disabled={offset === 0}
           onClick={() => onOffset(Math.max(0, offset - limit))}
-          className="rounded px-2 py-1 hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
+          className="rounded-lg px-2.5 py-1 transition-colors hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
         >
           ‹ {t.common.previous}
         </button>
@@ -235,7 +242,7 @@ export function Pagination({
           type="button"
           disabled={to >= total}
           onClick={() => onOffset(offset + limit)}
-          className="rounded px-2 py-1 hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
+          className="rounded-lg px-2.5 py-1 transition-colors hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
         >
           {t.common.next} ›
         </button>

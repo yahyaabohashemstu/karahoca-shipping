@@ -28,6 +28,7 @@ import {
 } from './share.i18n';
 import { ShareService, type ConsigneeView, type ShareResolution } from './share.service';
 import { CreateShareLinkDto } from './dto';
+import { pageHead, pageStyle } from '../common/page-chrome';
 
 /** Dispatcher-facing management of consignee links. Behind the global UserAuthGuard. */
 @Controller()
@@ -439,7 +440,10 @@ function shipmentPage(view: ConsigneeView, locale: ShareLocale): string {
     t.pageTitle(esc(view.orderNumber)),
     `
     <header class="head">
-      <div class="logo">${esc(t.brand)}</div>
+      <div class="brandline">
+        <span class="mark" aria-hidden="true">KH</span>
+        <span class="logo">${esc(t.brand)}</span>
+      </div>
       <button class="refresh" type="button" onclick="location.reload()">${esc(t.refresh)}</button>
     </header>
 
@@ -535,68 +539,65 @@ function noticePage(title: string, message: string, locale: ShareLocale): string
 function page(title: string, body: string, tail: string, locale: ShareLocale): string {
   return `<!doctype html>
 <html lang="${locale}" dir="${isRtl(locale) ? 'rtl' : 'ltr'}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex,nofollow">
-<title>${title}</title>
-<style>
+${pageHead(title, pageStyle(SHARE_CSS))}
+<body>
+  <main class="wrap">
+${body}
+  </main>
+${tail}
+</body>
+</html>`;
+}
+
+/* =============================================================================
+   The consignee page's own styling
+   =============================================================================
+   The palette, the sheet, the button, the focus ring, the language switcher and
+   the motion curve all come from ../common/page-chrome.ts, which is the same
+   set of values the dispatcher's dashboard is built from and the same set the
+   two driver pages use. Everything below is what this page does not share with
+   either of them.
+
+   Dark is decided there rather than here, and for this page's reason: more than
+   half of it is a light basemap, and light chrome wrapped around a map is two
+   designs arguing. The map cannot go dark without losing the contrast the
+   vehicle marker depends on, so the map decides and everything else follows.
+   ========================================================================== */
+const SHARE_CSS = `
   /*
-   * Dark, and not by default.
-   *
-   * The scene: an agent at a yard gate in Erbil, or in a warehouse office, on
-   * a cheap Android phone, checking whether the lorry is close. More than half
-   * this page is a dark basemap. Light chrome wrapped around a dark map is two
-   * designs arguing, and the map cannot go light without losing the contrast
-   * the vehicle marker depends on. The map decides; everything else follows.
+   * Layout geometry. The map's bleed is derived from these three numbers rather
+   * than hard-coded, so changing the gutter or the column cannot silently leave
+   * the map off-centre.
    */
   :root {
-    color-scheme: dark;
-    --bg:        #0a1018;
-    --surface:   #111a28;
-    --line:      #1d2b3f;
-    --ink:       #eef3fa;
-    --ink-2:     #9fb0c6;
-    --ink-3:     #6a7f99;
-    --brand:     #6cc6f5;
-
-    /* Layout geometry. The map's bleed is derived from these three numbers
-     * rather than hard-coded, so changing the gutter or the column cannot
-     * silently leave the map off-centre. */
-    --gutter:    16px;   /* body side padding */
-    --wrap:      520px;  /* reading column */
-    --map-max:   760px;  /* how wide the map is allowed to grow */
-
-    /* Semantic, and deliberately not the dispatcher's palette.
-     *
-     * On the fleet map green means "the GPS is reporting". Here it has to mean
-     * "your goods arrived" — the only outcome this reader is waiting for, and
-     * the colour every parcel tracker they have used says it in. Delivery was
-     * rendering in the same sky blue as the logo, so the best possible news
-     * looked like a footnote while *waiting* got amber. In transit is blue:
-     * progressing, not finished. */
-    --done:      #34d399;
-    --live:      #60b8f8;
-    --wait:      #f2b23c;
-    --stop:      #f87171;
+    --gutter:  16px;   /* body side padding */
+    --wrap:    520px;  /* reading column */
+    --map-max: 760px;  /* how wide the map is allowed to grow */
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100dvh;
-    font: 16px/1.5 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    background: var(--bg); color: var(--ink); padding: 18px var(--gutter) 40px;
-  }
+
+  body { padding: 18px var(--gutter) 40px; }
   .wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; }
+
   .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brandline { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  /* The same monogram the dashboard's dock and the driver pages carry. This is
+     the only KaraHoca surface a customer ever sees, so it is also the only
+     place the company gets to look like one. */
+  .mark {
+    width: 30px; height: 30px; flex: 0 0 auto;
+    display: grid; place-items: center;
+    border-radius: var(--r-chip);
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%);
+    color: #06101f; font-weight: 800; font-size: 11px; letter-spacing: -.02em;
+  }
   .logo { font-weight: 800; letter-spacing: .16em; font-size: 12px; color: var(--brand); }
   .refresh {
-    font: inherit; font-size: 13px; padding: 7px 13px; border-radius: 9px; cursor: pointer;
-    background: transparent; color: var(--ink-2); border: 1px solid var(--line);
-    transition: color .18s cubic-bezier(.22,1,.36,1), border-color .18s cubic-bezier(.22,1,.36,1);
+    font: inherit; font-size: 13px; padding: 8px 14px; border-radius: var(--r-control);
+    cursor: pointer; background: transparent; color: var(--ink-2);
+    border: 1px solid var(--line-strong);
+    transition: color .18s var(--ease), border-color .18s var(--ease);
   }
   .refresh:hover { color: var(--ink); border-color: var(--ink-3); }
-  .refresh:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
   /*
    * The status IS the page.
@@ -607,7 +608,7 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
    * came for was quieter than the heading above it. No card here: a card fences
    * the answer off as one item among several. Colour and scale carry it.
    */
-  .status { margin: 22px 0 4px; }
+  .status { margin: 24px 0 4px; }
   .status__ref {
     font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
     color: var(--ink-3); margin: 0 0 8px;
@@ -632,21 +633,15 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
 
   /* Only the live state pulses, because only it is still changing. */
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(96,184,248,.5); }
-    70%  { box-shadow: 0 0 0 9px rgba(96,184,248,0); }
-    100% { box-shadow: 0 0 0 0 rgba(96,184,248,0); }
+    0%   { box-shadow: 0 0 0 0 rgba(82, 152, 255, .5); }
+    70%  { box-shadow: 0 0 0 9px rgba(82, 152, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(82, 152, 255, 0); }
   }
   @media (prefers-reduced-motion: reduce) {
     .status--live .status__dot { animation: none; }
     .refresh { transition: none; }
   }
 
-  /*
-   * A light map inside a dark page needs a seam, or the tiles read as a raw
-   * white slab cut out of the background. A one-pixel line at the page's own
-   * border colour plus a slight inset shadow lands it in the panel instead of
-   * on top of it. No glow: that would be decoration, and the map is content.
-   */
   /*
    * The map is wider than the column it sits in, and the amount is derived,
    * not guessed.
@@ -662,12 +657,12 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
    * along the axis a road actually runs.
    */
   .map {
-    margin-top: 18px; height: 46vh; min-height: 250px; overflow: hidden;
+    margin-top: 20px; height: 46vh; min-height: 250px; overflow: hidden;
     width: calc(100% + var(--gutter) * 2);
     margin-inline: calc(var(--gutter) * -1);
     border-block: 1px solid var(--line);
     background: #e8eaed;
-    box-shadow: inset 0 0 0 1px rgba(10,16,24,.35);
+    box-shadow: inset 0 0 0 1px rgba(10, 16, 24, .35);
     display: grid; place-items: center;
   }
 
@@ -684,7 +679,7 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
       width: var(--map-max);
       margin-inline: calc((var(--wrap) - var(--map-max)) / 2);
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: var(--r-panel);
     }
   }
   .map--empty { height: 92px; min-height: 0; }
@@ -704,7 +699,7 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
    * on it, who is carrying it — and labelling the groups lets the eye skip two
    * thirds of the page.
    */
-  .group { margin: 22px 0 0; }
+  .group { margin: 24px 0 0; }
   .group__label {
     font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
     color: var(--ink-3); margin: 0 0 2px; font-weight: 600;
@@ -727,27 +722,10 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
   .fine { color: var(--ink-3); font-size: 12.5px; margin: 22px 0 0; text-wrap: pretty; }
 
   /*
-   * The language switcher. Its own rule now that it holds more than one link.
-   *
-   * A flex row rather than inline text, so the options do not reflow into
-   * the middle of a sentence when one of them is right-to-left and the page is
-   * not — the mixed-direction case this footer is now guaranteed to hit, since
-   * the Turkish page lists two right-to-left names side by side.
-   *
-   * No text-align: the flex line follows the page direction on its own, which
-   * puts the switcher under the start of the footer text in every language.
-   */
-  .langs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .lang { color: var(--ink-3); text-decoration: underline; text-underline-offset: 3px; }
-  .lang:hover { color: var(--ink); }
-  .lang:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 3px; }
-  .lang__sep { color: var(--ink-3); opacity: .5; }
-
-  /*
-   * MapLibre's own control styling is built for a light basemap, so on
-   * positron it is left almost alone — the inverted dark treatment this page
-   * carried while the map was dark would now paint dark icons on dark buttons
-   * against white tiles, i.e. invisible.
+   * MapLibre's own control styling is built for a light basemap, so on positron
+   * it is left almost alone — the inverted dark treatment this page carried
+   * while the map was dark would now paint dark icons on dark buttons against
+   * white tiles, i.e. invisible.
    *
    * Only two things change: the attribution shrinks (it was spanning two lines
    * across the bottom of the map) and the controls pick up this page's corner
@@ -755,18 +733,9 @@ function page(title: string, body: string, tail: string, locale: ShareLocale): s
    * clickable; it is a licence term, not decoration.
    */
   .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a { font-size: 10.5px !important; }
-  .maplibregl-ctrl-attrib.maplibregl-compact { border-radius: 8px; }
-  .maplibregl-ctrl-group { border-radius: 8px !important; }
-</style>
-</head>
-<body>
-  <main class="wrap">
-${body}
-  </main>
-${tail}
-</body>
-</html>`;
-}
+  .maplibregl-ctrl-attrib.maplibregl-compact { border-radius: var(--r-chip); }
+  .maplibregl-ctrl-group { border-radius: var(--r-chip) !important; }
+`
 
 /**
  * The relative clock.

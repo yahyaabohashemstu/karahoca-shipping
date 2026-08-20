@@ -86,19 +86,22 @@ export function Modal({
       aria-labelledby="kh-modal-title"
       className={clsx(
         'w-[calc(100vw-2rem)] rounded-2xl bg-surface p-0 text-ink shadow-panel ring-1 ring-line',
-        'backdrop:bg-black/45 backdrop:backdrop-blur-[2px]',
+        // Lighter than a modal backdrop usually is, and blurred instead of dark:
+        // behind it there is very often a live map still tracking, and dimming
+        // that to near-black says the product has stopped, which it has not.
+        'backdrop:bg-black/35 backdrop:backdrop-blur-[3px]',
         'open:kh-enter',
         widths[size],
       )}
     >
-      <div className="border-b border-line px-5 py-3">
-        <h2 id="kh-modal-title" className="text-md font-semibold">
+      <div className="border-b border-line px-5 py-4">
+        <h2 id="kh-modal-title" className="text-lg font-semibold tracking-tight">
           {title}
         </h2>
         {description && <p className="mt-1 text-base text-ink-2">{description}</p>}
       </div>
       {children && <div className="px-5 py-4">{children}</div>}
-      <div className="flex justify-end gap-2 border-t border-line bg-surface-2 px-5 py-3">
+      <div className="flex justify-end gap-2 border-t border-line bg-surface-2 px-5 py-3.5">
         {footer ?? (
           <Button variant="secondary" onClick={handleClose}>
             {t.common.close}
@@ -159,7 +162,7 @@ export function ConfirmDialog({
     >
       {detail && <div className="text-base text-ink-2">{detail}</div>}
       {error && (
-        <p role="alert" className="mt-3 rounded bg-danger-bg px-3 py-2 text-sm text-danger ring-1 ring-inset ring-danger-ring">
+        <p role="alert" className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger ring-1 ring-inset ring-danger-ring">
           {error}
         </p>
       )}

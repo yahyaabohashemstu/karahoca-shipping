@@ -6,8 +6,17 @@ import clsx from 'clsx';
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 type Size = 'sm' | 'md' | 'lg';
 
+/*
+ * rounded-lg, not rounded.
+ *
+ * Controls and sheets are two different radius families now — sheets are 16px
+ * and 20px, controls sit between 6px and 10px. A 5px button inside a 16px panel
+ * reads as two components from two different products; 10px reads as the small
+ * member of one family. It stops well short of a lozenge, which a 28px-tall
+ * button becomes at anything past 12px and which is unreadable in a column.
+ */
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded font-medium whitespace-nowrap ' +
+  'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap ' +
   'transition-colors select-none ' +
   // Every button in the old build was click-only feedback: no active state, no
   // disabled state, no focus ring. A dispatcher double-clicked "Teslim edildi"
@@ -25,9 +34,18 @@ const BASE =
  * one class gives 5.9:1 on light and 6.7:1 on dark with no per-theme override.
  */
 const VARIANTS: Record<Variant, string> = {
+  /*
+   * The primary action is lit, not raised.
+   *
+   * shadow-glow is the accent colour itself, spread and faded, rather than a
+   * neutral drop shadow. On a screen where several neutral buttons sit in a
+   * row, that is what separates the one committing action from the three that
+   * merely navigate — and it survives the dark theme, where a grey drop shadow
+   * under a blue button is invisible.
+   */
   primary:
     'bg-brand text-ink-inverse hover:bg-brand-hover active:bg-brand-hover ' +
-    'shadow-xs disabled:hover:bg-brand',
+    'shadow-glow disabled:hover:bg-brand disabled:shadow-none',
   secondary:
     'bg-surface text-ink ring-1 ring-inset ring-line-strong ' +
     'hover:bg-surface-2 active:bg-surface-3 disabled:hover:bg-surface',
@@ -39,9 +57,18 @@ const VARIANTS: Record<Variant, string> = {
     'bg-success text-ink-inverse hover:brightness-110 active:brightness-95 shadow-xs',
 };
 
+/*
+ * md grew from 28px to 31.5px, to match the form controls it sits beside.
+ *
+ * The numbers look odd because the root font-size is 14px, not 16 — every
+ * Tailwind height in this app is seven eighths of its nominal value, and h-9 is
+ * 31.5px rather than 36. sm stays at 28px: it is for controls inside table rows
+ * and panel headers, where the row height is the constraint and there is
+ * nothing beside it to line up with.
+ */
 const SIZES: Record<Size, string> = {
   sm: 'h-7 px-2.5 text-sm',
-  md: 'h-8 px-3 text-base',
+  md: 'h-9 px-3.5 text-base',
   lg: 'h-10 px-4 text-base',
 };
 
@@ -126,7 +153,7 @@ export function IconButton({
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   'aria-label'
 >) {
-  const box = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-10 w-10' : 'h-8 w-8';
+  const box = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-10 w-10' : 'h-9 w-9';
   return (
     <button
       type={type ?? 'button'}

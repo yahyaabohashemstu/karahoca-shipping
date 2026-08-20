@@ -102,7 +102,7 @@ export function ConsignmentEditor({
   const filled = value.lines.filter((l) => l.name.trim()).length;
 
   return (
-    <div className="rounded-md bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
+    <div className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
       {/* ---------------------------------------------------- consignee -- */}
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium text-ink-2">{t.consignment.customer}</span>

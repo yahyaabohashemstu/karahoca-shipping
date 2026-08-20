@@ -1,7 +1,24 @@
-import { Controller, Get, Header, Inject, NotFoundException, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  Headers,
+  Inject,
+  NotFoundException,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { Public } from '../auth/decorators';
 import { normalizeClaimCode } from '../common/crypto.util';
+import { pageHead, pageStyle } from '../common/page-chrome';
+import {
+  driverStrings,
+  isRtl,
+  languageSwitcher,
+  resolveDriverLocale,
+  type DriverStrings,
+} from './driver.i18n';
 
 /**
  * The QR hand-off: both halves of it.
@@ -124,60 +141,42 @@ export class HandoffController {
   // day the install steps change — a driver on a cached copy is a driver
   // following the wrong instructions.
   @Header('Cache-Control', 'public, max-age=600')
-  landingApp(): string {
+  landingApp(
+    @Query('lang') lang: string | undefined,
+    @Headers('accept-language') acceptLanguage: string | undefined,
+  ): string {
     const apkUrl = this.apkUrl();
+    const locale = resolveDriverLocale(lang, acceptLanguage);
+    const t = driverStrings(locale);
+
+    /*
+     * The steps are numbered by the browser, from a real <ol>, rather than
+     * carrying "1." in the string. A driver reading this in Arabic gets the
+     * numerals their locale uses and the marker on the correct side of the
+     * line, and neither needed a second translation.
+     */
+    const steps = t.steps.map((s) => `      <li>${s}</li>`).join('\n');
 
     return `<!doctype html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>KaraHoca Sürücü Uygulaması</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100dvh; display: grid; place-items: center;
-    font: 16px/1.55 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
-    background: #0b1220; color: #e8eef9; padding: 24px;
-  }
-  .card { width: 100%; max-width: 420px; }
-  .logo { font-weight: 800; letter-spacing: .14em; font-size: 13px; color: #7dd3fc; text-align: center; }
-  h1 { font-size: 21px; font-weight: 600; margin: 22px 0 6px; text-align: center; }
-  p.lead { color: #94a3b8; margin: 0 0 26px; font-size: 15px; text-align: center; }
-  a.btn {
-    display: block; padding: 17px; border-radius: 12px; font-weight: 700;
-    text-decoration: none; text-align: center; background: #2563eb; color: #fff;
-  }
-  ol { margin: 26px 0 0; padding-left: 20px; color: #cbd5e1; font-size: 14.5px; }
-  li { margin-bottom: 10px; }
-  .note {
-    margin-top: 24px; padding: 13px 15px; border-radius: 10px;
-    background: #111c33; border: 1px solid #1e3a5f; color: #94a3b8; font-size: 13.5px;
-  }
-</style>
-</head>
+<html lang="${locale}" dir="${isRtl(locale) ? 'rtl' : 'ltr'}">
+${pageHead(t.installTitle, pageStyle(INSTALL_CSS))}
 <body>
-  <div class="card">
+  <main class="card rise">
+    <div class="mark" aria-hidden="true">KH</div>
     <div class="logo">KARAHOCA</div>
-    <h1>Sürücü Takip Uygulaması</h1>
-    <p class="lead">Android telefonlar için.</p>
+    <h1>${t.installHeading}</h1>
+    <p class="lead">${t.installLead}</p>
 
-    <a class="btn" href="${apkUrl}">UYGULAMAYI İNDİR</a>
+    <a class="btn btn--primary" href="${apkUrl}">${t.download}</a>
 
-    <ol>
-      <li>İndirme bitince dosyaya dokunun.</li>
-      <li>Telefon <b>&ldquo;bilinmeyen kaynak&rdquo;</b> uyarısı verirse izin verin — uygulama Play Store'da değildir.</li>
-      <li>Kurulumdan sonra uygulamayı açın.</li>
-      <li>Sevkiyat sorumlunuzun gönderdiği <b>karekodu okutun</b>; kod otomatik yazılır. Karekod yoksa 8 haneli kodu elle girin.</li>
-      <li>Listedeki tüm izinleri verin, sonra <b>TAKİBİ BAŞLAT</b>.</li>
+    <ol class="steps">
+${steps}
     </ol>
 
-    <div class="note">
-      Uygulama zaten yüklüyse tekrar indirmeniz gerekmez; doğrudan karekodu okutun.
-      Sorun yaşarsanız sevkiyat sorumlunuzu arayın.
-    </div>
-  </div>
+    <p class="note sheet">${t.installNote}</p>
+
+    <footer class="foot">${languageSwitcher(locale, t)}</footer>
+  </main>
 </body>
 </html>`;
   }
@@ -199,7 +198,11 @@ export class HandoffController {
   @Get('t/:code')
   @Header('Content-Type', 'text/html; charset=utf-8')
   @Header('Cache-Control', 'no-store')
-  landing(@Param('code') rawCode: string): string {
+  landing(
+    @Param('code') rawCode: string,
+    @Query('lang') lang: string | undefined,
+    @Headers('accept-language') acceptLanguage: string | undefined,
+  ): string {
     const code = normalizeClaimCode(rawCode).slice(0, 16);
     const pretty = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
     const scheme = this.config.session.deepLinkScheme;
@@ -209,49 +212,38 @@ export class HandoffController {
       `intent://track?c=${code}#Intent;scheme=${scheme};` +
       `package=${pkg};S.browser_fallback_url=${encodeURIComponent(apkUrl)};end`;
 
+    const locale = resolveDriverLocale(lang, acceptLanguage);
+    const t = driverStrings(locale);
+
     return `<!doctype html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>KaraHoca Sevkiyat Takibi</title>
-<style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100dvh; display: grid; place-items: center;
-    font: 16px/1.5 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
-    background: #0b1220; color: #e8eef9; padding: 24px;
-  }
-  .card { width: 100%; max-width: 420px; text-align: center; }
-  .logo { font-weight: 800; letter-spacing: .14em; font-size: 13px; color: #7dd3fc; margin-bottom: 28px; }
-  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
-  p  { color: #94a3b8; margin: 0 0 28px; font-size: 15px; }
-  .code {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 34px; font-weight: 700; letter-spacing: .16em;
-    background: #111c33; border: 1px solid #1e3a5f; border-radius: 14px;
-    padding: 22px 12px; margin-bottom: 28px; user-select: all;
-  }
-  a.btn {
-    display: block; padding: 16px; border-radius: 12px; font-weight: 600;
-    text-decoration: none; margin-bottom: 12px;
-  }
-  .primary   { background: #2563eb; color: #fff; }
-  .secondary { background: transparent; color: #94a3b8; border: 1px solid #1e3a5f; }
-  .hint { font-size: 13px; color: #64748b; margin-top: 24px; }
-</style>
-</head>
+<html lang="${locale}" dir="${isRtl(locale) ? 'rtl' : 'ltr'}">
+${pageHead(t.handoffTitle, pageStyle(HANDOFF_CSS))}
 <body>
-  <div class="card">
+  <main class="card rise">
+    <div class="mark" aria-hidden="true">KH</div>
     <div class="logo">KARAHOCA</div>
-    <h1>Sevkiyat Takip Oturumu</h1>
-    <p>Uygulamayı açın ve bu kodu girin.</p>
-    <div class="code">${pretty}</div>
-    <a class="btn primary" href="${intentUrl}" id="open">Uygulamada Aç</a>
-    <a class="btn secondary" href="${apkUrl}">Uygulamayı İndir (APK)</a>
-    <div class="hint">Sorun yaşarsanız sevkiyat sorumlunuzu arayın.</div>
-  </div>
+    <h1>${t.handoffHeading}</h1>
+    <p class="lead">${t.handoffLead}</p>
+
+    <p class="code__label">${t.codeLabel}</p>
+    <!--
+      dir="ltr" on the code, always.
+
+      It is eight Latin characters with a hyphen in the middle, and in a
+      right-to-left document a bidirectional algorithm will happily reorder the
+      two halves around that hyphen. A driver reading 4821-9930 as 9930-4821
+      types a code that will never claim anything, and nothing on either screen
+      would explain why.
+    -->
+    <p class="code num sheet" dir="ltr">${pretty}</p>
+
+    <a class="btn btn--primary" href="${intentUrl}" id="open">${t.openInApp}</a>
+    <a class="btn btn--quiet" href="${apkUrl}">${t.downloadApk}</a>
+
+    <p class="hint">${t.hint}</p>
+
+    <footer class="foot">${languageSwitcher(locale, t)}</footer>
+  </main>
 <script>
   // One automatic attempt, then leave it to the button — auto-redirect loops on
   // devices where the app is not installed are worse than one extra tap.
@@ -265,3 +257,123 @@ export class HandoffController {
 </html>`;
   }
 }
+
+/* =============================================================================
+   Page-specific styling
+   =============================================================================
+   Everything shared — the palette, the sheet, the button, the focus ring, the
+   language switcher — lives in ../common/page-chrome.ts and is emitted by
+   pageStyle(). What is left here is only what these two pages do not have in
+   common with the consignee's tracking page.
+   ========================================================================== */
+
+/** Shared by both driver pages: the centred column, the mark, the headings. */
+const DRIVER_CSS = `
+  body { display: grid; place-items: center; padding: 28px 20px 36px; }
+  .card { width: 100%; max-width: 26rem; }
+
+  /*
+   * The same monogram the dashboard's dock carries.
+   *
+   * A driver never sees the dashboard, so this is not continuity for them — it
+   * is continuity for the dispatcher standing beside them at the loading dock
+   * with the same mark on their own screen, and for the printed sheet the code
+   * was scanned off.
+   */
+  .mark {
+    width: 46px; height: 46px; margin: 0 auto 14px;
+    display: grid; place-items: center;
+    border-radius: var(--r-control);
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%);
+    color: #06101f; font-weight: 800; font-size: 15px; letter-spacing: -.02em;
+    box-shadow: 0 2px 14px -2px rgba(82, 152, 255, .55);
+  }
+  .logo {
+    font-weight: 800; letter-spacing: .18em; font-size: 11px;
+    color: var(--brand); text-align: center;
+  }
+  h1 {
+    font-size: clamp(20px, 6vw, 24px); font-weight: 650; line-height: 1.2;
+    letter-spacing: -.015em; margin: 12px 0 6px; text-align: center;
+    text-wrap: balance;
+  }
+  .lead { color: var(--ink-2); font-size: 15px; text-align: center; margin: 0 0 26px; }
+
+  .foot { margin-top: 30px; display: flex; justify-content: center; font-size: 13px; }
+`;
+
+const INSTALL_CSS = `
+${DRIVER_CSS}
+  /*
+   * Counters drawn by hand, because the default marker cannot be styled and a
+   * grey "1." beside a five-line instruction is invisible at arm's length in a
+   * lorry cab. These are the one place a filled brand-tinted shape appears on
+   * these pages, and that is deliberate: the numbers are the only thing on the
+   * screen that has to be followed in order.
+   */
+  .steps { counter-reset: step; list-style: none; margin: 26px 0 0; padding: 0; }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding-inline-start: 38px;
+    margin-bottom: 16px;
+    color: var(--ink-2);
+    font-size: 14.5px;
+    line-height: 1.55;
+    text-wrap: pretty;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    inset-inline-start: 0;
+    top: -1px;
+    width: 26px; height: 26px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--brand-soft);
+    color: var(--brand-hover);
+    font-size: 13px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .note {
+    margin: 26px 0 0;
+    padding: 14px 16px;
+    border-radius: var(--r-panel);
+    color: var(--ink-2);
+    font-size: 13.5px;
+    text-wrap: pretty;
+  }
+`;
+
+const HANDOFF_CSS = `
+${DRIVER_CSS}
+  .card { text-align: center; }
+
+  .code__label {
+    font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 8px; font-weight: 600;
+  }
+
+  /*
+   * The code is the page.
+   *
+   * It is read aloud down a telephone line and typed into a phone by somebody
+   * who has one hand free. Monospace so 0 and O cannot be confused, letter-spaced
+   * so the eight characters do not run together, and a select-all rule so one
+   * tap takes the whole thing rather than one group of four.
+   */
+  .code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: clamp(30px, 10vw, 38px); font-weight: 700; letter-spacing: .16em;
+    border-radius: var(--r-panel);
+    padding: 22px 12px; margin: 0 0 26px;
+    user-select: all; -webkit-user-select: all;
+  }
+
+  .btn + .btn { margin-top: 10px; }
+  .hint { font-size: 13px; color: var(--ink-3); margin: 22px 0 0; text-wrap: pretty; }
+`;
+
+/* `DriverStrings` is re-exported nowhere; this keeps the import honest. */
+export type { DriverStrings };

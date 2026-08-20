@@ -55,7 +55,7 @@ const FleetMap = dynamic(() => import('@/components/FleetMap'), {
 /** Root font-size. Layout is authored in rem; a camera deals only in pixels. */
 const REM = 14;
 
-const DOCK_ZONE = 4.9; // dock width plus the margin either side of it
+const DOCK_ZONE = 5.3; // dock width plus the margin either side of it
 const RAIL_WIDTH = 20.5;
 const PANEL_WIDTH = 20.5;
 const GAP = 0.75;
@@ -541,7 +541,7 @@ function FleetRail({
               type="button"
               onClick={() => onSearch('')}
               aria-label={t.common.clearSearch}
-              className="shrink-0 rounded p-0.5 text-ink-3 transition-colors hover:text-ink"
+              className="shrink-0 rounded-md p-0.5 text-ink-3 transition-colors hover:text-ink"
             >
               <IconClose className="h-3.5 w-3.5" />
             </button>

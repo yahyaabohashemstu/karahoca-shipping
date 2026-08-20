@@ -315,7 +315,7 @@ function Handoff({ session }: { session: SessionDetail }) {
           <img
             src={handoff.qrDataUrl}
             alt={`${session.reference} oturum kodu QR`}
-            className="mx-auto h-48 w-48 rounded bg-white p-1.5"
+            className="mx-auto h-48 w-48 rounded-xl bg-white p-1.5"
           />
 
           <p className="mt-4 text-sm text-ink-2 print:text-black">

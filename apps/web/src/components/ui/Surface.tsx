@@ -41,7 +41,7 @@ export function CardHeader({
   return (
     <div className={clsx('flex items-start justify-between gap-4', className)}>
       <div className="min-w-0">
-        <h2 className="truncate text-md font-semibold text-ink">{title}</h2>
+        <h2 className="truncate text-md font-semibold tracking-tight text-ink">{title}</h2>
         {subtitle && <p className="mt-0.5 truncate text-sm text-ink-2">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -76,7 +76,7 @@ export function Row({
             convincing panel of "—" and "0 km" before the fetch resolved, which
             is indistinguishable from a driver who never started the app — and
             dispatchers phoned carriers about problems that did not exist. */}
-        {loading ? <span className="kh-skeleton inline-block h-3 w-20 rounded align-middle" /> : value}
+        {loading ? <span className="kh-skeleton inline-block h-3 w-20 rounded-md align-middle" /> : value}
       </dd>
     </div>
   );
@@ -116,7 +116,7 @@ export function Stat({
   const body = (
     <>
       <span className={clsx('kh-num text-md font-semibold leading-none', tones[tone])}>
-        {loading ? <span className="kh-skeleton inline-block h-4 w-6 rounded align-middle" /> : value}
+        {loading ? <span className="kh-skeleton inline-block h-4 w-6 rounded-md align-middle" /> : value}
       </span>
       <span className="mt-1 whitespace-nowrap text-2xs uppercase tracking-wider text-ink-3">
         {label}
@@ -142,6 +142,7 @@ export function Stat({
   );
 }
 
+/** A hairline. Full-bleed by default; callers inset it when a panel already is. */
 export function Divider({ className }: { className?: string }) {
   return <div className={clsx('h-px bg-line', className)} role="separator" />;
 }

@@ -19,7 +19,7 @@ import { useT } from '@/lib/i18n';
    ========================================================================== */
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx('kh-skeleton rounded', className)} aria-hidden />;
+  return <div className={clsx('kh-skeleton rounded-md', className)} aria-hidden />;
 }
 
 /** Placeholder rows that keep the real row height, so nothing jumps on arrival. */
@@ -28,11 +28,11 @@ export function SkeletonList({ rows = 6, className }: { rows?: number; className
     <div className={clsx('divide-y divide-line', className)} aria-busy role="status">
       <span className="sr-only">{useT().common.loading}</span>
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-3">
+        <div key={i} className="flex items-center gap-3 px-3.5 py-3">
           <Skeleton className="h-2 w-2 rounded-full" />
           <div className="flex-1 space-y-1.5">
-            <Skeleton className="h-3 w-28" />
-            <Skeleton className="h-2.5 w-44" />
+            <Skeleton className="h-3 w-28 rounded-md" />
+            <Skeleton className="h-2.5 w-44 rounded-md" />
           </div>
           <Skeleton className="h-4 w-16 rounded-full" />
         </div>
@@ -62,9 +62,21 @@ export function EmptyState({
 }) {
   return (
     <div className={clsx('flex flex-col items-center px-6 py-12 text-center', className)}>
-      {icon && <div className="mb-3 text-ink-3">{icon}</div>}
+      {/*
+        The icon gets a tinted well rather than floating loose.
+        A 20px grey outline alone in the middle of an empty panel reads as
+        something that failed to load, which is the one thing an empty state
+        must not say — see the note at the top of this file.
+      */}
+      {icon && (
+        <div className="mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-surface-3/70 text-ink-3">
+          {icon}
+        </div>
+      )}
       <p className="text-md font-medium text-ink">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-base text-ink-2">{description}</p>}
+      {description && (
+        <p className="mt-1 max-w-sm text-base leading-relaxed text-ink-2">{description}</p>
+      )}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -97,8 +109,8 @@ export function ErrorState({
     <div
       role="alert"
       className={clsx(
-        'flex items-start gap-3 rounded-md bg-danger-bg ring-1 ring-inset ring-danger-ring',
-        compact ? 'px-3 py-2' : 'px-4 py-3',
+        'flex items-start gap-3 rounded-xl bg-danger-bg ring-1 ring-inset ring-danger-ring',
+        compact ? 'px-3 py-2.5' : 'px-4 py-3.5',
         className,
       )}
     >
@@ -180,17 +192,29 @@ export function ConnectionPill({ connected, className }: { connected: boolean; c
     <span
       aria-live="polite"
       className={clsx(
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs leading-none ring-1 ring-inset',
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs leading-none ring-1 ring-inset',
         connected
           ? 'bg-live-bg text-live ring-live-ring/40'
           : 'bg-danger-bg text-danger ring-danger-ring font-medium',
         className,
       )}
     >
-      <span
-        className={clsx('h-1.5 w-1.5 rounded-full bg-current', connected && 'kh-pulse')}
-        aria-hidden
-      />
+      {/*
+        A pip with a ring expanding out of it once every two seconds, rather
+        than the whole dot fading in and out.
+
+        A dispatcher has to be able to tell peripherally that data is still
+        flowing without anything moving in the part of the screen they are
+        reading, and a dot that pulses to 30% opacity is easy to mistake for one
+        that has gone out. An expanding ring reads as a heartbeat and the dot
+        underneath never dims.
+      */}
+      <span className="relative flex h-1.5 w-1.5 shrink-0" aria-hidden>
+        {connected && (
+          <span className="kh-ping absolute inset-0 rounded-full bg-current" />
+        )}
+        <span className="relative h-1.5 w-1.5 rounded-full bg-current" />
+      </span>
       {connected ? t.common.live : t.common.offline}
     </span>
   );

@@ -357,7 +357,7 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
           autoComplete="off"
         />
         {(results.length > 0 || searching) && (
-          <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md bg-surface shadow-lg ring-1 ring-line">
+          <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl bg-surface shadow-lg ring-1 ring-line">
             {searching && results.length === 0 && (
               <li className="px-3 py-2 text-sm text-ink-2">{t.picker.searching}</li>
             )}
@@ -383,7 +383,7 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
 
       <div
         ref={container}
-        className="h-64 w-full overflow-hidden rounded-md ring-1 ring-line"
+        className="h-64 w-full overflow-hidden rounded-xl ring-1 ring-line"
       />
 
       {value ? (
@@ -413,14 +413,14 @@ export function LocationPicker({ value, onChange, home = PLANT, emptyHint }: Pro
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="h-9 rounded-md px-3 text-sm text-ink-2 ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-ink"
+            className="h-9 rounded-lg px-3 text-sm text-ink-2 ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-ink"
           >
             {t.picker.remove}
           </button>
         </div>
       ) : (
         emptyHint && (
-          <p className="rounded bg-warn-bg px-3 py-2 text-sm text-warn ring-1 ring-inset ring-delayed-ring/35">
+          <p className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn ring-1 ring-inset ring-delayed-ring/35">
             {emptyHint}
           </p>
         )

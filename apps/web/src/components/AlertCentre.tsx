@@ -109,7 +109,7 @@ export function AlertCentre({ placement = 'below' }: { placement?: PopoverPlacem
       <IconButton
         label={label}
         size="sm"
-        className={clsx('relative', placement === 'inline-end' && '!h-9 !w-9 !rounded-xl hover:!bg-surface-3/70')}
+        className={clsx('relative', placement === 'inline-end' && '!h-10 !w-10 !rounded-xl hover:!bg-surface-3/70')}
         aria-expanded={panelOpen}
         aria-haspopup="dialog"
         onClick={() => setPanelOpen((v) => !v)}
@@ -429,7 +429,7 @@ function AlertRow({
           <a
             href={`tel:${alert.driverPhone}`}
             title={t.alerts.callDriverTitle(alert.driverName ?? alert.driverPhone)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink"
           >
             <PhoneIcon />
             <span className="sr-only">{t.alerts.callDriver}</span>

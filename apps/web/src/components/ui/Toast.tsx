@@ -87,7 +87,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     <div
       role={toast.tone === 'error' ? 'alert' : 'status'}
       className={clsx(
-        'kh-enter pointer-events-auto flex items-start gap-2.5 rounded-md px-3 py-2.5 shadow-lg ring-1 ring-inset',
+        'kh-panel-in pointer-events-auto flex items-start gap-2.5 rounded-xl px-3.5 py-3 shadow-panel ring-1 ring-inset',
         tones[toast.tone],
       )}
     >
@@ -118,7 +118,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       <button
         onClick={onDismiss}
         aria-label={t.common.close}
-        className="-me-1 shrink-0 rounded p-1 opacity-60 transition-opacity hover:opacity-100"
+        className="-me-1 shrink-0 rounded-lg p-1 opacity-60 transition-opacity hover:opacity-100"
       >
         <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
           <path d="m3 3 6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

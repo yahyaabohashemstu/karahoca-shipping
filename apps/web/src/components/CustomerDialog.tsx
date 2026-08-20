@@ -32,7 +32,7 @@ const LocationPicker = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-64 w-full animate-pulse rounded-md bg-surface-2 ring-1 ring-line" />
+      <div className="h-64 w-full animate-pulse rounded-xl bg-surface-2 ring-1 ring-line" />
     ),
   },
 );
@@ -251,7 +251,7 @@ export function CustomerDialog({
             would guess that a dropdown labelled "Ülke" decides whether a
             consignee in Erbil can read the page they are sent. */}
         {(countryCode === 'IQ' || countryCode === 'SY') && (
-          <p className="rounded bg-surface-2 px-3 py-2 text-2xs text-ink-2 ring-1 ring-line">
+          <p className="rounded-lg bg-surface-2 px-3 py-2 text-2xs text-ink-2 ring-1 ring-line">
             {interpolate(t.customer.arabicNote, [<strong key="lang">{t.customer.arabicNoteWord}</strong>])}
           </p>
         )}

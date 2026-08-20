@@ -93,6 +93,8 @@ export const tr = {
     sessionDetail: 'Oturum detayı',
   },
   common: {
+    hidePanel: 'Paneli gizle',
+    showPanel: 'Paneli göster',
     loading: 'Yükleniyor…',
     loadFailed: 'Veri alınamadı',
     retry: 'Yeniden dene',

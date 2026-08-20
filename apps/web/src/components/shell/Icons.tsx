@@ -31,7 +31,17 @@ const BOX = {
   'aria-hidden': true,
 };
 
-const SIZE = 'h-[1.15rem] w-[1.15rem] shrink-0';
+/*
+ * 19px at a 14px root.
+ *
+ * Up from 16px, which was drawn to the old 32px tile and looked starved once
+ * the dock was the only navigation in the product — a 16px outline glyph in a
+ * 36px well reads as an icon someone forgot to finish. 19px keeps a 1.5px
+ * stroke landing near enough to a whole pixel to stay crisp, and leaves 8px of
+ * clearance inside the 35px tile, which is what a tile needs to still read as a
+ * button rather than as a frame around a picture.
+ */
+const SIZE = 'h-[1.35rem] w-[1.35rem] shrink-0';
 
 /** Live map — a position pin, which is what the screen is actually about. */
 export function IconMap({ className }: IconProps) {

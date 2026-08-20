@@ -32,7 +32,7 @@ import { IconRestore } from './shell/Icons';
    ========================================================================== */
 
 /** Dock width plus its margin on both sides. Quoted by the page inset below. */
-const CONTENT_INSET = '4.9rem';
+const CONTENT_INSET = '5.3rem';
 
 interface ShellState {
   /** Every piece of chrome is hidden and the map is unobstructed. */

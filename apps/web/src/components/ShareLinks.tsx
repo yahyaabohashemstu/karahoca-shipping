@@ -78,7 +78,7 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
   };
 
   return (
-    <section className="m-3 rounded-md border border-line bg-surface-2 p-3.5">
+    <section className="m-3 rounded-xl border border-line bg-surface-2 p-3.5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-ink-3">
           {t.share.heading}
@@ -97,7 +97,7 @@ export function ShareLinks({ sessionId, orderNumber, customerName }: {
       )}
 
       {live.map((l) => (
-        <div key={l.id} className="mt-3 rounded border border-line bg-surface p-2.5">
+        <div key={l.id} className="mt-3 rounded-lg border border-line bg-surface p-2.5">
           {l.url ? (
             <p className="select-all break-all font-mono text-2xs text-ink-2">{l.url}</p>
           ) : (
