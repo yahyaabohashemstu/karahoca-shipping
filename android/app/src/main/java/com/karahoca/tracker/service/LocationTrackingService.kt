@@ -2,6 +2,7 @@ package com.karahoca.tracker.service
 
 import android.Manifest
 import android.app.ForegroundServiceStartNotAllowedException
+import android.app.Notification
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -14,6 +15,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
@@ -99,7 +101,34 @@ class LocationTrackingService : LifecycleService() {
     /** Survives onDestroy cancelling lifecycleScope. See [ApplicationScope]. */
     @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
-    private lateinit var fused: FusedLocationProviderClient
+    /*
+     * Lazy, and that is load-bearing rather than tidiness.
+     *
+     * Building this client is what drags the Play Services location classes
+     * into the process, and on a cold boot ART verifies them on the calling
+     * thread. Measured on a real reboot with a live session:
+     * internal.location.zzbb.getLastLocation 194 ms, zzbi.flushLocations 103 ms,
+     * common.api.Status.<init> 100 ms — and those are only the methods slow
+     * enough for ART to bother logging.
+     * Roughly 700 ms of the 1.4 s the service took to reach onStartCommand.
+     *
+     * It used to be built in onCreate, which spent every millisecond of that
+     * inside the ten seconds Android allows between startForegroundService()
+     * and startForeground(), on the one path that runs while a hundred other
+     * apps are also waking up. Overrun that and the penalty is not a dropped
+     * session, it is ForegroundServiceDidNotStartInTimeException killing the
+     * process — the crash a driver saw after every reboot.
+     *
+     * Deferring it to first use moves the cost behind the notification, where
+     * being slow is merely slow. `by lazy` rather than a nullable because the
+     * safe call in `locationCallback?.let(fused::removeLocationUpdates)`
+     * short-circuits before `fused` is read, so an instance that never
+     * registered never builds one.
+     */
+    private val fused: FusedLocationProviderClient by lazy {
+        LocationServices.getFusedLocationProviderClient(this)
+    }
+
     private var wakeLock: PowerManager.WakeLock? = null
     private var locationCallback: LocationCallback? = null
 
@@ -170,6 +199,27 @@ class LocationTrackingService : LifecycleService() {
 
     /** In-process mirror of TRACKING_ACTIVE so onDestroy needs no blocking read. */
     @Volatile private var trackingActive = false
+
+    /**
+     * Set the moment an ACTION_START is dispatched, not when tracking is up.
+     *
+     * [trackingActive] cannot do this job: it is written inside beginTracking,
+     * which is a coroutine, and the duplicate start it has to suppress arrives
+     * 40 ms later — long before that write happens.
+     */
+    private var trackingRequested = false
+
+    /** When onCreate ran, so the margin on the startForeground deadline is loggable. */
+    private var createdAtMs = 0L
+
+    /**
+     * The notification currently holding the service in the foreground.
+     *
+     * Kept so a repeat start command can satisfy its own deadline by re-posting
+     * what is already on screen, rather than either rebuilding one or — the old
+     * behaviour — returning early and posting nothing at all.
+     */
+    private var foregroundNotification: Notification? = null
 
     /** Content of the last posted notification, to avoid re-posting an identical one. */
     private var lastPostedNotification: Triple<String, String, Int>? = null
@@ -286,29 +336,33 @@ class LocationTrackingService : LifecycleService() {
      * covers every string in this service and every string TrackingNotification
      * resolves through the service context, without touching a call site.
      *
-     * Derived from applicationContext rather than from this service, because
-     * this service's own base context is the frozen one we are working around.
+     * Taken from applicationContext rather than derived here. TrackerApplication
+     * overrides getResources() the same way and caches the result by language
+     * tag for the whole process, so borrowing it costs a field read; building
+     * our own meant a second createConfigurationContext, a second AssetManager
+     * and a second parse of resources.arsc, all of it on the boot path inside
+     * the startForeground deadline and all of it duplicating an object the
+     * process already held.
      *
-     * Cached by tag, so the common case — nothing changed — costs a string
-     * comparison rather than a Configuration and a Resources. The fallback
-     * matters: getResources() can be reached before applicationContext exists,
-     * and a service that cannot resolve a string cannot post the foreground
-     * notification, which is a crash inside five seconds of starting.
+     * The fallback matters: getResources() can be reached before
+     * applicationContext exists, and a service that cannot resolve a string
+     * cannot post the foreground notification, which is a crash within seconds
+     * of starting.
      */
-    private var localeTag: String? = null
-    private var localeResources: Resources? = null
+    override fun getResources(): Resources =
+        runCatching { applicationContext.resources }.getOrElse { super.getResources() }
 
-    override fun getResources(): Resources = runCatching {
-        val tag = AppLocale.current(applicationContext)
-        localeResources?.takeIf { tag == localeTag } ?: run {
-            localeTag = tag
-            AppLocale.wrap(applicationContext).resources.also { localeResources = it }
-        }
-    }.getOrElse { super.getResources() }
-
+    /**
+     * Deliberately almost empty.
+     *
+     * onCreate runs inside the startForeground deadline, after Hilt has already
+     * spent part of it building the graph, so every line added here is taken
+     * straight out of the margin on the one path that has least of it. Anything
+     * that can wait until beginTracking waits until beginTracking.
+     */
     override fun onCreate() {
+        createdAtMs = SystemClock.uptimeMillis()
         super.onCreate()
-        fused = LocationServices.getFusedLocationProviderClient(this)
         Log.i(TAG, "Service created")
     }
 
@@ -362,7 +416,44 @@ class LocationTrackingService : LifecycleService() {
 
             else -> {
                 promoteToForeground()
-                lifecycleScope.launch { beginTracking(restarted = intent == null) }
+                when {
+                    /*
+                     * startForeground was refused. promoteToForeground has
+                     * already recorded why and called stopSelf; beginning to
+                     * track now would set TRACKING_ACTIVE, take a wake lock and
+                     * register for location updates on a service that is
+                     * already on its way down.
+                     */
+                    !isForegroundStarted ->
+                        Log.w(TAG, "Never reached the foreground — not starting tracking")
+
+                    /*
+                     * A second ACTION_START on a live instance is a duplicate,
+                     * not a restart.
+                     *
+                     * Two arrive on every boot, about 40 ms apart and from
+                     * different threads: TrackerApplication's self-heal fires
+                     * because the process has started with TRACKING_ACTIVE set,
+                     * and BootReceiver fires because the phone rebooted. Both
+                     * are right to fire and neither can see the other. Letting
+                     * both through ran beginTracking twice — a duplicate
+                     * STARTED event, a pointless de-register and re-register of
+                     * the location request, a second sync — on the main thread
+                     * during the boot storm, which is the worst moment in the
+                     * device's life to be doing anything twice.
+                     *
+                     * The watchdog is unaffected: it only calls start() when
+                     * the service is provably dead, and repairs a
+                     * wedged-but-alive one through ACTION_RELOAD_POLICY.
+                     */
+                    trackingRequested ->
+                        Log.i(TAG, "Already tracking — ignoring a duplicate start")
+
+                    else -> {
+                        trackingRequested = true
+                        lifecycleScope.launch { beginTracking(restarted = intent == null) }
+                    }
+                }
                 /*
                  * START_STICKY: after a low-memory kill the system recreates the
                  * service with a null intent. Combined with stopWithTask="false"
@@ -376,20 +467,34 @@ class LocationTrackingService : LifecycleService() {
     private var isForegroundStarted = false
 
     /**
-     * Enter the foreground within the 5-second window Android allows.
+     * Enter the foreground within the deadline Android allows.
      *
-     * This runs BEFORE any suspend work: if we awaited a DataStore read first
-     * and the disk was slow, the system would kill us with a
-     * ForegroundServiceDidNotStartInTimeException.
+     * startForegroundService() is a promise that this process will call
+     * startForeground() within ten seconds, and missing it costs the process,
+     * not the session: the system throws
+     * ForegroundServiceDidNotStartInTimeException on the main looper and the
+     * app dies. The deadline is tightest exactly where it matters most —
+     * resuming a shipment after a reboot, when nothing is warm and a hundred
+     * other apps are starting at the same time.
+     *
+     * So this runs before any suspend work, and everything it touches is either
+     * already built or deliberately trivial. What used to be here and is not
+     * any more: the Play Services client (now built on first use), a second
+     * locale-wrapped Resources (now borrowed from the application), and the
+     * full notification with its three PendingIntents — each of which is a
+     * round trip into ActivityManagerService — and its two translated action
+     * labels. [postRichNotification] puts all of that back a few milliseconds
+     * later, once the promise has already been kept.
+     *
+     * It also re-posts on every start command instead of returning early. Each
+     * startForegroundService() call carries its own deadline, and the system
+     * only forgives a redundant one if the service has *already* reached the
+     * foreground by the time that call is delivered — which, with two starts
+     * 40 ms apart and a service that can take a second to create, is not
+     * something to rely on.
      */
     private fun promoteToForeground() {
-        if (isForegroundStarted) return
-        val notification = notifications.build(
-            title = getString(com.karahoca.tracker.R.string.notification_starting),
-            body = getString(com.karahoca.tracker.R.string.notification_acquiring_gps),
-            buffered = 0,
-            ongoing = true,
-        )
+        val notification = foregroundNotification ?: bootstrapNotification()
         try {
             ServiceCompat.startForeground(
                 this,
@@ -403,7 +508,16 @@ class LocationTrackingService : LifecycleService() {
                     0
                 },
             )
+            foregroundNotification = notification
+            val firstTime = !isForegroundStarted
             isForegroundStarted = true
+            if (firstTime) {
+                // The margin on the deadline, in the log, on every start. A
+                // number that creeps towards ten seconds on real handsets is
+                // the only warning this class will ever get.
+                Log.i(TAG, "Foreground after ${SystemClock.uptimeMillis() - createdAtMs}ms")
+                postRichNotification()
+            }
         } catch (e: Exception) {
             /*
              * Two realistic failures:
@@ -443,6 +557,59 @@ class LocationTrackingService : LifecycleService() {
             }
             stopSelf()
         }
+    }
+
+    /**
+     * The cheapest notification that can legally hold a foreground service.
+     *
+     * An icon, two strings and nothing else: no content intent and no actions,
+     * because each PendingIntent is a round trip into ActivityManagerService,
+     * and no buffered-count subtext, because there is nothing buffered yet.
+     *
+     * The strings still come out in the driver's language — getResources() now
+     * borrows the application's, which the process built long before this
+     * service existed — so the bare version is a notification with fewer
+     * buttons, not one in the wrong language.
+     */
+    private fun bootstrapNotification(): Notification {
+        return NotificationCompat.Builder(this, TrackingNotification.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_tracking)
+            .setContentTitle(getString(R.string.notification_starting))
+            .setContentText(getString(R.string.notification_acquiring_gps))
+            .setOngoing(true)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+    }
+
+    /**
+     * Swap the bootstrap notification for the one the driver actually reads.
+     *
+     * Same id, so this updates the foreground notification rather than adding a
+     * second one. The bare version is on screen only for however long these two
+     * calls are apart: single-digit milliseconds on a warm process, and even on
+     * the worst boot measured, under a second.
+     *
+     * Guarded, because by this point the service is legally in the foreground
+     * and nothing here is worth the process. A notification that failed to
+     * gain its two buttons is a cosmetic fault; the pump repaints it fifteen
+     * seconds later anyway.
+     */
+    private fun postRichNotification() {
+        runCatching {
+            val full = notifications.build(
+                title = getString(R.string.notification_starting),
+                body = getString(R.string.notification_acquiring_gps),
+                buffered = 0,
+                ongoing = true,
+            )
+            notifications.update(NOTIFICATION_ID, full)
+            foregroundNotification = full
+        }.onFailure { Log.w(TAG, "Could not post the full notification", it) }
     }
 
     // =========================================================================
@@ -902,15 +1069,16 @@ class LocationTrackingService : LifecycleService() {
          */
         store.setRemainingM(remainingM)
 
-        notifications.update(
-            NOTIFICATION_ID,
-            notifications.build(
-                title = title,
-                body = body,
-                buffered = snapshot.pendingCount,
-                ongoing = true,
-            ),
+        val notification = notifications.build(
+            title = title,
+            body = body,
+            buffered = snapshot.pendingCount,
+            ongoing = true,
         )
+        notifications.update(NOTIFICATION_ID, notification)
+        // So a start command arriving hours into a run re-posts what is on
+        // screen rather than reverting the driver to "searching for GPS".
+        foregroundNotification = notification
     }
 
     /**
@@ -1038,6 +1206,8 @@ class LocationTrackingService : LifecycleService() {
         Log.i(TAG, "Shutting down (userInitiated=$userInitiated)")
         // Either way this is OUR decision, so onDestroy must not resurrect it.
         selfStopped = true
+        // A start command after this one is a real restart, not a duplicate.
+        trackingRequested = false
 
         if (userInitiated) {
             repository.recordLocalEvent(type = "PAUSED", message = "Driver stopped tracking")

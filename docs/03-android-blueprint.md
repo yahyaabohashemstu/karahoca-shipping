@@ -61,12 +61,35 @@ everything it can to stop us.
 | Android 14+ crashes on FGS-type mismatch | `ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_LOCATION)` matching the manifest exactly | `promoteToForeground()` |
 | Android 13+ needs `POST_NOTIFICATIONS` or the FGS notification is suppressed | Requested in the readiness checklist | `ReadinessScreen` |
 
-### The 5-second rule
+### The startForeground deadline, and how it was being missed
 
 `startForegroundService()` promises the system we will call `startForeground()`
-within five seconds. `promoteToForeground()` therefore runs **before any suspend
-work** — reading DataStore first on a slow phone would earn a
-`ForegroundServiceDidNotStartInTimeException`.
+within ten seconds, and the penalty for breaking it is not a dropped session but
+`ForegroundServiceDidNotStartInTimeException` killing the process. Drivers hit
+it after a reboot — the worst possible moment, because the phone is trying to
+resume a shipment that is already under way.
+
+Running `promoteToForeground()` before any suspend work is necessary but was not
+sufficient. Everything that happens *before* it also spends the budget, and on
+the boot path none of it is warm. Measured on a real reboot with a live session
+and the device at 99.9% I/O pressure:
+
+| Where the 1.8 s went | Fix |
+|---|---|
+| `onCreate` built the `FusedLocationProviderClient`. That pulls the Play Services location classes in and ART verifies them on the calling thread — `zzbb.getLastLocation` 194 ms, `zzbi.flushLocations` 103 ms, `Status.<init>` 100 ms, and those are only the ones slow enough for ART to log. ~700 ms. | `fused` is `by lazy`; the cost lands on first use, behind the notification |
+| `promoteToForeground` built the full notification: three `PendingIntent`s, each a round trip into `ActivityManagerService`, plus a locale-wrapped `Resources` with its own `AssetManager`. ~405 ms. | `bootstrapNotification()` — an icon and two strings — keeps the promise; `postRichNotification()` puts the buttons back one call later |
+| The service built its own locale-wrapped `Resources` when the process already held an identical one. | `getResources()` borrows `applicationContext`'s, which `TrackerApplication` caches by language tag |
+| A repeat start command posted **nothing** — the method returned early once foreground. Two starts arrive on every boot (`TrackerApplication`'s self-heal and `BootReceiver`, ~40 ms apart), each carrying its own deadline, and under that I/O pressure the second was delivered **10.1 s** after it was requested. | `promoteToForeground()` re-posts on every start command; the duplicate `beginTracking` is suppressed by `trackingRequested` |
+
+Same boot afterwards: **47 ms** from the start request to `onCreate`, and
+**28 ms** from there to `startForeground` — 75 ms against a 10-second budget,
+where it had been 1.8 s. Reproduced across three reboots (23–32 ms), with the
+resumed session recording and uploading fixes each time.
+
+The margin is logged on every start (`Foreground after Nms`) because it is the
+only warning this path will ever get on a handset we cannot attach a debugger
+to, and [`ForegroundDeadlineTest`](../android/app/src/test/java/com/karahoca/tracker/service/ForegroundDeadlineTest.kt)
+fails the build if `onCreate` grows again.
 
 ### FusedLocationProviderClient configuration, and why
 
