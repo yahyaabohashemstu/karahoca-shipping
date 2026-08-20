@@ -505,8 +505,13 @@ function noticePage(title: string, message: string, locale: ShareLocale): string
   return page(
     `${esc(title)} — ${esc(t.brand)}`,
     `
-    <header class="head"><div class="logo">${esc(t.brand)}</div></header>
-    <h1>${esc(title)}</h1>
+    <header class="head">
+      <div class="brandline">
+        <span class="mark" aria-hidden="true">KH</span>
+        <span class="logo">${esc(t.brand)}</span>
+      </div>
+    </header>
+    <h1 class="notice__title">${esc(title)}</h1>
     <div class="status status--stop">
       <p class="status__detail">${esc(message)}</p>
     </div>
@@ -720,6 +725,19 @@ const SHARE_CSS = `
   dd a { color: var(--brand); text-underline-offset: 3px; }
   .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
   .fine { color: var(--ink-3); font-size: 12.5px; margin: 22px 0 0; text-wrap: pretty; }
+
+  /*
+   * The heading on the expired / unknown / revoked pages.
+   *
+   * It had no rule and was rendering at the browser's default h1 — 2em, bold,
+   * in whatever the UA stack is — on the one page a reader most needs to trust.
+   * Matched to the shipment page's status title, because it is doing the same
+   * job: it is the whole answer, and there is nothing else on the screen.
+   */
+  .notice__title {
+    font-size: clamp(24px, 7vw, 30px); font-weight: 700; line-height: 1.15;
+    letter-spacing: -.02em; margin: 26px 0 0; text-wrap: balance;
+  }
 
   /*
    * MapLibre's own control styling is built for a light basemap, so on positron
