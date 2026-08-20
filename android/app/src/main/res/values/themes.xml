@@ -1,10 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Compose owns the real theming; this only needs to exist for the
-         window background and splash before setContent runs. -->
+    <!--
+      Compose owns the real theming; this only needs to exist for the window
+      behind the first frame and for the system bars.
+
+      It was Theme.Material.Light.NoActionBar with a hard-coded pale window
+      background, which meant a driver on a dark phone got a full white frame on
+      every single launch before Compose painted. That is exactly the flash the
+      blocking theme script on the web exists to prevent, and it is far more
+      noticeable here, because a cold start on a cheap handset is not instant.
+
+      The platform has no DayNight parent to inherit from below API 29, so the
+      two variants are written out: this file and values-night. The colours
+      themselves resolve per night mode on their own, since window_background
+      and brand_primary both have a values-night entry.
+    -->
     <style name="Theme.KaraHocaTracker" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
-        <item name="android:statusBarColor">@color/brand_primary</item>
+        <!--
+          The bars take the window colour, not the brand colour.
+
+          A blue status bar above a white app was the last remnant of a design
+          that had a coloured app bar, and there is no app bar. Letting the bars
+          match the window is what makes the content look like it reaches the
+          edges of the screen, which is how every other surface in this product
+          is drawn.
+        -->
+        <item name="android:statusBarColor">@color/window_background</item>
         <item name="android:navigationBarColor">@color/window_background</item>
+        <!-- Dark glyphs, because the bars are now a pale surface. -->
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

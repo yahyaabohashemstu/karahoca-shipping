@@ -82,6 +82,11 @@ class LocalisationTest {
             "K7H2-9QX4",
             // The wordmark, for the same reason app_name is not translated.
             "KARAHOCA",
+            // The monogram on the brand mark. It is the company's initials,
+            // which are the same two letters in all three languages and in two
+            // scripts — and the dashboard's own guard allows it for the same
+            // reason, see apps/web/scripts/check-i18n.mjs.
+            "KH",
         )
         // Anchoring to Text(" is not enough. The literal that got past the
         // first version of this test was

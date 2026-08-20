@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The dark ramp, authored rather than derived, for the same reason as the note
+  at the top of Theme.kt. The accent is lifted in lightness so it does not
+  vibrate against a dark window, and the background is the dark theme's own
+  kh-bg rather than an inverted version of the light one.
+-->
+<resources>
+    <color name="brand_primary">#5298FF</color>
+    <color name="window_background">#0B1012</color>
+</resources>

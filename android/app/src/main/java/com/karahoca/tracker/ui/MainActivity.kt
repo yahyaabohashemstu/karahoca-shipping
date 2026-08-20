@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.app.ActivityCompat
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,6 +43,14 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.karahoca.tracker.ui.theme.KaraHocaTheme
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.unit.Dp
+import com.karahoca.tracker.ui.theme.status
 import com.karahoca.tracker.util.ClaimCode
 import com.karahoca.tracker.util.CrashReporter
 import com.karahoca.tracker.util.LocationSettingsHelper
@@ -166,84 +175,158 @@ class MainActivity : ComponentActivity() {
 // =============================================================================
 // Screens
 // =============================================================================
+/*
+ * All three screens are built from four shapes and nothing else: a hero, a
+ * labelled section, a row, and one primary action at the foot. That is the same
+ * vocabulary the dispatcher's dashboard and the consignee's page use, and it is
+ * why they now look like one product rather than three that happen to share a
+ * logo.
+ *
+ * Every colour comes from the theme. There were seven hexes written inline in
+ * this file — 0xFF16A34A twice, 0xFF7F1D1D, 0xFFF59E0B three times — which is
+ * how the "satisfied" green on the readiness list ended up a different green
+ * from the "online" green two screens later.
+ */
 
 @Composable
 private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(48.dp))
-        Text(
-            "KARAHOCA",
-            style = MaterialTheme.typography.labelLarge,
-            letterSpacing = 4.sp,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(stringResource(R.string.claim_heading), style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(40.dp))
+    Box(Modifier.fillMaxSize()) {
+        BrandWash()
 
-        LanguagePicker()
-        Spacer(Modifier.height(24.dp))
-
-        Text(
-            stringResource(R.string.claim_hint),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = state.codeInput,
-            onValueChange = viewModel::onCodeChanged,
-            label = { Text(stringResource(R.string.claim_field_label)) },
-            placeholder = { Text("K7H2-9QX4") },
-            singleLine = true,
-            isError = state.error != null,
-            textStyle = TextStyle(
-                fontSize = 28.sp,
-                fontFamily = FontFamily.Monospace,
-                // 6sp of tracking pushed a formatted 9-character code past the
-                // field on a 5" phone, and the dash is the character that goes
-                // missing first. Enough to keep the groups legible, not enough
-                // to overflow.
-                letterSpacing = 3.sp,
-                textAlign = TextAlign.Center,
-            ),
-            // The dash appears by itself after the fourth character. It is
-            // painted, not typed: what the state holds stays 8 clean
-            // characters. See ClaimCodeTransformation.
-            visualTransformation = remember { ClaimCodeTransformation() },
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Characters,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Go,
-            ),
-            keyboardActions = KeyboardActions(onGo = { if (state.canClaim) viewModel.claim() }),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        state.error?.let {
-            Spacer(Modifier.height(12.dp))
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = viewModel::claim,
-            enabled = !state.busy && state.canClaim,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+        /*
+         * Centred, and it has to be a Box rather than an arrangement on the
+         * scrolling Column.
+         *
+         * `verticalArrangement = Center` inside `verticalScroll` does nothing:
+         * the scroll modifier measures its child with an unbounded height, so
+         * the Column is exactly as tall as its contents and there is no spare
+         * space to distribute. The scroll goes on the Box, the Column sizes to
+         * its contents, and the Box centres it — which leaves the screen
+         * balanced when it fits and scrolls normally when it does not.
+         *
+         * imePadding, because centring moves the code field down the screen and
+         * the keyboard comes up from the bottom. The activity is already
+         * adjustResize; this is what turns that into an inset Compose respects.
+         */
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 22.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            if (state.busy) {
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            } else {
-                Text(stringResource(R.string.claim_submit), fontSize = 16.sp)
+            Spacer(Modifier.height(8.dp))
+            BrandMark(52.dp)
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "KARAHOCA",
+                style = MaterialTheme.typography.labelMedium,
+                letterSpacing = 4.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.claim_heading),
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(26.dp))
+
+            /*
+             * The code, the error and the button in one sheet.
+             *
+             * They were four loose elements on the background before, at which
+             * point the screen was a heading and a scatter. A driver who has
+             * just scanned a printed sheet at a loading dock is looking for one
+             * thing to do; putting the field and its button inside a single
+             * raised object is what makes that one thing findable.
+             */
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(
+                        stringResource(R.string.claim_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(18.dp))
+
+                    OutlinedTextField(
+                        value = state.codeInput,
+                        onValueChange = viewModel::onCodeChanged,
+                        label = { Text(stringResource(R.string.claim_field_label)) },
+                        placeholder = { Text("K7H2-9QX4") },
+                        singleLine = true,
+                        isError = state.error != null,
+                        shape = MaterialTheme.shapes.small,
+                        textStyle = TextStyle(
+                            fontSize = 28.sp,
+                            fontFamily = FontFamily.Monospace,
+                            // 6sp of tracking pushed a formatted 9-character code
+                            // past the field on a 5" phone, and the dash is the
+                            // character that goes missing first. Enough to keep the
+                            // groups legible, not enough to overflow.
+                            letterSpacing = 3.sp,
+                            textAlign = TextAlign.Center,
+                        ),
+                        // The dash appears by itself after the fourth character. It
+                        // is painted, not typed: what the state holds stays 8 clean
+                        // characters. See ClaimCodeTransformation.
+                        visualTransformation = remember { ClaimCodeTransformation() },
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrectEnabled = false,
+                            imeAction = ImeAction.Go,
+                        ),
+                        keyboardActions = KeyboardActions(onGo = { if (state.canClaim) viewModel.claim() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    state.error?.let {
+                        Spacer(Modifier.height(12.dp))
+                        Notice(tone = NoticeTone.DANGER, text = it)
+                    }
+
+                    Spacer(Modifier.height(18.dp))
+                    Button(
+                        onClick = viewModel::claim,
+                        enabled = !state.busy && state.canClaim,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                    ) {
+                        if (state.busy) {
+                            CircularProgressIndicator(
+                                Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Text(
+                                stringResource(R.string.claim_submit),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
             }
+
+            Spacer(Modifier.height(26.dp))
+            LanguagePicker()
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -264,34 +347,68 @@ private fun shareText(context: Context, text: String) {
  * Deliberately loud and deliberately copyable. Without it the entire bug report
  * from the field is "it closed by itself", and the process is gone before it
  * could ever upload anything.
+ *
+ * The one place in the app that still ignores the surface palette, and on
+ * purpose: it has to be unmistakable the moment the app opens, before the
+ * driver has read anything. It now takes that red from the theme's error
+ * container rather than a hard-coded 0xFF7F1D1D, so it is the same red the
+ * dispatcher sees on a failed action.
  */
 @Composable
 private fun CrashBanner(report: String, onShare: () -> Unit, onDismiss: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Surface(color = Color(0xFF7F1D1D)) {
-        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(
-                stringResource(R.string.crash_prompt),
-                color = Color.White,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                report.lineSequence().take(if (expanded) 40 else 6).joinToString("\n"),
-                color = Color(0xFFFECACA),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .padding(top = 6.dp)
-                    .heightIn(max = if (expanded) 320.dp else 96.dp)
-                    .verticalScroll(rememberScrollState()),
-            )
+    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Error,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.crash_prompt),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.16f),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.padding(top = 10.dp),
+            ) {
+                Text(
+                    report.lineSequence().take(if (expanded) 40 else 6).joinToString("\n"),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .heightIn(max = if (expanded) 320.dp else 96.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            }
             Row {
                 TextButton(onClick = { expanded = !expanded }) {
-                    Text(stringResource(if (expanded) R.string.crash_collapse else R.string.crash_show_all), color = Color.White)
+                    Text(
+                        stringResource(if (expanded) R.string.crash_collapse else R.string.crash_show_all),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
                 }
-                TextButton(onClick = onShare) { Text(stringResource(R.string.crash_send_short), color = Color.White) }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.diag_clear), color = Color(0xFFFCA5A5)) }
+                TextButton(onClick = onShare) {
+                    Text(
+                        stringResource(R.string.crash_send_short),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        stringResource(R.string.diag_clear),
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.72f),
+                    )
+                }
             }
         }
     }
@@ -356,139 +473,171 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
         ActivityResultContracts.RequestPermission(),
     ) { viewModel.refreshChecks() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        Text(stringResource(R.string.readiness_ready), style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(4.dp))
-        state.reference?.let {
-            Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        }
-        Spacer(Modifier.height(16.dp))
+    Box(Modifier.fillMaxSize()) {
+        BrandWash()
 
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 22.dp),
+        ) {
+            Text(
+                stringResource(R.string.readiness_ready),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            state.reference?.let {
+                Spacer(Modifier.height(10.dp))
+                ReferenceChip(it)
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Section {
                 state.orderNumber?.let { InfoRow(stringResource(R.string.label_order), it) }
                 state.customerName?.let { InfoRow(stringResource(R.string.label_customer), it) }
                 state.destination?.let { InfoRow(stringResource(R.string.label_destination), it) }
             }
-        }
 
-        Spacer(Modifier.height(24.dp))
-        Text(stringResource(R.string.readiness_heading), style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            stringResource(R.string.readiness_warning),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(26.dp))
+            Text(
+                stringResource(R.string.readiness_heading),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.readiness_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
 
-        state.checks.forEach { check ->
-            CheckRow(
-                label = check.label,
-                detail = check.detail,
-                satisfied = check.satisfied,
-                blocking = check.blocking,
-                onFix = {
-                    when (check.key) {
-                        // Try to fix it without leaving the app. Play Services
-                        // shows a system dialog over us and one tap turns
-                        // location on; only when that is unavailable — Huawei,
-                        // de-Googled phones — do we hand the driver off to the
-                        // Settings screen and hope they find the switch.
-                        "location_services" -> LocationSettingsHelper.requestEnable(
-                            context = context,
-                            onResolution = { resolvable ->
-                                runCatching {
-                                    locationSettingsLauncher.launch(
-                                        IntentSenderRequest.Builder(resolvable.resolution).build(),
-                                    )
-                                }.onFailure { LocationSettingsHelper.openSettings(context) }
-                            },
-                            onUnavailable = { LocationSettingsHelper.openSettings(context) },
-                        )
+            /*
+             * One card with dividers, not eight separate cards.
+             *
+             * Eight stacked cards is eight shadows, eight borders and eight gaps
+             * for a list whose entire job is to be read top to bottom until the
+             * first red row. Grouping them is what makes "how far down the list
+             * am I" answerable at a glance, and it is the same shape the
+             * dispatcher's screens use for a run of related rows.
+             */
+            Section(padded = false) {
+                state.checks.forEachIndexed { index, check ->
+                    if (index > 0) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                    CheckRow(
+                        label = check.label,
+                        detail = check.detail,
+                        satisfied = check.satisfied,
+                        blocking = check.blocking,
+                        onFix = {
+                            when (check.key) {
+                                // Try to fix it without leaving the app. Play Services
+                                // shows a system dialog over us and one tap turns
+                                // location on; only when that is unavailable — Huawei,
+                                // de-Googled phones — do we hand the driver off to the
+                                // Settings screen and hope they find the switch.
+                                "location_services" -> LocationSettingsHelper.requestEnable(
+                                    context = context,
+                                    onResolution = { resolvable ->
+                                        runCatching {
+                                            locationSettingsLauncher.launch(
+                                                IntentSenderRequest.Builder(resolvable.resolution).build(),
+                                            )
+                                        }.onFailure { LocationSettingsHelper.openSettings(context) }
+                                    },
+                                    onUnavailable = { LocationSettingsHelper.openSettings(context) },
+                                )
 
-                        "location" -> locationLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                            ),
-                        )
-
-                        // Must be a SEPARATE request after foreground is granted —
-                        // Android 11+ rejects a combined foreground+background ask.
-                        "background_location" -> when {
-                            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> Unit
-
-                            // The platform refuses the background dialog until
-                            // foreground is held. Route to the ask that can
-                            // actually succeed instead of showing nothing.
-                            !state.checks.any { it.key == "location" && it.satisfied } ->
-                                locationLauncher.launch(
+                                "location" -> locationLauncher.launch(
                                     arrayOf(
                                         Manifest.permission.ACCESS_FINE_LOCATION,
                                         Manifest.permission.ACCESS_COARSE_LOCATION,
                                     ),
                                 )
 
-                            // shouldShowRationale == false *after* a denial is
-                            // the documented "permanently denied" signal.
-                            bgAsked && activity != null &&
-                                !ActivityCompat.shouldShowRequestPermissionRationale(
-                                    activity, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                                ) -> openAppSettings(context)
+                                // Must be a SEPARATE request after foreground is granted —
+                                // Android 11+ rejects a combined foreground+background ask.
+                                "background_location" -> when {
+                                    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> Unit
 
-                            else -> {
-                                bgAsked = true
-                                backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                    // The platform refuses the background dialog until
+                                    // foreground is held. Route to the ask that can
+                                    // actually succeed instead of showing nothing.
+                                    !state.checks.any { it.key == "location" && it.satisfied } ->
+                                        locationLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                            ),
+                                        )
+
+                                    // shouldShowRationale == false *after* a denial is
+                                    // the documented "permanently denied" signal.
+                                    bgAsked && activity != null &&
+                                        !ActivityCompat.shouldShowRequestPermissionRationale(
+                                            activity, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                                        ) -> openAppSettings(context)
+
+                                    else -> {
+                                        bgAsked = true
+                                        backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                    }
+                                }
+
+                                "notifications" -> when {
+                                    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> Unit
+                                    notifAsked && activity != null &&
+                                        !ActivityCompat.shouldShowRequestPermissionRationale(
+                                            activity, Manifest.permission.POST_NOTIFICATIONS,
+                                        ) -> openAppSettings(context)
+                                    else -> {
+                                        notifAsked = true
+                                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                }
+
+                                // No runtime prompt exists for this; the phone either
+                                // has a working Play Services or it does not.
+                                "play_services" -> openAppSettings(context)
+
+                                "battery" -> PowerHelper.requestIgnoreBatteryOptimizations(context)
+                                "exact_alarm" -> PowerHelper.requestExactAlarmPermission(context)
+                                "autostart" -> PowerHelper.openAutostartSettings(context)
                             }
-                        }
+                        },
+                    )
+                }
+            }
 
-                        "notifications" -> when {
-                            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> Unit
-                            notifAsked && activity != null &&
-                                !ActivityCompat.shouldShowRequestPermissionRationale(
-                                    activity, Manifest.permission.POST_NOTIFICATIONS,
-                                ) -> openAppSettings(context)
-                            else -> {
-                                notifAsked = true
-                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                        }
-
-                        // No runtime prompt exists for this; the phone either
-                        // has a working Play Services or it does not.
-                        "play_services" -> openAppSettings(context)
-
-                        "battery" -> PowerHelper.requestIgnoreBatteryOptimizations(context)
-                        "exact_alarm" -> PowerHelper.requestExactAlarmPermission(context)
-                        "autostart" -> PowerHelper.openAutostartSettings(context)
-                    }
-                },
-            )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(26.dp))
+            Button(
+                onClick = { viewModel.startTracking(context) },
+                enabled = state.canStart,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+            ) {
+                Text(
+                    stringResource(R.string.readiness_start),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(
+                onClick = { viewModel.endSession(context) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    stringResource(R.string.tracking_close_session),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(24.dp))
         }
-
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = { viewModel.startTracking(context) },
-            enabled = state.canStart,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) {
-            Text(stringResource(R.string.readiness_start), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.height(8.dp))
-        TextButton(
-            onClick = { viewModel.endSession(context) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.tracking_close_session))
-        }
-        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -501,126 +650,151 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { viewModel.refreshChecks() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        /*
-         * The checklist gate is not enough for this one row.
-         *
-         * Location is the only requirement a driver can revoke *after* starting
-         * — two taps in the notification shade, often by accident while
-         * reaching for the torch. Everything downstream keeps claiming success:
-         * the service runs, the notification says "Takip aktif", the screen
-         * above says "Konumunuz merkeze gönderiliyor". The only visible symptom
-         * is that "Son konum" stops advancing, which nobody watches.
-         *
-         * So it is checked again here, on the screen the driver actually looks
-         * at, with the same one-tap fix.
-         */
-        if (!state.locationServicesOn) {
-            Surface(
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Error,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(R.string.location_off_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
-                    Text(
-                        stringResource(R.string.location_off_body),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                    Button(
-                        onClick = {
-                            LocationSettingsHelper.requestEnable(
-                                context = context,
-                                onResolution = { resolvable ->
-                                    runCatching {
-                                        locationSettingsLauncher.launch(
-                                            IntentSenderRequest.Builder(resolvable.resolution).build(),
-                                        )
-                                    }.onFailure { LocationSettingsHelper.openSettings(context) }
-                                },
-                                onUnavailable = { LocationSettingsHelper.openSettings(context) },
+    Box(Modifier.fillMaxSize()) {
+        BrandWash()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            /*
+             * The checklist gate is not enough for this one row.
+             *
+             * Location is the only requirement a driver can revoke *after*
+             * starting — two taps in the notification shade, often by accident
+             * while reaching for the torch. Everything downstream keeps claiming
+             * success: the service runs, the notification says "Takip aktif",
+             * the screen above says "Konumunuz merkeze gönderiliyor". The only
+             * visible symptom is that "Son konum" stops advancing, which nobody
+             * watches.
+             *
+             * So it is checked again here, on the screen the driver actually
+             * looks at, with the same one-tap fix.
+             */
+            if (!state.locationServicesOn) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Error,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(20.dp),
                             )
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    ) { Text(stringResource(R.string.location_off_action), fontWeight = FontWeight.Bold) }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.location_off_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                        Text(
+                            stringResource(R.string.location_off_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        Button(
+                            onClick = {
+                                LocationSettingsHelper.requestEnable(
+                                    context = context,
+                                    onResolution = { resolvable ->
+                                        runCatching {
+                                            locationSettingsLauncher.launch(
+                                                IntentSenderRequest.Builder(resolvable.resolution).build(),
+                                            )
+                                        }.onFailure { LocationSettingsHelper.openSettings(context) }
+                                    },
+                                    onUnavailable = { LocationSettingsHelper.openSettings(context) },
+                                )
+                            },
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                        ) { Text(stringResource(R.string.location_off_action), fontWeight = FontWeight.Bold) }
+                    }
                 }
+                Spacer(Modifier.height(16.dp))
             }
-            Spacer(Modifier.height(16.dp))
-        }
 
-        // A background failure — an unreadable buffer, a store that will not
-        // open — used to be written to state.error and then rendered nowhere on
-        // this screen, which is where a driver spends the entire shift.
-        state.error?.let {
+            // A background failure — an unreadable buffer, a store that will not
+            // open — used to be written to state.error and then rendered nowhere on
+            // this screen, which is where a driver spends the entire shift.
+            state.error?.let {
+                Notice(tone = NoticeTone.DANGER, text = it)
+                Spacer(Modifier.height(12.dp))
+            }
+
+            Spacer(Modifier.height(18.dp))
+
+            /*
+             * The status, in a tinted well rather than as a loose glyph.
+             *
+             * It was a bare 72dp icon floating on the background. A circle of
+             * the state's own colour behind it does two things a lone icon
+             * cannot: it survives being glanced at from a cradle at arm's
+             * length, and it carries the state in an area rather than in a
+             * shape — which is what a driver sees first in bright cab light.
+             */
+            val online = state.online
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (online) MaterialTheme.status.liveContainer
+                        else MaterialTheme.status.warnContainer,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (online) Icons.Default.CheckCircle else Icons.Default.CloudOff,
+                    contentDescription = null,
+                    tint = if (online) MaterialTheme.status.live else MaterialTheme.status.warn,
+                    modifier = Modifier.size(44.dp),
+                )
+            }
+            Spacer(Modifier.height(18.dp))
             Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+                stringResource(if (online) R.string.tracking_active else R.string.tracking_offline),
+                style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
             )
-        }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                // The single most important sentence in the app: it stops a driver
+                // in a dead zone from concluding it is broken and force-stopping it.
+                if (online) {
+                    stringResource(R.string.tracking_online_body)
+                } else {
+                    stringResource(R.string.tracking_offline_body)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-        Spacer(Modifier.height(24.dp))
+            RemainingDistance(state)
 
-        Icon(
-            imageVector = if (state.online) Icons.Default.CheckCircle else Icons.Default.CloudOff,
-            contentDescription = null,
-            tint = if (state.online) Color(0xFF16A34A) else Color(0xFFF59E0B),
-            modifier = Modifier.size(72.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        Text(
-            stringResource(if (state.online) R.string.tracking_active else R.string.tracking_offline),
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            // The single most important sentence in the app: it stops a driver
-            // in a dead zone from concluding it is broken and force-stopping it.
-            if (state.online) {
-                stringResource(R.string.tracking_online_body)
-            } else {
-                stringResource(R.string.tracking_offline_body)
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            Spacer(Modifier.height(26.dp))
 
-        RemainingDistance(state)
-
-        Spacer(Modifier.height(28.dp))
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
+            Section {
                 state.reference?.let { InfoRow(stringResource(R.string.label_session), it) }
                 state.orderNumber?.let { InfoRow(stringResource(R.string.label_order), it) }
                 state.destination?.let { InfoRow(stringResource(R.string.label_destination), it) }
-                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
                 InfoRow(stringResource(R.string.label_pending), state.pendingCount.toString())
                 InfoRow(
                     stringResource(R.string.label_last_fix),
@@ -631,47 +805,170 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
                     if (state.lastSyncAt > 0) time.format(Date(state.lastSyncAt)) else "—",
                 )
             }
-        }
 
-        if (state.pendingCount > 50) {
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Error, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    stringResource(R.string.tracking_pending_note, state.pendingCount.toString()),
-                    style = MaterialTheme.typography.bodySmall,
+            if (state.pendingCount > 50) {
+                Spacer(Modifier.height(12.dp))
+                Notice(
+                    tone = NoticeTone.WARN,
+                    text = stringResource(R.string.tracking_pending_note, state.pendingCount.toString()),
                 )
             }
+
+            Spacer(Modifier.height(26.dp))
+            OutlinedButton(
+                onClick = { viewModel.syncNow(context) },
+                shape = MaterialTheme.shapes.small,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            ) { Text(stringResource(R.string.tracking_sync_now)) }
+
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { viewModel.stopTracking(context) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+            ) { Text(stringResource(R.string.tracking_stop), fontWeight = FontWeight.Bold) }
+
+            Spacer(Modifier.height(22.dp))
+            Text(
+                stringResource(R.string.tracking_background_note),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(24.dp))
         }
-
-        Spacer(Modifier.height(28.dp))
-        OutlinedButton(
-            onClick = { viewModel.syncNow(context) },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(stringResource(R.string.tracking_sync_now)) }
-
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = { viewModel.stopTracking(context) },
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) { Text(stringResource(R.string.tracking_stop), fontWeight = FontWeight.Bold) }
-
-        Spacer(Modifier.height(24.dp))
-        Text(
-            stringResource(R.string.tracking_background_note),
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(24.dp))
     }
 }
 
 // =============================================================================
 // Bits
 // =============================================================================
+
+/**
+ * The monogram, at whatever size the caller needs.
+ *
+ * The same mark the dispatcher's navigation dock carries and the same one at
+ * the top of all three web pages. A driver never sees the dashboard, so this is
+ * not continuity for them — it is continuity for the dispatcher standing beside
+ * them at the loading dock, and for the printed sheet the code was scanned off.
+ */
+@Composable
+private fun BrandMark(size: Dp) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.28f))
+            .background(MaterialTheme.status.brandGradient),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "KH",
+            color = MaterialTheme.colorScheme.onPrimary,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = (size.value * 0.33f).sp,
+            letterSpacing = (-0.4).sp,
+        )
+    }
+}
+
+/**
+ * One wash of the brand colour down from the top of the screen.
+ *
+ * Very low opacity and very tall, so it reads as light in the room rather than
+ * as a shape on the page. It is the cheapest thing that stops a flat background
+ * from looking unstyled, and it is the same device the login screen and all
+ * three web pages use.
+ */
+@Composable
+private fun BrandWash() {
+    val tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.09f)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(300.dp)
+            .background(Brush.verticalGradient(listOf(tint, Color.Transparent))),
+    )
+}
+
+/**
+ * A raised group of rows.
+ *
+ * `padded = false` for a list whose own rows carry the padding — a run of check
+ * rows separated by full-bleed dividers, where an outer inset would leave every
+ * divider stopping short of both edges.
+ */
+@Composable
+private fun Section(
+    padded: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(if (padded) Modifier.padding(16.dp) else Modifier, content = content)
+    }
+}
+
+/** The session reference, as a chip rather than a line of coloured text. */
+@Composable
+private fun ReferenceChip(reference: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shape = MaterialTheme.shapes.extraSmall,
+    ) {
+        Text(
+            reference,
+            style = MaterialTheme.typography.labelLarge,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+    }
+}
+
+private enum class NoticeTone { DANGER, WARN }
+
+/**
+ * A tinted line of explanation — an error, or a backlog worth mentioning.
+ *
+ * Colour is never the only encoding: every tone carries its own icon as well,
+ * because roughly one man in twelve cannot separate the red from the amber and
+ * this app is read at a glance in a moving vehicle.
+ */
+@Composable
+private fun Notice(tone: NoticeTone, text: String) {
+    val fg = when (tone) {
+        NoticeTone.DANGER -> MaterialTheme.status.danger
+        NoticeTone.WARN -> MaterialTheme.status.warn
+    }
+    val bg = when (tone) {
+        NoticeTone.DANGER -> MaterialTheme.status.dangerContainer
+        NoticeTone.WARN -> MaterialTheme.status.warnContainer
+    }
+    Surface(color = bg, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Error, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(9.dp))
+            Text(text, style = MaterialTheme.typography.bodySmall, color = fg)
+        }
+    }
+}
 
 /**
  * How far is left, and whether we are there.
@@ -694,17 +991,25 @@ private fun RemainingDistance(state: TrackerUiState) {
     if (state.arrived) {
         Spacer(Modifier.height(20.dp))
         Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color = MaterialTheme.status.liveContainer,
+            contentColor = MaterialTheme.status.live,
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                stringResource(R.string.arrival_banner),
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.padding(vertical = 14.dp),
-            )
+            Row(
+                Modifier.padding(vertical = 14.dp, horizontal = 16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.arrival_banner),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
         return
     }
@@ -720,6 +1025,7 @@ private fun RemainingDistance(state: TrackerUiState) {
         // Deliberately the largest text on the screen after the status line.
         // A driver glancing at a phone in a cradle reads exactly one thing.
         style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -744,11 +1050,22 @@ private fun LanguagePicker() {
     val context = LocalContext.current
     var selected by remember { mutableStateOf(AppLocale.current(context)) }
 
+    /*
+     * "Let the phone decide" first, then the three languages.
+     *
+     * It is the only entry here that is a sentence rather than a name, so it is
+     * the only one that has to be translated — an Arabic-reading driver was
+     * being shown three names they could read and one Turkish phrase they could
+     * not, in the same row.
+     */
+    val labels: List<Pair<String, String>> =
+        listOf(AppLocale.SYSTEM to stringResource(R.string.language_system)) + AppLocale.options
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AppLocale.options.forEach { (tag, label) ->
+        labels.forEach { (tag, label) ->
             val active = tag == selected
             FilterChip(
                 selected = active,
@@ -761,6 +1078,17 @@ private fun LanguagePicker() {
                     // Calling it either way is harmless and covers both.
                     (context as? Activity)?.recreate()
                 },
+                shape = MaterialTheme.shapes.extraSmall,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = active,
+                    borderColor = MaterialTheme.colorScheme.outlineVariant,
+                    selectedBorderColor = MaterialTheme.colorScheme.primary,
+                ),
                 label = { Text(label, style = MaterialTheme.typography.labelMedium) },
             )
         }
@@ -770,11 +1098,22 @@ private fun LanguagePicker() {
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(vertical = 5.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+        )
     }
 }
 
@@ -786,33 +1125,49 @@ private fun CheckRow(
     blocking: Boolean,
     onFix: () -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val tint = when {
+            satisfied -> MaterialTheme.status.live
+            blocking -> MaterialTheme.status.danger
+            else -> MaterialTheme.status.warn
+        }
+        /*
+         * The icon in its own tinted disc.
+         *
+         * A 22dp glyph on a white row is the smallest thing on the screen and
+         * carries the one fact the row exists to state. The disc gives it an
+         * area, which is what makes a red row findable while scrolling past
+         * eight of them.
+         */
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(tint.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = if (satisfied) Icons.Default.CheckCircle else Icons.Default.Error,
                 contentDescription = null,
-                tint = when {
-                    satisfied -> Color(0xFF16A34A)
-                    blocking -> MaterialTheme.colorScheme.error
-                    else -> Color(0xFFF59E0B)
-                },
-                modifier = Modifier.size(22.dp),
+                tint = tint,
+                modifier = Modifier.size(18.dp),
             )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                Text(
-                    detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (!satisfied) {
-                TextButton(onClick = onFix) { Text(stringResource(R.string.action_open)) }
-            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!satisfied) {
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onFix) { Text(stringResource(R.string.action_open)) }
         }
     }
 }

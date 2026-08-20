@@ -1,6 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The same values Theme.kt carries, and the same ones apps/web/src/app/globals.css
+  carries: this is the light ramp of one palette shared by four surfaces.
+
+  These exist only for what Compose cannot reach: the window behind the first
+  frame, the system bars, and the launcher icon. Everything the app draws for
+  itself comes from Theme.kt.
+-->
 <resources>
-    <color name="brand_primary">#1D4ED8</color>
-    <color name="window_background">#F8FAFC</color>
-    <color name="ic_launcher_background">#0B1220</color>
+    <!-- kh-brand -->
+    <color name="brand_primary">#1460C8</color>
+    <!-- kh-bg -->
+    <color name="window_background">#F7F9F9</color>
+    <!--
+      The launcher background stays dark in both themes.
+
+      An adaptive icon is composited by the launcher against whatever wallpaper
+      is behind it, not against the app's own background, so it has no light and
+      dark variant to follow: it has to be legible on both. The dark ground with
+      the light pin is the pairing that survives a white wallpaper and a black
+      one, which a light ground does not.
+    -->
+    <color name="ic_launcher_background">#0B1012</color>
 </resources>

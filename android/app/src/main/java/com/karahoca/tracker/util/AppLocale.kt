@@ -52,14 +52,20 @@ object AppLocale {
     private const val KEY_TAG = "tag"
 
     /**
-     * In the order a driver would scan them.
+     * The three languages, each named in its own.
      *
-     * Each label is written in its own language. A picker that offers "Arapça"
-     * is no use to somebody who cannot read Turkish, which is precisely the
-     * population the list exists for.
+     * A picker that offers "Arapça" is no use to somebody who cannot read
+     * Turkish, which is precisely the population the list exists for — so these
+     * four labels are the one place in the app where an untranslated string is
+     * correct, and they are exempt from the localisation guard for that reason.
+     *
+     * "Let the phone decide" is NOT one of them, and used to be: the list
+     * opened with `SYSTEM to "Telefon dili"`, which is not a language name but
+     * a Turkish sentence, sitting in a row with three names an Arabic reader
+     * can read and one they cannot. It is a string resource now and the picker
+     * prepends it — see LanguagePicker in MainActivity.
      */
     val options: List<Pair<String, String>> = listOf(
-        SYSTEM to "Telefon dili",
         TURKISH to "Türkçe",
         ARABIC to "العربية",
         KURMANJI to "Kurdî",

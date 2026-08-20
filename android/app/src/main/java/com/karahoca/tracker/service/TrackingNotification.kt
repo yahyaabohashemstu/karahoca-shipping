@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
 import com.karahoca.tracker.R
@@ -119,6 +120,17 @@ class TrackingNotification @Inject constructor(
     ): Notification {
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tracking)
+            /*
+             * The brand accent, so the one line of this product a driver sees
+             * most — the persistent notification, present for the whole run —
+             * is tinted the same colour as everything else they were shown.
+             *
+             * Left unset, Android supplies its own accent, which on a Samsung
+             * or an Oppo is whatever the manufacturer chose. It resolves from
+             * res/values, so it follows the night qualifier on its own.
+             */
+            .setColor(ContextCompat.getColor(context, R.color.brand_primary))
+            .setColorized(false)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -150,6 +162,7 @@ class TrackingNotification @Inject constructor(
     fun alert(title: String, body: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setSmallIcon(R.drawable.ic_tracking)
+            .setColor(ContextCompat.getColor(context, R.color.brand_primary))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

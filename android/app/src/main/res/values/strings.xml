@@ -141,4 +141,5 @@
     <string name="check_play_services">Google Play Hizmetleri</string>
     <string name="check_notifications">Bildirim izni</string>
     <string name="check_notifications_why">Takip bildirimi olmadan Android servisi kapatabilir.</string>
+    <string name="language_system">Telefon dili</string>
 </resources>
