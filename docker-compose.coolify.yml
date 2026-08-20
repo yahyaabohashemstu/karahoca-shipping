@@ -325,18 +325,26 @@ services:
       - traefik.http.routers.kh-api-http.middlewares=kh-to-https
       - traefik.http.routers.kh-api-http.service=kh-api
 
-      # The https router carries two extra exact paths: the Android App Links
-      # manifest, and /app — the public install page a driver is told over the
-      # phone. Exact Path(), and assetlinks deliberately NOT on the http router
-      # above: the ACME HTTP-01 challenge also lives under /.well-known on port
-      # 80, and this stack has already lost a certificate once over port-80
-      # routing. Android only fetches assetlinks.json over https anyway.
+      # The https router carries three extra exact paths: both App Links
+      # manifests — Android's assetlinks.json and Apple's
+      # apple-app-site-association — and /app, the public install page a driver
+      # is told over the phone.
+      #
+      # Exact Path(), and neither manifest is on the http router above: the ACME
+      # HTTP-01 challenge also lives under /.well-known on port 80, and this
+      # stack has already lost a certificate once over port-80 routing. Both
+      # platforms fetch their manifest over https only, so nothing is lost.
+      #
+      # A manifest missing from this rule does not fail loudly. It falls through
+      # to the dashboard's catch-all and is answered by Next's 404 page, so the
+      # endpoint looks written, deployed and dead — which is exactly how the
+      # Apple one behaved until it was added here.
       - traefik.http.routers.kh-api.entryPoints=https
       # /s/ is the consignee's tracking link. Without it here every share link
       # ever minted resolves to the dashboard's catch-all and 404s — the
       # customer gets a broken page from their supplier, which is worse than
       # having sent them nothing.
-      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`) || PathPrefix(`/s/`) || Path(`/.well-known/assetlinks.json`) || Path(`/app`))
+      - traefik.http.routers.kh-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/t/`) || PathPrefix(`/s/`) || Path(`/.well-known/assetlinks.json`) || Path(`/.well-known/apple-app-site-association`) || Path(`/app`))
       - traefik.http.routers.kh-api.priority=100
       - traefik.http.routers.kh-api.tls=true
       - traefik.http.routers.kh-api.tls.certresolver=letsencrypt
