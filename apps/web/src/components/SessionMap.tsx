@@ -209,14 +209,52 @@ export default function SessionMap({
      * Kirkuk run the destination end of the line landed behind the panel every
      * time the page loaded.
      */
-    const pad = insetRef.current;
-    map.current?.fitBounds(bounds, {
-      padding: {
-        top: 24 + (pad?.top ?? 0),
-        right: 24 + (pad?.right ?? 0),
-        bottom: 24 + (pad?.bottom ?? 0),
-        left: 24 + (pad?.left ?? 0),
-      },
+    if (!instance) return;
+    /*
+     * Clamped to what the container can hold, for the reason spelled out on
+     * FleetMap's safePadding: MapLibre answers padding it cannot honour by
+     * doing nothing at all, and the panel floating over this map asks for a
+     * third of the width.
+     */
+    const pad = insetRef.current ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const { width, height } = instance.getCanvas().getBoundingClientRect();
+    const clamp = (near: number, far: number, extent: number): [number, number] => {
+      const budget = extent * 0.45;
+      const asked = near + far;
+      if (extent <= 0 || asked <= budget) return [near, far];
+      const factor = budget / asked;
+      return [near * factor, far * factor];
+    };
+    const [left, right] = clamp(24 + pad.left, 24 + pad.right, width);
+    const [top, bottom] = clamp(24 + pad.top, 24 + pad.bottom, height);
+
+    instance.fitBounds(bounds, {
+      padding: { top, right, bottom, left },
+      /*
+       * A ceiling, which this call has never had — and it is the whole bug.
+       *
+       * A session created minutes ago is a handful of fixes in one yard, so the
+       * bounding box is a few metres across. MapLibre answers a degenerate box
+       * with maximum zoom, which here is 22: a screen of bare ground, no town,
+       * no road, and at that zoom no basemap tiles for most of this corridor
+       * either. The lorry is on it and nobody can tell, so the natural thing to
+       * do is zoom out looking for it — and from zoom 22 you arrive somewhere
+       * around 7, where a fifty-metre route and a nine-pixel dot are lost in
+       * the labels. That is exactly the report: invisible on the dispatcher's
+       * map, correct on the customer's link.
+       *
+       * The customer's link is correct because it already knows this. Its map
+       * opens at a fixed zoom 8 on the lorry and only fits when there is a
+       * second thing to fit to, capped at 11 — see the comment beside
+       * `if (extended)` in apps/api/src/share/share.controller.ts, which
+       * describes this failure in as many words. FleetMap has carried a maxZoom
+       * since it was written. This was the one map of the three that never got
+       * one.
+       *
+       * 13, the same as FleetMap, so a yard, a town and the road out of it are
+       * all on screen whatever the route turns out to be.
+       */
+      maxZoom: 13,
       duration: 600,
     });
     fitted.current = true;

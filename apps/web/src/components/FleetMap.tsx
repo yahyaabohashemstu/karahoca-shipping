@@ -1049,9 +1049,23 @@ export default function FleetMap({
      * belongs to the dispatcher, and a map that keeps yanking itself back is
      * worse than one that never moved.
      */
+    /*
+     * Marked fitted only once a fit has actually happened.
+     *
+     * The flag used to be set first and the result thrown away, so any run
+     * where fitBounds declined — no drawable points, a container MapLibre had
+     * not measured yet, padding it could not honour — latched the map at its
+     * construction viewport for the life of the page. There is nothing that
+     * would ever bring it back: the effect re-runs on every position frame and
+     * the first line turns it away.
+     */
     if (!hasFitted.current && truckFeatures.length > 0 && !selectedId) {
-      hasFitted.current = true;
-      fitTo(instance, truckFeatures, dimensional ? DEFAULT_PITCH : 0, insetRef.current);
+      hasFitted.current = fitTo(
+        instance,
+        truckFeatures,
+        dimensional ? DEFAULT_PITCH : 0,
+        insetRef.current,
+      );
     }
     // installLayers is a useCallback with no dependencies and so is stable;
     // listing it keeps the exhaustive-deps rule honest rather than suppressed.
@@ -1377,11 +1391,11 @@ function fitTo(
   features: GeoJSON.Feature[],
   pitch?: number,
   inset: { top: number; right: number; bottom: number; left: number } = NO_INSET,
-) {
+): boolean {
   const points = features
     .map((f) => (f.geometry?.type === 'Point' ? (f.geometry.coordinates as [number, number]) : null))
     .filter((c): c is [number, number] => Array.isArray(c));
-  if (points.length === 0) return;
+  if (points.length === 0) return false;
 
   const bounds = points.reduce(
     (acc, c) => acc.extend(c),
@@ -1401,12 +1415,7 @@ function fitTo(
      * has to mean fit them where they can be seen — otherwise the lorry nearest
      * Gaziantep lands under the fleet rail on every single press.
      */
-    padding: {
-      top: inset.top + 28,
-      right: inset.right + 28,
-      bottom: inset.bottom + 28,
-      left: inset.left + 28,
-    },
+    padding: safePadding(instance, inset, 28),
     maxZoom: 13,
     duration: 700,
     /*
@@ -1421,6 +1430,41 @@ function fitTo(
      */
     pitch,
   });
+  return true;
+}
+
+/**
+ * Padding that the container can actually accommodate.
+ *
+ * MapLibre's cameraForBounds computes the available box as
+ * `width - (padding.left + padding.right)`, and if that comes out negative it
+ * logs a warning and returns undefined — so `fitBounds` silently does nothing
+ * and the camera stays wherever it was. A dispatcher sees a map of somewhere
+ * else with no lorry on it, and there is no error anywhere.
+ *
+ * That became reachable when the chrome started floating over the map: the
+ * padding went from a fixed 60 and 80 to the real footprint of the dock, the
+ * rail and the detail panel, which on a narrow window is most of the width. So
+ * the ask is clamped rather than trusted — at most 45% of each axis, which
+ * always leaves a tenth of the viewport to frame into. An off-centre lorry is
+ * a great deal better than no lorry.
+ */
+function safePadding(
+  instance: MapLibreMap,
+  inset: { top: number; right: number; bottom: number; left: number },
+  margin: number,
+): { top: number; right: number; bottom: number; left: number } {
+  const { width, height } = instance.getCanvas().getBoundingClientRect();
+  const clamp = (near: number, far: number, extent: number): [number, number] => {
+    const budget = extent * 0.45;
+    const asked = near + far;
+    if (extent <= 0 || asked <= budget) return [near, far];
+    const factor = budget / asked;
+    return [near * factor, far * factor];
+  };
+  const [left, right] = clamp(inset.left + margin, inset.right + margin, width);
+  const [top, bottom] = clamp(inset.top + margin, inset.bottom + margin, height);
+  return { top, right, bottom, left };
 }
 
 /**
