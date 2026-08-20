@@ -40,6 +40,30 @@ export const ku: Dictionary = {
     themeLight: 'Dîmena ronî — derbasî tarî bibe',
     themeResolvedDark: 'tarî',
     themeResolvedLight: 'ronî',
+    /* --- the floating shell ------------------------------------------- */
+    navigation: 'Beş',
+    quickFind: 'Lêgerîna bilez',
+    focusExit: 'Panelan vegerîne',
+  },
+
+  /*
+   * The command palette.
+   *
+   * Its own section rather than more keys under `shell`, because it is not
+   * chrome — it is a screen, reachable from every other screen, and it will
+   * grow entries as the product does.
+   */
+  palette: {
+    title: 'Lêgerîna bilez',
+    placeholder: 'Li plaka, sipariş, muşterî an rûpelê bigere…',
+    empty: 'Encamek lihevhatî tune',
+    groupVehicles: 'Wesayîtên li rê',
+    groupPages: 'Rûpel',
+    groupActions: 'Kirin',
+    newSession: 'Danişîna şopandinê ya nû',
+    newOrder: 'Siparîşa nû',
+    hintMove: 'bigere',
+    hintOpen: 'veke',
   },
   login: {
     heading: 'Navenda Şopandina Barê',
@@ -125,6 +149,9 @@ export const ku: Dictionary = {
       'Nexşeyê çarçoveyek nekarî xêz bike û ew derbas kir — şopandin didome. Ger dubare bibe sê aliyê bigire.',
     fitAll: 'Hemû barhelgiran li nexşeyê bicîh bike',
     showAll: 'Hemûyan nîşan bide',
+    zoomIn: 'Nêzîk bike',
+    zoomOut: 'Dûr bike',
+    resetNorth: 'Bakur bide jor',
     qualityDown: (ms) => `Ev kompîter negihîşt (${ms} ms/çarçove) — `,
     qualityUp: 'Performans guncaw e — ',
     quality: {
@@ -240,6 +267,8 @@ ${url}`,
   },
   alerts: {
     centre: 'Navenda hişyariyan',
+    summary: (open, resolved) =>
+      `${open} vekirî · di 24 saetan de ${resolved} girtin`,
     heading: 'Hişyarî',
     loadFailed: 'Hişyarî nehatin girtin',
     pending: (count) => `Hişyarî — ${count} li bendê`,
@@ -439,6 +468,18 @@ ${url}`,
     ageMin: (n) => `${n} dq`,
     ageHour: (n) => `${n} st`,
     ageDay: (n) => `${n} roj`,
+    vehicles: 'wesayît',
+    speed: (n) => `${n} km/s`,
+    remainingShort: (n) => `${n} km maye`,
+    filterLabel: 'Parzûna wesayîtan',
+    filterAll: 'Hemû',
+    filterSilent: 'Bêdeng',
+    filterPaused: 'Rawestandî',
+    emptyPaused: 'Wesayîteke rawestandî tune',
+    railTitle: 'Wesayîtên li rê',
+    railCollapse: 'Lîsteyê veşêre',
+    railExpand: 'Lîsteyê nîşan bide',
+    focusHint: 'Nexşeyê paqij bike',
   },
   orderNew: {
     title: 'Siparişa nû',

@@ -14,7 +14,10 @@ export function Card({
   return (
     <div
       className={clsx(
-        'rounded-md bg-surface ring-1 ring-line shadow-xs',
+        // rounded-xl rather than -md. Cards now sit inside a sheet that is
+        // itself rounded-2xl, and a tight radius nested inside a soft one reads
+        // as a mistake rather than as a hierarchy.
+        'rounded-xl bg-surface ring-1 ring-line shadow-xs',
         padded && 'p-4',
         className,
       )}
@@ -102,17 +105,27 @@ export function Stat({
     success: 'text-success',
   } as const;
 
+  /*
+   * Centred, not end-aligned.
+   *
+   * These used to sit at the far right of a top bar where a ragged-right column
+   * of numbers lined up against the edge. They are now tiles in a floating
+   * cluster with air on both sides, and an end-aligned number inside a centred
+   * tile looks like it has slipped.
+   */
   const body = (
     <>
-      <span className={clsx('kh-num text-lg font-semibold leading-none', tones[tone])}>
+      <span className={clsx('kh-num text-md font-semibold leading-none', tones[tone])}>
         {loading ? <span className="kh-skeleton inline-block h-4 w-6 rounded align-middle" /> : value}
       </span>
-      <span className="mt-1 text-2xs uppercase tracking-wider text-ink-3">{label}</span>
+      <span className="mt-1 whitespace-nowrap text-2xs uppercase tracking-wider text-ink-3">
+        {label}
+      </span>
     </>
   );
 
   if (!onClick) {
-    return <span className="flex flex-col items-end leading-none">{body}</span>;
+    return <span className="flex flex-col items-center px-2 py-1 leading-none">{body}</span>;
   }
   return (
     <button
@@ -120,8 +133,8 @@ export function Stat({
       onClick={onClick}
       aria-pressed={active}
       className={clsx(
-        'flex flex-col items-end rounded px-2 py-1 leading-none transition-colors',
-        active ? 'bg-surface-3' : 'hover:bg-surface-2',
+        'flex flex-col items-center rounded-xl px-2.5 py-1 leading-none transition-colors',
+        active ? 'bg-brand-soft text-brand-text' : 'hover:bg-surface-3/70',
       )}
     >
       {body}
@@ -146,10 +159,10 @@ export function PageHeader({
   breadcrumb?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-5 py-3">
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-5 py-4">
       <div className="min-w-0">
         {breadcrumb && <div className="mb-1 text-sm text-ink-3">{breadcrumb}</div>}
-        <h1 className="truncate text-lg font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="truncate text-xl font-semibold tracking-tight text-ink">{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-ink-2">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}

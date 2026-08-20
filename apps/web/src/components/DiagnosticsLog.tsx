@@ -11,6 +11,7 @@ import {
 import { useToast } from './ui/Toast';
 import { Button, IconButton } from './ui/Button';
 import { useFormat, useT } from '@/lib/i18n';
+import type { PopoverPlacement } from './AlertCentre';
 
 /*
  * The error log, in the top bar.
@@ -24,7 +25,7 @@ import { useFormat, useT } from '@/lib/i18n';
  * Hidden entirely when there is nothing wrong. A permanent icon that is
  * usually grey is a permanent invitation to ignore it.
  */
-export function DiagnosticsLog() {
+export function DiagnosticsLog({ placement = 'below' }: { placement?: PopoverPlacement }) {
   const t = useT();
   const fmt = useFormat();
   const toast = useToast();
@@ -56,6 +57,9 @@ export function DiagnosticsLog() {
       <IconButton
         label={t.diagnostics.button(String(entries.length))}
         size="sm"
+        className={
+          placement === 'inline-end' ? '!h-9 !w-9 !rounded-xl hover:!bg-surface-3/70' : undefined
+        }
         onClick={() => setOpen((v) => !v)}
       >
         <span className="relative">
@@ -73,8 +77,13 @@ export function DiagnosticsLog() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute end-0 top-full z-40 mt-1 w-[30rem] max-w-[92vw] rounded-md border border-line bg-surface shadow-panel">
+          <div className="fixed inset-0 z-overlay" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            className={
+              'kh-glass kh-pop-in absolute z-popover w-[30rem] max-w-[92vw] overflow-hidden rounded-2xl ' +
+              (placement === 'below' ? 'end-0 top-full mt-1.5' : 'bottom-0 start-full ms-2.5')
+            }
+          >
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <p className="text-sm font-medium">{t.diagnostics.title}</p>
               <p className="text-2xs text-ink-3">{t.diagnostics.recent(String(entries.length))}</p>

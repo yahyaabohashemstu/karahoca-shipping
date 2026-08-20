@@ -67,6 +67,9 @@ const EXEMPT_FILES = [
 const ALLOWED = new Set([
   'KaraHoca',
   'KARAHOCA',
+  // The monogram in the navigation dock. It is the company's initials, which
+  // are the same two letters in all three languages and in two scripts.
+  'KH',
   'GPS',
   'API',
   'km',

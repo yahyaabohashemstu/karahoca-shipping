@@ -1,254 +1,158 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import clsx from 'clsx';
-import { disconnectRealtime } from '@/lib/useRealtime';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { tokens } from '@/lib/api';
-import { LOCALES, LOCALE_NAME, useI18n, useT, type Dictionary } from '@/lib/i18n';
-import { useTheme } from '@/lib/theme';
-import { IconButton } from './ui/Button';
-import { AlertCentre } from './AlertCentre';
-import { DiagnosticsLog } from './DiagnosticsLog';
+import { useT } from '@/lib/i18n';
+import { useHotkeys, useModKeyLabel } from '@/lib/useHotkeys';
+import { NavDock } from './shell/NavDock';
+import { CommandPalette } from './CommandPalette';
+import { IconRestore } from './shell/Icons';
 
 /* =============================================================================
    Application shell
    =============================================================================
-   The previous build had no navigation at all — one "Oturumlar" link in the
-   corner of the dashboard, and no route to anything else, because nothing else
-   existed. Half the API had no UI.
+   Two layouts out of one set of chrome.
 
-   The chrome is one 44px bar and nothing else. On the live map that bar is the
-   only pixel not spent on the map, which is the point: the map is the product,
-   the navigation is plumbing.
+   `canvas` is the live map: the child fills the viewport corner to corner and
+   every piece of chrome floats on top of it. Nothing is beside the map, above
+   it, or beneath it, because on this product the map is not a view — it is the
+   surface the application is drawn on.
+
+   Everything else is a page: the same dock, and the content in a raised sheet
+   inset from all four edges so the background shows around it. That inset is
+   not decoration. It is what makes a page read as the same kind of object as
+   the panels floating on the map, instead of as a different application that
+   happens to share a navigation bar.
+
+   The shell also owns two things no single screen can own: the command palette,
+   which must open from anywhere including from inside a text field, and focus
+   mode, which must be able to hide the dock — and therefore cannot be
+   controlled by anything the dock contains.
    ========================================================================== */
 
-/*
- * Routing only. The labels live in the dictionary and are looked up by `key`,
- * because a module-level array is evaluated once at import and cannot see the
- * language — a label written here would be Turkish for every reader, for ever.
+/** Dock width plus its margin on both sides. Quoted by the page inset below. */
+const CONTENT_INSET = '4.9rem';
+
+interface ShellState {
+  /** Every piece of chrome is hidden and the map is unobstructed. */
+  focus: boolean;
+  setFocus: (value: boolean) => void;
+  /** True while the command palette has the keyboard. */
+  paletteOpen: boolean;
+  openPalette: () => void;
+}
+
+const ShellCtx = createContext<ShellState>({
+  focus: false,
+  setFocus: () => {},
+  paletteOpen: false,
+  openPalette: () => {},
+});
+
+/**
+ * Read by the screens that draw their own floating panels, so that one key can
+ * clear every overlay in the product at once rather than each screen inventing
+ * its own idea of what "hide the chrome" means.
  */
-const NAV: Array<{ href: string; key: keyof Dictionary['nav']; exact?: boolean }> = [
-  { href: '/', key: 'map', exact: true },
-  { href: '/sessions', key: 'sessions' },
-  { href: '/orders', key: 'orders' },
-  { href: '/customers', key: 'customers' },
-  { href: '/carriers', key: 'carriers' },
-  { href: '/performance', key: 'performance' },
-];
+export function useShell(): ShellState {
+  return useContext(ShellCtx);
+}
 
 export function AppShell({
   children,
-  /** The live map manages its own scrolling and must not be inside a scroll box. */
+  /** The live map: the child owns the whole viewport and all chrome floats. */
+  canvas,
+  /** A page whose child manages its own scrolling — a detail screen with a map. */
   fill,
-  right,
 }: {
   children: React.ReactNode;
+  canvas?: boolean;
   fill?: boolean;
-  right?: React.ReactNode;
 }) {
-  return (
-    <div className="flex h-screen flex-col bg-bg">
-      <TopBar right={right} />
-      <div className={clsx('flex min-h-0 flex-1 flex-col', !fill && 'kh-scroll overflow-y-auto')}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function TopBar({ right }: { right?: React.ReactNode }) {
-  const pathname = usePathname();
   const t = useT();
+  const modKey = useModKeyLabel();
+  const [focus, setFocus] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  /*
+   * Focus mode only means anything where there is something behind the chrome.
+   * Leaving it latched on while the dispatcher walks to the orders screen would
+   * hide the navigation on a page with nothing underneath it to look at.
+   */
+  useEffect(() => {
+    if (!canvas) setFocus(false);
+  }, [canvas]);
+
+  useHotkeys({
+    'mod+k': () => setPaletteOpen(true),
+    // A bare letter, which useHotkeys will not deliver while anything is being
+    // typed — so this can never fire out of the fleet search box.
+    f: () => canvas && setFocus((v) => !v),
+    escape: () => {
+      // Only the outermost concern. The palette closes itself, and the screens
+      // below handle their own selection, because Escape has to peel one layer
+      // at a time rather than resetting everything at once.
+      if (!paletteOpen && focus) setFocus(false);
+    },
+  });
+
+  const chrome = !focus;
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-1 border-b border-line bg-surface px-3">
-      <Link
-        href="/"
-        className="me-3 flex items-baseline gap-2 rounded px-1 py-0.5"
-        aria-label={t.shell.brandAria}
-      >
-        <span className="text-sm font-bold uppercase tracking-[0.18em] text-brand">KaraHoca</span>
-        <span className="hidden text-2xs uppercase tracking-wider text-ink-3 lg:inline">
-          {t.shell.brandSub}
-        </span>
-      </Link>
-
-      <nav className="kh-scroll flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-        {NAV.map((item) => {
-          const active = item.exact
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? 'page' : undefined}
-              className={clsx(
-                'relative whitespace-nowrap rounded px-2.5 py-1.5 text-base transition-colors',
-                active
-                  ? 'font-medium text-ink'
-                  : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
+    <ShellCtx.Provider
+      value={{ focus, setFocus, paletteOpen, openPalette: () => setPaletteOpen(true) }}
+    >
+      <div className="relative h-screen overflow-hidden bg-bg">
+        {canvas ? (
+          // The map. Nothing is layered under it and nothing shares its box.
+          <div className="absolute inset-0 z-canvas">{children}</div>
+        ) : (
+          <div
+            className="h-full py-3 pe-3"
+            style={{ paddingInlineStart: CONTENT_INSET }}
+          >
+            <div className="kh-sheet flex h-full min-h-0 flex-col overflow-hidden rounded-2xl">
+              {fill ? (
+                children
+              ) : (
+                <div className="kh-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  {children}
+                </div>
               )}
-            >
-              {t.nav[item.key]}
-              {/* An underline, not a filled pill: the active item should read as
-                  a tab, and a pill competes with the status badges below it. */}
-              {active && (
-                <span className="absolute inset-x-2 -bottom-[7px] h-0.5 rounded-full bg-brand" />
-              )}
-            </Link>
-          );
-        })}
-      </nav>
+            </div>
+          </div>
+        )}
 
-      <div className="flex shrink-0 items-center gap-2 ps-2">
-        {right}
+        {chrome && <NavDock onOpenPalette={() => setPaletteOpen(true)} modKey={modKey} />}
+
         {/*
-          The driver app's install page. Reachable from every screen because the
-          moment a dispatcher needs it is never predictable — a driver rings
-          from a yard with a phone that has no app on it.
+          The way back.
 
-          A plain <a>, not next/link: /app is served by the API, not by this
-          Next router, so a client-side navigation would 404.
+          Focus mode removes every control including the one that turned it on,
+          so something has to remain. This is the smallest thing that can: one
+          tile in the corner the dock vacated, in the same place, so the hand
+          that reached for the dock finds it without the eye being involved.
         */}
-        <a
-          href="/app"
-          target="_blank"
-          rel="noreferrer"
-          title={t.shell.driverAppTitle}
-          className="hidden whitespace-nowrap rounded px-2 py-1.5 text-2xs uppercase tracking-wider text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink md:inline"
-        >
-          {t.shell.driverApp}
-        </a>
-        {/* The exception desk, on every screen. An alert that only reaches
-            the dispatcher who already has that truck's page open reaches
-            nobody at 02:00 on the Habur road. */}
-        <AlertCentre />
-        {/* Renders nothing until a request actually fails. */}
-        <DiagnosticsLog />
-        <LanguagePicker />
-        <ThemeToggle />
-        <SignOut />
-      </div>
-    </header>
-  );
-}
+        {focus && (
+          <button
+            type="button"
+            onClick={() => setFocus(false)}
+            aria-label={t.shell.focusExit}
+            title={`${t.shell.focusExit}  ·  F`}
+            className="kh-glass kh-pop-in fixed start-3 top-3 z-dock grid h-9 w-9 place-items-center rounded-xl text-ink-2 transition-colors hover:text-ink"
+          >
+            <IconRestore />
+          </button>
+        )}
 
-/**
- * Language, in the languages themselves.
- *
- * A <select> rather than the icon buttons beside it, and for once that is the
- * accessible choice as well as the cheap one: three options do not fit an icon,
- * a native select is reachable by keyboard and screen reader without any of the
- * focus management a custom menu needs, and on a phone the operating system
- * renders it as a proper picker.
- *
- * Each option carries its own lang, so a browser lays "العربية" out
- * right-to-left inside a left-to-right menu instead of mangling it, and a
- * screen reader set to Turkish does not read the Arabic name as nonsense.
- */
-function LanguagePicker() {
-  const { locale, setLocale } = useI18n();
-  const t = useT();
-
-  return (
-    <label className="relative">
-      <span className="sr-only">{t.shell.language}</span>
-      <select
-        value={locale}
-        onChange={(event) => setLocale(event.target.value as (typeof LOCALES)[number])}
-        title={t.shell.language}
-        className="h-8 cursor-pointer rounded border border-line bg-surface px-1.5 text-2xs text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
-      >
-        {LOCALES.map((option) => (
-          <option key={option} value={option} lang={option}>
-            {LOCALE_NAME[option]}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function ThemeToggle() {
-  const { pref, resolved, setPref } = useTheme();
-  const t = useT();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  // Rendering the icon before mount would make the server's guess visible for
-  // one frame and produce a hydration mismatch warning.
-  if (!mounted) return <span className="h-8 w-8" />;
-
-  const next = pref === 'system' ? (resolved === 'dark' ? 'light' : 'dark') : pref === 'dark' ? 'light' : 'dark';
-  const label =
-    pref === 'system'
-      ? t.shell.themeSystem(
-          resolved === 'dark' ? t.shell.themeResolvedDark : t.shell.themeResolvedLight,
-        )
-      : pref === 'dark'
-        ? t.shell.themeDark
-        : t.shell.themeLight;
-
-  return (
-    <IconButton
-      label={label}
-      size="sm"
-      onClick={() => setPref(next)}
-      onDoubleClick={() => setPref('system')}
-    >
-      {resolved === 'dark' ? (
-        <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
-          <path
-            d="M13.2 9.8A5.6 5.6 0 0 1 6.2 2.8a5.6 5.6 0 1 0 7 7Z"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
-          <circle cx="8" cy="8" r="3.1" stroke="currentColor" strokeWidth="1.4" />
-          <path
-            d="M8 1v1.6M8 13.4V15M15 8h-1.6M2.6 8H1m11.95-4.95-1.13 1.13M4.18 11.82l-1.13 1.13m9.9 0-1.13-1.13M4.18 4.18 3.05 3.05"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-          />
-        </svg>
-      )}
-    </IconButton>
-  );
-}
-
-function SignOut() {
-  const router = useRouter();
-  const t = useT();
-  return (
-    <IconButton
-      label={t.shell.signOut}
-      size="sm"
-      onClick={() => {
-        // Kill the socket before clearing tokens: otherwise it keeps retrying
-        // with a dead credential until the page unloads.
-        disconnectRealtime();
-        tokens.clear();
-        router.replace('/login');
-      }}
-    >
-      <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
-        <path
-          d="M6.5 2.5h-3v11h3"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          modKey={modKey}
         />
-        <path d="M9.5 11 12.5 8 9.5 5M12.5 8H6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </IconButton>
+      </div>
+    </ShellCtx.Provider>
   );
 }
 

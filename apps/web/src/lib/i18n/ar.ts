@@ -41,6 +41,30 @@ export const ar: Dictionary = {
     themeLight: 'المظهر الفاتح — التبديل إلى الداكن',
     themeResolvedDark: 'داكن',
     themeResolvedLight: 'فاتح',
+    /* --- the floating shell ------------------------------------------- */
+    navigation: 'الأقسام',
+    quickFind: 'بحث سريع',
+    focusExit: 'إعادة إظهار اللوحات',
+  },
+
+  /*
+   * The command palette.
+   *
+   * Its own section rather than more keys under `shell`, because it is not
+   * chrome — it is a screen, reachable from every other screen, and it will
+   * grow entries as the product does.
+   */
+  palette: {
+    title: 'بحث سريع',
+    placeholder: 'ابحث عن لوحة أو طلب أو عميل أو صفحة…',
+    empty: 'لا توجد نتائج مطابقة',
+    groupVehicles: 'المركبات على الطريق',
+    groupPages: 'الصفحات',
+    groupActions: 'الإجراءات',
+    newSession: 'جلسة تتبّع جديدة',
+    newOrder: 'طلب جديد',
+    hintMove: 'تنقّل',
+    hintOpen: 'فتح',
   },
   login: {
     heading: 'مركز تتبّع الشحنات',
@@ -126,6 +150,9 @@ export const ar: Dictionary = {
       'تعذّر على الخريطة رسم إطار فتخطّته — التتبّع مستمر. إن تكرّر الأمر أوقف العرض ثلاثي الأبعاد.',
     fitAll: 'اعرض كل الشاحنات على الخريطة',
     showAll: 'اعرض الكل',
+    zoomIn: 'تكبير',
+    zoomOut: 'تصغير',
+    resetNorth: 'أعد الشمال إلى الأعلى',
     qualityDown: (ms) => `لم يواكب هذا الحاسوب (${ms} مللي ثانية/إطار) — `,
     qualityUp: 'الأداء مناسب — ',
     quality: {
@@ -241,6 +268,8 @@ ${url}`,
   },
   alerts: {
     centre: 'مركز التنبيهات',
+    summary: (open, resolved) =>
+      `${open} مفتوح · أُغلق ${resolved} خلال 24 ساعة`,
     heading: 'التنبيهات',
     loadFailed: 'تعذّر جلب التنبيهات',
     pending: (count) => `التنبيهات — ${count} قيد الانتظار`,
@@ -440,6 +469,18 @@ ${url}`,
     ageMin: (n) => `${n} د`,
     ageHour: (n) => `${n} س`,
     ageDay: (n) => `${n} يوم`,
+    vehicles: 'مركبة',
+    speed: (n) => `${n} كم/س`,
+    remainingShort: (n) => `بقي ${n} كم`,
+    filterLabel: 'مرشّح المركبات',
+    filterAll: 'الكل',
+    filterSilent: 'صامتة',
+    filterPaused: 'موقوفة مؤقتًا',
+    emptyPaused: 'لا توجد مركبة موقوفة مؤقتًا',
+    railTitle: 'المركبات على الطريق',
+    railCollapse: 'إخفاء القائمة',
+    railExpand: 'إظهار القائمة',
+    focusHint: 'أفرِغ الخريطة',
   },
   orderNew: {
     title: 'طلب جديد',

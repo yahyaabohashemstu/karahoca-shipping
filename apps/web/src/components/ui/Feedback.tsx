@@ -146,7 +146,12 @@ export function StaleBanner({
       role="status"
       aria-live="polite"
       className={clsx(
-        'flex items-center gap-2 bg-warn-bg px-3 py-1.5 text-sm text-warn ring-1 ring-inset ring-delayed-ring/40',
+        // A floating pill rather than a full-width bar. It is now shown over the
+        // map instead of above it, and a bar spanning the viewport would take a
+        // band out of the one thing the dispatcher is looking at — to say that
+        // the thing they are looking at has stopped updating, which is the worst
+        // possible moment to cover it.
+        'flex items-center gap-2 rounded-2xl bg-warn-bg px-3.5 py-2 text-sm text-warn shadow-float ring-1 ring-inset ring-delayed-ring/40',
         className,
       )}
     >

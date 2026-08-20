@@ -27,6 +27,14 @@ export default {
           DEFAULT: rgb('border'),
           strong: rgb('border-strong'),
         },
+        /*
+         * The translucent sheet the dashboard's chrome is made of. Exposed as a
+         * colour as well as through the .kh-glass class, because a few places
+         * need the tint without the blur and the shadow — a hover row inside a
+         * glass panel, the collapsed handle of the rail.
+         */
+        glass: rgb('glass'),
+        scrim: rgb('scrim'),
         ink: {
           DEFAULT: rgb('text'),
           2: rgb('text-2'),
@@ -113,12 +121,25 @@ export default {
         mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
       },
 
+      /*
+       * Two families, and the split is meaningful rather than decorative.
+       *
+       * Up to `xl` are controls — buttons, inputs, badges, table cells. They
+       * stay tight, because a 16px radius on a 28px-tall button turns it into a
+       * lozenge and a column of lozenges is unreadable.
+       *
+       * `2xl` and `3xl` belong to the floating sheets only. A large radius is
+       * what makes a panel read as a physical object resting on the map rather
+       * than a region cut out of it, and the sheets are big enough to carry it.
+       */
       borderRadius: {
         sm: '0.25rem',
         DEFAULT: '0.375rem',
         md: '0.5rem',
         lg: '0.625rem',
         xl: '0.875rem',
+        '2xl': '1.142rem', // 16px
+        '3xl': '1.428rem', // 20px
       },
 
       boxShadow: {
@@ -130,6 +151,36 @@ export default {
         md: '0 4px 12px -2px rgb(var(--kh-shadow) / 0.10), 0 2px 4px -2px rgb(var(--kh-shadow) / 0.06)',
         lg: '0 12px 28px -6px rgb(var(--kh-shadow) / 0.16), 0 4px 8px -4px rgb(var(--kh-shadow) / 0.08)',
         panel: '0 10px 34px -8px rgb(var(--kh-shadow) / 0.22)',
+        /*
+         * For elements that float over the map but are not full .kh-glass
+         * sheets — the map's own control buttons, the collapsed rail handle.
+         * Same layered construction, one layer lighter.
+         */
+        float:
+          '0 1px 2px rgb(var(--kh-shadow) / 0.10), 0 8px 22px -8px rgb(var(--kh-shadow) / 0.22)',
+        /*
+         * A brand-tinted glow under the primary action. Not a drop shadow: it
+         * is the accent colour itself, spread and faded, which is what reads as
+         * "lit" rather than "raised" and separates the one committing action on
+         * a panel from the three neutral ones beside it.
+         */
+        glow: '0 2px 10px -2px rgb(var(--kh-brand) / 0.45)',
+      },
+
+      /*
+       * A named scale, because the dashboard now stacks seven independent
+       * floating layers over a WebGL canvas and "z-50 on everything" is how two
+       * of them end up in an order nobody chose.
+       */
+      zIndex: {
+        canvas: '0',
+        overlay: '10',
+        dock: '20',
+        cluster: '30',
+        popover: '40',
+        palette: '50',
+        modal: '60',
+        toast: '70',
       },
 
       transitionDuration: { DEFAULT: '140ms' },

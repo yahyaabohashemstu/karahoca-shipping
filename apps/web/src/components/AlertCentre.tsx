@@ -46,7 +46,17 @@ import { useFormat, useT, type Dictionary } from '@/lib/i18n';
    still open, because that is what a dispatcher must react to this minute.
    ========================================================================== */
 
-export function AlertCentre() {
+/**
+ * Where the panel opens relative to the bell.
+ *
+ * `below` is what a control in a horizontal bar wants. `inline-end` is what a
+ * control at the foot of a vertical dock needs: anchored downwards it would
+ * open off the bottom of the viewport, because the bell is already three tiles
+ * from the bottom edge of the screen.
+ */
+export type PopoverPlacement = 'below' | 'inline-end';
+
+export function AlertCentre({ placement = 'below' }: { placement?: PopoverPlacement }) {
   const t = useT();
   const [panelOpen, setPanelOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -99,7 +109,7 @@ export function AlertCentre() {
       <IconButton
         label={label}
         size="sm"
-        className="relative"
+        className={clsx('relative', placement === 'inline-end' && '!h-9 !w-9 !rounded-xl hover:!bg-surface-3/70')}
         aria-expanded={panelOpen}
         aria-haspopup="dialog"
         onClick={() => setPanelOpen((v) => !v)}
@@ -135,6 +145,7 @@ export function AlertCentre() {
       {panelOpen && (
         <AlertPanel
           alerts={alerts}
+          placement={placement}
           now={now}
           onNavigate={() => setPanelOpen(false)}
           onAcknowledgeAll={() =>
@@ -157,12 +168,14 @@ export function AlertCentre() {
 
 function AlertPanel({
   alerts,
+  placement,
   now,
   onNavigate,
   onAcknowledge,
   onAcknowledgeAll,
 }: {
   alerts: ReturnType<typeof useAlerts>;
+  placement: PopoverPlacement;
   now: number;
   onNavigate: () => void;
   onAcknowledge: (id: string) => void;
@@ -176,16 +189,24 @@ function AlertPanel({
     <div
       role="dialog"
       aria-label={t.alerts.centre}
-      /* z-40 keeps it over the map's own absolutely-positioned furniture — the
-         legend, the selected-vehicle panel — and under the toasts at z-50,
+      /* z-popover keeps it over the map's own floating furniture — the legend,
+         the fleet rail, the selected-vehicle panel — and under the toasts,
          which must stay readable even with this open. */
-      className="kh-enter absolute end-0 top-full z-40 mt-1.5 w-[26rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md bg-surface shadow-panel ring-1 ring-line"
+      className={clsx(
+        'kh-glass kh-pop-in absolute z-popover w-[26rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl',
+        placement === 'below'
+          ? 'end-0 top-full mt-1.5'
+          : // Bottom-aligned as well as side-anchored: a panel this tall hung
+            // from the top of a tile near the foot of the screen would run off
+            // the bottom edge.
+            'bottom-0 start-full ms-2.5',
+      )}
     >
       <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-ink">{t.alerts.heading}</h2>
           <p className="kh-num mt-0.5 text-2xs text-ink-3">
-            {open.length} açık · son 24 saatte {resolved.length} kapandı
+            {t.alerts.summary(String(open.length), String(resolved.length))}
           </p>
         </div>
         {alerts.canAcknowledgeAll && (

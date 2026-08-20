@@ -26,6 +26,33 @@
     --kh-surface-2: 240 243 244;
     --kh-surface-3: 231 236 237;
 
+    /* --- Glass ------------------------------------------------------------
+       The dashboard's chrome floats over a live map instead of sitting beside
+       it, so every panel is a translucent sheet with terrain moving underneath.
+       Two values carry that: the sheet's own tint, and the hairline that gives
+       it an edge.
+
+       The tint is deliberately NOT --kh-surface at an alpha. White at 76% over
+       a pale basemap loses all edge definition and reads as a smudge, so the
+       light sheet is pushed cooler and brighter than the opaque surface and the
+       dark sheet darker than its own — each pulls away from the map beneath it
+       rather than dissolving into it.
+
+       --kh-glass-solid is the same sheet with the translucency removed. It is
+       what a browser without backdrop-filter gets, and what a reader who has
+       asked the operating system to reduce transparency gets. Neither is a
+       degraded layout — only a degraded finish. */
+    --kh-glass: 253 254 254;
+    --kh-glass-alpha: 0.76;
+    --kh-glass-solid: 255 255 255;
+    /* Real glass catches light along the edge nearest the viewer. One inset
+       pixel of it is the whole difference between a floating sheet and a
+       rectangle of fog. */
+    --kh-hairline: 255 255 255;
+    --kh-hairline-alpha: 0.75;
+    /* Dimming behind a modal, and behind the rail on a narrow screen. */
+    --kh-scrim: 22 32 37;
+
     /* --- Lines ----------------------------------------------------------- */
     --kh-border: 222 228 229;
     --kh-border-strong: 193 202 204;
@@ -124,6 +151,13 @@
     --kh-surface-2: 25 34 38;
     --kh-surface-3: 33 44 49;
 
+    --kh-glass: 15 21 24;
+    --kh-glass-alpha: 0.72;
+    --kh-glass-solid: 18 25 28;
+    --kh-hairline: 255 255 255;
+    --kh-hairline-alpha: 0.07;
+    --kh-scrim: 0 0 0;
+
     --kh-border: 38 50 55;
     --kh-border-strong: 57 74 81;
 
@@ -192,6 +226,22 @@
        site — deliberate, because a dispatcher needs forty rows visible without
        scrolling, not comfortable reading measure. */
     font-size: 14px;
+
+    /*
+     * +1 or -1, depending on which way the page reads.
+     *
+     * Entrance animations move a panel in from the edge it is docked to, and
+     * that edge swaps in Arabic and Sorani. A keyframe cannot use a logical
+     * property — `translateX` is physical and there is no `translateInline` —
+     * so the direction is carried as a number the keyframe multiplies by.
+     * Without it every panel on the Arabic dashboard flies in from the wrong
+     * side, which reads as the interface being thrown at the reader.
+     */
+    --kh-dir: 1;
+  }
+
+  html[dir='rtl'] {
+    --kh-dir: -1;
   }
 
   body {
@@ -222,6 +272,62 @@
 }
 
 @layer components {
+  /* ---------------------------------------------------------------------------
+     Glass
+     ---------------------------------------------------------------------------
+     One class, used by every floating sheet: the navigation dock, the fleet
+     rail, the status cluster, the map controls, the detail panel, the command
+     palette. Written here rather than as a Tailwind utility string because the
+     shadow is four stacked layers and the fallbacks are conditional, and
+     repeating that at twelve call sites is how the twelve drift apart.
+
+     The shadow is layered rather than single because one blur at one opacity
+     always looks either flat or muddy. A tight contact shadow anchors the sheet
+     to the map, a mid shadow gives it height, and a wide, very soft, very dark
+     one grounds it — which is what stops a pale panel floating over pale
+     terrain from looking pasted on.
+     ------------------------------------------------------------------------ */
+  .kh-glass {
+    background-color: rgb(var(--kh-glass) / var(--kh-glass-alpha));
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+    border: 1px solid rgb(var(--kh-border-strong) / 0.45);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--kh-hairline) / var(--kh-hairline-alpha)),
+      0 1px 2px rgb(var(--kh-shadow) / 0.10),
+      0 10px 28px -8px rgb(var(--kh-shadow) / 0.20),
+      0 32px 64px -32px rgb(var(--kh-shadow) / 0.28);
+  }
+
+  /* A sheet that sits on a page rather than on the map — same family, no blur
+     to pay for, because there is nothing behind it worth seeing. */
+  .kh-sheet {
+    background-color: rgb(var(--kh-surface));
+    border: 1px solid rgb(var(--kh-border));
+    box-shadow:
+      inset 0 1px 0 rgb(var(--kh-hairline) / var(--kh-hairline-alpha)),
+      0 1px 2px rgb(var(--kh-shadow) / 0.05),
+      0 8px 24px -10px rgb(var(--kh-shadow) / 0.12);
+  }
+
+  /*
+   * Both fallbacks collapse the sheet to opaque. Neither changes a single
+   * dimension, so no layout depends on the blur being available.
+   */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .kh-glass {
+      background-color: rgb(var(--kh-glass-solid));
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .kh-glass {
+      background-color: rgb(var(--kh-glass-solid));
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
   /* Scrollbars: the default Windows scrollbar is 17px of bright grey against a
      dark sidebar. */
   .kh-scroll {
@@ -251,6 +357,37 @@
    MapLibre overrides
    -------------------------------------------------------------------------- */
 
+/*
+ * The credit and the scale bar, pushed clear of whatever is floating over them.
+ *
+ * MapLibre pins these to the bottom-left corner and offers only four corners to
+ * choose from. That was fine when the map had a sidebar beside it and the
+ * bottom-left of the *map* was empty. It is not fine now: the map is the whole
+ * viewport, so the bottom-left of the map is also the bottom-left of the window,
+ * which is where the navigation dock and the fleet rail live — and in Arabic it
+ * is where the vehicle detail panel lives instead.
+ *
+ * Measured with the rail open: the dock covered the OpenFreeMap / OpenMapTiles /
+ * OpenStreetMap credit outright. That is a licence term, not a cosmetic detail,
+ * and it is the second time this exact notice has been hidden by a panel.
+ *
+ * So the offset is published by the map component from the same figure it gives
+ * the camera: how many pixels of the physical left edge are covered. Both
+ * controls slide with it. When the rail collapses or focus mode clears the
+ * screen they slide back. The variable defaults to zero, so the map preview
+ * harness, which floats nothing, is unaffected.
+ */
+.maplibregl-ctrl-bottom-left {
+  left: var(--kh-map-inset-left, 0px) !important;
+  transition: left 200ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maplibregl-ctrl-bottom-left {
+    transition: none;
+  }
+}
+
 .maplibregl-ctrl-attrib {
   font-size: 10px;
   background: rgb(var(--kh-surface) / 0.82) !important;
@@ -259,13 +396,51 @@
 .maplibregl-ctrl-attrib a {
   color: rgb(var(--kh-text-2)) !important;
 }
+/*
+ * MapLibre's own zoom control, on the two maps that still use it — the session
+ * detail screen and the location picker. The live fleet map draws its own, for
+ * the reasons in FleetMap.tsx.
+ *
+ * Restyled here rather than left alone so that all three maps are visibly one
+ * product. It borrows the glass material and the sheet radius from the floating
+ * panels, which is what makes a control the dispatcher meets on the detail page
+ * feel like the control they were using on the map a moment earlier.
+ */
 .maplibregl-ctrl-group {
-  background: rgb(var(--kh-surface)) !important;
-  border: 1px solid rgb(var(--kh-border)) !important;
-  box-shadow: 0 1px 2px rgb(var(--kh-shadow) / 0.08) !important;
+  background: rgb(var(--kh-glass) / var(--kh-glass-alpha)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgb(var(--kh-border-strong) / 0.45) !important;
+  border-radius: 0.875rem !important;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgb(var(--kh-hairline) / var(--kh-hairline-alpha)),
+    0 1px 2px rgb(var(--kh-shadow) / 0.10),
+    0 8px 22px -8px rgb(var(--kh-shadow) / 0.22) !important;
+}
+.maplibregl-ctrl-group button {
+  width: 2rem !important;
+  height: 2rem !important;
 }
 .maplibregl-ctrl-group button + button {
   border-top: 1px solid rgb(var(--kh-border)) !important;
+}
+.maplibregl-ctrl-group button:hover {
+  background: rgb(var(--kh-surface-3) / 0.7) !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .maplibregl-ctrl-group {
+    background: rgb(var(--kh-glass-solid)) !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .maplibregl-ctrl-group {
+    background: rgb(var(--kh-glass-solid)) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 /* The default control glyphs are black PNG-era SVGs; invert them in dark mode
    rather than shipping a second icon set. */
@@ -329,10 +504,77 @@
   animation: kh-slide-up 0.16s ease-out;
 }
 
+/* -----------------------------------------------------------------------------
+   Floating-panel motion
+   -----------------------------------------------------------------------------
+   Every curve here is the same expo-out. Ease-out alone decelerates too evenly
+   and reads as sluggish on a panel that has travelled 10px; this one covers
+   most of the distance in the first third and settles, which is what makes a
+   sheet feel light rather than dragged.
+
+   Nothing scales from below 0.97. A panel that grows from 0.9 announces itself,
+   and this one appears while a dispatcher is mid-sentence on the telephone.
+   -------------------------------------------------------------------------- */
+
+@keyframes kh-panel-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.kh-panel-in {
+  animation: kh-panel-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Docked to the inline-start edge — flies in from whichever side that is. */
+@keyframes kh-rail-in {
+  from { opacity: 0; transform: translateX(calc(var(--kh-dir) * -14px)); }
+  to { opacity: 1; transform: none; }
+}
+.kh-rail-in {
+  animation: kh-rail-in 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Docked to the inline-end edge. */
+@keyframes kh-aside-in {
+  from { opacity: 0; transform: translateX(calc(var(--kh-dir) * 14px)); }
+  to { opacity: 1; transform: none; }
+}
+.kh-aside-in {
+  animation: kh-aside-in 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes kh-pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.kh-pop-in {
+  animation: kh-pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/*
+ * The live pip beside the connection state.
+ *
+ * A dispatcher must be able to tell peripherally that data is still flowing,
+ * without anything moving in the part of the screen they are reading. One
+ * expanding ring every two seconds, at the size of a full stop, is the whole
+ * budget for that.
+ */
+@keyframes kh-ping {
+  0% { transform: scale(1); opacity: 0.55; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.kh-ping {
+  animation: kh-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kh-pulse,
   .kh-skeleton::after,
-  .kh-enter {
+  .kh-enter,
+  .kh-panel-in,
+  .kh-rail-in,
+  .kh-aside-in,
+  .kh-pop-in,
+  .kh-ping {
     animation: none !important;
   }
 }

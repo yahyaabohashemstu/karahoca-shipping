@@ -6,7 +6,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint && npm run check:i18n && npm run check:text",
+    "lint": "npm run typecheck && npm run check:i18n && npm run check:text",
     "check:text": "node --disable-warning=ExperimentalWarning scripts/check-text.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
     "typecheck": "tsc --noEmit"

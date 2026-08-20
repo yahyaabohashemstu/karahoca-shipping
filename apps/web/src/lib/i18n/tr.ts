@@ -49,6 +49,30 @@ export const tr = {
     themeLight: 'Açık tema — koyuya geç',
     themeResolvedDark: 'koyu',
     themeResolvedLight: 'açık',
+    /* --- the floating shell ------------------------------------------- */
+    navigation: 'Bölümler',
+    quickFind: 'Hızlı arama',
+    focusExit: 'Panelleri geri getir',
+  },
+
+  /*
+   * The command palette.
+   *
+   * Its own section rather than more keys under `shell`, because it is not
+   * chrome — it is a screen, reachable from every other screen, and it will
+   * grow entries as the product does.
+   */
+  palette: {
+    title: 'Hızlı arama',
+    placeholder: 'Plaka, sipariş, müşteri veya sayfa ara…',
+    empty: 'Eşleşen sonuç yok',
+    groupVehicles: 'Yoldaki araçlar',
+    groupPages: 'Sayfalar',
+    groupActions: 'İşlemler',
+    newSession: 'Yeni takip oturumu',
+    newOrder: 'Yeni sipariş',
+    hintMove: 'gezin',
+    hintOpen: 'aç',
   },
   login: {
     heading: 'Sevkiyat Takip Merkezi',
@@ -133,6 +157,9 @@ export const tr = {
     renderFault: 'Harita bir kareyi çizemedi ve atladı — takip sürüyor. Sorun tekrarlarsa 3B’yi kapatın.',
     fitAll: 'Tüm araçları haritaya sığdır',
     showAll: 'Tümünü göster',
+    zoomIn: 'Yakınlaştır',
+    zoomOut: 'Uzaklaştır',
+    resetNorth: 'Kuzeyi yukarı çevir',
     qualityDown: (ms: string) => `Bu bilgisayar yetişemedi (${ms} ms/kare) — `,
     qualityUp: 'Performans uygun — ',
     quality: {
@@ -256,6 +283,8 @@ ${url}`,
   },
   alerts: {
     centre: 'Uyarı merkezi',
+    summary: (open: string, resolved: string) =>
+      `${open} açık · son 24 saatte ${resolved} kapandı`,
     heading: 'Uyarılar',
     loadFailed: 'Uyarılar alınamadı',
     pending: (count: string) => `Uyarılar — ${count} bekleyen`,
@@ -455,6 +484,18 @@ ${url}`,
     ageMin: (n: string) => `${n} dk`,
     ageHour: (n: string) => `${n} sa`,
     ageDay: (n: string) => `${n} gün`,
+    vehicles: 'araç',
+    speed: (n: string) => `${n} km/s`,
+    remainingShort: (n: string) => `${n} km kaldı`,
+    filterLabel: 'Araç filtresi',
+    filterAll: 'Tümü',
+    filterSilent: 'Sessiz',
+    filterPaused: 'Duraklatıldı',
+    emptyPaused: 'Duraklatılmış araç yok',
+    railTitle: 'Yoldaki araçlar',
+    railCollapse: 'Listeyi gizle',
+    railExpand: 'Listeyi göster',
+    focusHint: 'Haritayı temizle',
   },
   orderNew: {
     title: 'Yeni sipariş',

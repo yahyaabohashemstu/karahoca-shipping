@@ -85,7 +85,7 @@ export function Modal({
       }}
       aria-labelledby="kh-modal-title"
       className={clsx(
-        'w-[calc(100vw-2rem)] rounded-lg bg-surface p-0 text-ink shadow-panel ring-1 ring-line',
+        'w-[calc(100vw-2rem)] rounded-2xl bg-surface p-0 text-ink shadow-panel ring-1 ring-line',
         'backdrop:bg-black/45 backdrop:backdrop-blur-[2px]',
         'open:kh-enter',
         widths[size],

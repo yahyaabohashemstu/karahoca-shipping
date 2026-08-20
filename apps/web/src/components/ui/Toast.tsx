@@ -65,7 +65,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div
         // aria-live on the container, so entries are announced as they arrive.
         aria-live="polite"
-        className="pointer-events-none fixed bottom-4 left-1/2 z-50 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2"
+        className="pointer-events-none fixed bottom-4 left-1/2 z-toast flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2"
       >
         {items.map((t) => (
           <ToastCard key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />

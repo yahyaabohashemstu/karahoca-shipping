@@ -28,6 +28,15 @@ import {
 } from '@/lib/mapQuality';
 import { guardRenderQueue } from '@/lib/renderGuard';
 import { useT } from '@/lib/i18n';
+import clsx from 'clsx';
+import { Tip } from './ui/Hint';
+import {
+  IconCompass,
+  IconCube,
+  IconFit,
+  IconZoomIn,
+  IconZoomOut,
+} from './shell/Icons';
 
 /** Remembered across mounts, so the view a dispatcher chose survives a route change. */
 const DIMENSIONAL_KEY = 'kh.map.3d';
@@ -93,6 +102,19 @@ interface Props {
   /** Dims the overlay when the feed is frozen, so staleness is visible peripherally. */
   stale?: boolean;
   /**
+   * How many pixels of the map each edge of the viewport has floating chrome
+   * over it. Physical left/right, not logical, because that is what a camera
+   * deals in.
+   *
+   * Without this every camera move aims at the centre of the *container*, and
+   * the container is 21rem wider than the part of it anybody can see. A
+   * dispatcher clicking a lorry in the rail watched it settle underneath the
+   * rail, which looked like the map ignoring the click.
+   */
+  inset?: { top: number; right: number; bottom: number; left: number };
+  /** Where the map's own control stack starts, below whatever floats above it. */
+  controlsTop?: number;
+  /**
    * Handed the MapLibre instance once it has loaded.
    *
    * The map is otherwise entirely sealed inside this component, which is right
@@ -113,7 +135,19 @@ interface Props {
  * rest. It also gives data-driven styling — colour by signal state, rotation by
  * bearing — for free.
  */
-export default function FleetMap({ positions, liveUpdates, selectedId, onSelect, now, stale, onMapReady }: Props) {
+const NO_INSET = { top: 0, right: 0, bottom: 0, left: 0 };
+
+export default function FleetMap({
+  positions,
+  liveUpdates,
+  selectedId,
+  onSelect,
+  now,
+  stale,
+  inset = NO_INSET,
+  controlsTop = 12,
+  onMapReady,
+}: Props) {
   const t = useT();
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
@@ -130,6 +164,18 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
    * showed up on the detail page and nowhere on the main map.
    */
   const [ready, setReady] = useState(false);
+  /*
+   * Read through a ref by the camera helpers.
+   *
+   * They are called from effects keyed on the selection and from a useCallback
+   * with no dependencies, and neither should be rebuilt because the dispatcher
+   * collapsed the rail — that would re-run the follow-selection ease and yank
+   * the camera as a side effect of a layout change.
+   */
+  const insetRef = useRef(inset);
+  insetRef.current = inset;
+  /** The compass glyph, rotated imperatively. See the rotate listener below. */
+  const compass = useRef<HTMLSpanElement>(null);
   /*
    * Which style URL the map is currently showing.
    *
@@ -507,17 +553,24 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     });
 
     /*
-     * These corners are physical, and so are the overlay buttons and the legend
-     * this component draws over the map.
+     * MapLibre's NavigationControl is gone, and its zoom and compass are drawn
+     * by this component instead.
      *
-     * MapLibre pins its controls to 'top-right' and 'bottom-left' and does not
-     * mirror them for a right-to-left document — there is no dir-aware option.
-     * Converting our own overlays to logical properties would therefore split
-     * them from the zoom control they sit directly beneath, leaving the Arabic
-     * map with buttons down the left and MapLibre's own controls down the
-     * right. Physical is the consistent choice here, and only here.
+     * Two things it could not do. It is pinned to 'top-right' and MapLibre
+     * offers no direction-aware placement, so on the Arabic dashboard it sat on
+     * the opposite side of the screen from every other control. And it belongs
+     * to the map instance rather than to React, so focus mode — which clears
+     * every overlay off the map — could not take it with the rest.
+     *
+     * The stylesheet still restyles .maplibregl-ctrl-group, because the session
+     * detail map and the location picker both still use MapLibre's own control:
+     * neither mirrors, and neither has a focus mode.
+     *
+     * Scale and attribution stay where MapLibre puts them. They are map
+     * furniture and a licence term rather than application controls, the corner
+     * they occupy is the one no floating panel uses, and reimplementing an
+     * attribution notice to move it 40 pixels would be a poor trade.
      */
-    instance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     instance.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
     instance.addControl(new maplibregl.AttributionControl(), 'bottom-left');
 
@@ -998,11 +1051,33 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
      */
     if (!hasFitted.current && truckFeatures.length > 0 && !selectedId) {
       hasFitted.current = true;
-      fitTo(instance, truckFeatures, dimensional ? DEFAULT_PITCH : 0);
+      fitTo(instance, truckFeatures, dimensional ? DEFAULT_PITCH : 0, insetRef.current);
     }
     // installLayers is a useCallback with no dependencies and so is stable;
     // listing it keeps the exhaustive-deps rule honest rather than suppressed.
   }, [ready, positions, liveUpdates, selectedId, now, resolved, dimensional, installLayers]);
+
+  /*
+   * The compass needle, rotated without a React render.
+   *
+   * A `rotate` listener that called setState would re-render this component —
+   * and with it the whole overlay — on every frame of a drag. The needle is one
+   * transform on one element, so it is written straight to the DOM, which is
+   * the same reason `belowModelZoom` is a boolean rather than the zoom itself.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready) return;
+    const sync = () => {
+      const node = compass.current;
+      if (node) node.style.transform = `rotate(${-instance.getBearing()}deg)`;
+    };
+    sync();
+    instance.on('rotate', sync);
+    return () => {
+      instance.off('rotate', sync);
+    };
+  }, [ready]);
 
   /** Re-frame every truck on demand. Wired to the button over the map. */
   const fitAll = useCallback(() => {
@@ -1011,7 +1086,7 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     const data = (source as unknown as { _data?: GeoJSON.FeatureCollection })?._data;
     if (!instance || !data?.features?.length) return;
     // Re-framing must not flatten a dispatcher's tilted view either.
-    fitTo(instance, data.features, instance.getPitch());
+    fitTo(instance, data.features, instance.getPitch(), insetRef.current);
   }, []);
 
   // ---- Follow the selection --------------------------------------------------
@@ -1040,9 +1115,20 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
      * the deref is unreachable. The camera holds a constant height for the
      * length of the animation, which over 700-800 ms nobody can see.
      */
+    /*
+     * `offset`, not `padding`.
+     *
+     * They would both put the lorry in the middle of the visible area, but
+     * MapLibre's camera padding is sticky: set once through an ease, it applies
+     * to every later camera operation until something clears it. A dispatcher
+     * who then collapsed the rail would have a map permanently offset by a
+     * panel that is no longer there. An offset lasts exactly one animation.
+     */
+    const pad = insetRef.current;
     instance.easeTo({
       center: [lon, lat],
       zoom: Math.max(instance.getZoom(), 11),
+      offset: [(pad.left - pad.right) / 2, (pad.top - pad.bottom) / 2],
       duration: 800,
       freezeElevation: true,
     });
@@ -1052,77 +1138,145 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
   }, [selectedId]);
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative h-full w-full"
+      /*
+       * How much of the inline-start edge is covered, published to CSS.
+       *
+       * MapLibre's own bottom-left controls read it — see the rule on
+       * .maplibregl-ctrl-bottom-left in globals.css, which is pinned with the
+       * physical `left` and so needs the physical number. In a left-to-right
+       * document that is the dock and the fleet rail; in Arabic those are on the
+       * right and the vehicle detail panel is what sits here instead. `inset`
+       * has already resolved which.
+       */
+      style={{ '--kh-map-inset-left': `${inset.left}px` } as React.CSSProperties}
+    >
       <div
         ref={container}
         className={`h-full w-full transition-opacity duration-500 ${stale ? 'opacity-55' : ''}`}
       />
 
-      {/*
-        The dimension switch, directly under MapLibre's own controls.
+      {/* ---------------------------------------------------- camera controls --
+        Drawn here rather than taken from MapLibre, for three reasons that only
+        became true once the map went full-bleed: they have to sit on the
+        inline-end edge, which mirrors in Arabic and MapLibre's placements do
+        not; they have to be the same glass as the six other panels floating on
+        this map; and they have to be able to disappear entirely in focus mode,
+        which a control added to the map instance cannot.
 
-        Labelled with the mode it will switch TO, which is the convention the
-        rest of this dashboard uses and the one that does not require a
-        dispatcher to work out whether a highlighted "3D" means it is on or
-        that pressing it turns it on.
+        Grouped rather than stacked in one strip. Zoom is continuous, north is
+        a reset, and framing is a jump — three different kinds of action, and
+        the gaps say so without a label.
       */}
-      <button
-        type="button"
-        onClick={() => {
-          const next = !dimensional;
-          setDimensionalState(next);
-          window.localStorage.setItem(DIMENSIONAL_KEY, next ? '1' : '0');
-          /*
-           * Turning 3D back on is a request to try again, so the search starts
-           * over from the middle tier rather than resuming wherever the
-           * governor had given up. Otherwise a dispatcher who switched off
-           * during a bad afternoon would be stuck at flat markers for ever.
-           */
-          if (next) {
-            const fresh = Quality.Buildings;
-            qualityRef.current = fresh;
-            setQualityState(fresh);
-            saveQuality(fresh);
-            governor.current?.reset(fresh);
-          }
-        }}
-        title={
-          dimensional
-            ? t.map.toFlat
-            : t.map.toDimensional
-        }
-        aria-pressed={dimensional}
-        className={`absolute right-2 top-[7.75rem] flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm shadow-sm ring-1 transition-colors ${
-          dimensional
-            ? 'bg-accent text-white ring-accent'
-            : 'bg-surface text-ink-2 ring-line hover:bg-surface-2 hover:text-ink'
-        }`}
+      <div
+        className="absolute end-3 z-overlay flex flex-col items-end gap-1.5"
+        style={{ insetBlockStart: controlsTop }}
       >
-        <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
-          <path
-            d="M7 1.2 12.4 4v6L7 12.8 1.6 10V4L7 1.2Z"
-            stroke="currentColor"
-            strokeWidth="1.3"
-            strokeLinejoin="round"
-          />
-          <path d="M7 6.4 12.4 4M7 6.4 1.6 4M7 6.4v6.4" stroke="currentColor" strokeWidth="1.1" />
-        </svg>
-        3B
-      </button>
-
-      {/*
-        Why the trucks are still dots.
-
-        The single most likely support question about this feature, answered
-        before it is asked. Shown only in the band where a dispatcher has turned
-        3D on, can see it is on, and is looking at flat markers — which is every
-        zoom below the threshold, and is correct behaviour rather than a fault.
-      */}
-      {dimensional && belowModelZoom && (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-surface/90 px-2.5 py-1 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
-          {t.map.zoomForModels}
+        <div className="kh-glass flex flex-col rounded-2xl p-1">
+          <MapButton label={t.map.zoomIn} onClick={() => map.current?.zoomIn()}>
+            <IconZoomIn />
+          </MapButton>
+          <span className="mx-auto my-0.5 h-px w-4 bg-line" aria-hidden />
+          <MapButton label={t.map.zoomOut} onClick={() => map.current?.zoomOut()}>
+            <IconZoomOut />
+          </MapButton>
         </div>
-      )}
+
+        {/*
+          Rotation only exists in three dimensions, so neither does the way back
+          from it. A compass that always points north is furniture, and this one
+          is only reachable when the map can actually be turned.
+        */}
+        {dimensional && (
+          <div className="kh-glass flex flex-col rounded-2xl p-1">
+            <MapButton
+              label={t.map.resetNorth}
+              onClick={() =>
+                map.current?.easeTo({ bearing: 0, duration: 400, freezeElevation: true })
+              }
+            >
+              <span ref={compass} className="grid place-items-center">
+                <IconCompass />
+              </span>
+            </MapButton>
+          </div>
+        )}
+
+        <div className="kh-glass flex flex-col rounded-2xl p-1">
+          <MapButton label={t.map.fitAll} onClick={fitAll}>
+            <IconFit />
+          </MapButton>
+          <span className="mx-auto my-0.5 h-px w-4 bg-line" aria-hidden />
+          {/*
+            The dimension switch.
+
+            Labelled with the mode it will switch TO, which is the convention the
+            rest of this dashboard uses and the one that does not require a
+            dispatcher to work out whether a highlighted "3D" means it is on or
+            that pressing it turns it on. `aria-pressed` carries the actual state
+            for anyone who needs it stated rather than shown.
+
+            The filled state used to be written `bg-accent ring-accent` — two
+            colours that have never existed in this palette. Tailwind emitted no
+            rule for either, so the "on" state was white text on a transparent
+            button: invisible in the light theme, which is where it was least
+            likely to be noticed by whoever last worked on the dark one.
+          */}
+          <MapButton
+            label={dimensional ? t.map.toFlat : t.map.toDimensional}
+            active={dimensional}
+            onClick={() => {
+              const next = !dimensional;
+              setDimensionalState(next);
+              window.localStorage.setItem(DIMENSIONAL_KEY, next ? '1' : '0');
+              /*
+               * Turning 3D back on is a request to try again, so the search
+               * starts over from the middle tier rather than resuming wherever
+               * the governor had given up. Otherwise a dispatcher who switched
+               * off during a bad afternoon would be stuck at flat markers for
+               * ever.
+               */
+              if (next) {
+                const fresh = Quality.Buildings;
+                qualityRef.current = fresh;
+                setQualityState(fresh);
+                saveQuality(fresh);
+                governor.current?.reset(fresh);
+              }
+            }}
+          >
+            <IconCube />
+          </MapButton>
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------------- notices --
+        One centred column, so two of them arriving together stack instead of
+        printing on top of each other — which is what happened when the render
+        fault and the zoom hint both used `top-3 left-1/2`.
+      */}
+      <div
+        className="pointer-events-none absolute z-overlay flex flex-col items-center gap-1.5"
+        // The same offset the camera stack uses, for the same reason: whatever
+        // floats above the map at the top of the screen — the connection warning
+        // on the dashboard — got here first. And centred between the panels
+        // rather than in the viewport, for the reason on MapLegend.
+        style={{ insetBlockStart: controlsTop, left: inset.left, right: inset.right }}
+      >
+        {renderFault && <Notice tone="warn">{t.map.renderFault}</Notice>}
+
+        {/*
+          Why the trucks are still dots.
+
+          The single most likely support question about this feature, answered
+          before it is asked. Shown only in the band where a dispatcher has
+          turned 3D on, can see it is on, and is looking at flat markers — which
+          is every zoom below the threshold, and is correct behaviour rather
+          than a fault.
+        */}
+        {dimensional && belowModelZoom && <Notice>{t.map.zoomForModels}</Notice>}
+      </div>
 
       {/*
         What the governor did, and why.
@@ -1132,42 +1286,82 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
         tool. It clears itself after a few seconds because it is not an error.
       */}
       {qualityNotice && (
-        <div className="pointer-events-none absolute bottom-14 left-1/2 -translate-x-1/2 rounded-md bg-surface/95 px-3 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
-          {qualityNotice.direction === 'down'
-            ? t.map.qualityDown(String(qualityNotice.medianMs))
-            : t.map.qualityUp}
-          {t.map.quality[QUALITY_TIER[qualityNotice.quality]]}
+        <div
+          className="pointer-events-none absolute bottom-[3.4rem] z-overlay flex justify-center"
+          style={{ left: inset.left, right: inset.right }}
+        >
+          <Notice>
+            {qualityNotice.direction === 'down'
+              ? t.map.qualityDown(String(qualityNotice.medianMs))
+              : t.map.qualityUp}
+            {t.map.quality[QUALITY_TIER[qualityNotice.quality]]}
+          </Notice>
         </div>
       )}
 
-      {renderFault && (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-amber-500/15 px-3 py-1.5 text-2xs font-medium text-amber-700 shadow-sm ring-1 ring-amber-500/40 backdrop-blur dark:text-amber-300">
-          {t.map.renderFault}
-        </div>
-      )}
-
-      {/* Below the zoom controls, which MapLibre puts at top-right. */}
-      <button
-        type="button"
-        onClick={fitAll}
-        title={t.map.fitAll}
-        className="absolute right-2 top-[4.75rem] flex h-8 items-center gap-1.5 rounded-md bg-surface px-2.5 text-sm text-ink-2 shadow-sm ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-ink"
-      >
-        <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
-          <path
-            d="M1.5 4.5v-3h3M12.5 4.5v-3h-3M1.5 9.5v3h3M12.5 9.5v3h-3"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="7" cy="7" r="1.6" fill="currentColor" />
-        </svg>
-        {t.map.showAll}
-      </button>
-
-      <MapLegend />
+      <MapLegend inset={inset} />
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One button in the camera stack.
+ *
+ * Square, icon-only, and labelled by a tooltip that opens towards the middle of
+ * the map — the opposite side from the dock's tooltips, because these controls
+ * are docked to the opposite edge and a label that opened outwards would be
+ * half off the screen.
+ */
+function MapButton({
+  label,
+  onClick,
+  active,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      className={clsx(
+        'group relative grid h-8 w-8 place-items-center rounded-lg transition-colors',
+        'focus-visible:outline-2 focus-visible:outline-offset-2',
+        active
+          ? 'bg-brand text-ink-inverse shadow-glow'
+          : 'text-ink-2 hover:bg-surface-3/70 hover:text-ink',
+      )}
+    >
+      {children}
+      <Tip side="start">{label}</Tip>
+    </button>
+  );
+}
+
+/**
+ * A transient line of explanation over the map.
+ *
+ * Never an error dialog, and never dismissible: everything that appears here is
+ * the map reporting on itself, and all of it goes away on its own once the
+ * condition does.
+ */
+function Notice({ children, tone }: { children: React.ReactNode; tone?: 'warn' }) {
+  return (
+    <p
+      className={clsx(
+        'kh-glass kh-pop-in max-w-[min(28rem,80vw)] rounded-xl px-3 py-1.5 text-center text-2xs',
+        tone === 'warn' ? 'font-medium text-warn' : 'text-ink-2',
+      )}
+    >
+      {children}
+    </p>
   );
 }
 
@@ -1178,7 +1372,12 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
  * collapses the bounding box to a point and fitBounds happily zooms to 22 —
  * street furniture filling the screen with no context at all.
  */
-function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[], pitch?: number) {
+function fitTo(
+  instance: MapLibreMap,
+  features: GeoJSON.Feature[],
+  pitch?: number,
+  inset: { top: number; right: number; bottom: number; left: number } = NO_INSET,
+) {
   const points = features
     .map((f) => (f.geometry?.type === 'Point' ? (f.geometry.coordinates as [number, number]) : null))
     .filter((c): c is [number, number] => Array.isArray(c));
@@ -1193,8 +1392,21 @@ function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[], pitch?: numbe
     // terrain is installed throws inside MapLibre's render queue and latches
     // the map dead. fitBounds is an ease like any other.
     freezeElevation: true,
-    // Right padding clears the selected-truck panel; bottom clears the legend.
-    padding: { top: 60, right: 80, bottom: 70, left: 60 },
+    /*
+     * The chrome's own footprint plus a margin, rather than four magic numbers.
+     *
+     * The old constants described a 22rem sidebar that sat *beside* the map and
+     * therefore never covered it at all; the only thing overlapping was a panel
+     * on the right. Now that every panel floats on the map, "fit all vehicles"
+     * has to mean fit them where they can be seen — otherwise the lorry nearest
+     * Gaziantep lands under the fleet rail on every single press.
+     */
+    padding: {
+      top: inset.top + 28,
+      right: inset.right + 28,
+      bottom: inset.bottom + 28,
+      left: inset.left + 28,
+    },
     maxZoom: 13,
     duration: 700,
     /*
@@ -1216,7 +1428,7 @@ function fitTo(instance: MapLibreMap, features: GeoJSON.Feature[], pitch?: numbe
  * on screen and five states, a dispatcher on their first week has no way to
  * learn what graphite means except by asking someone.
  */
-function MapLegend() {
+function MapLegend({ inset }: { inset: { left: number; right: number } }) {
   const t = useT();
   const items: DisplayState[] = ['LIVE', 'DELAYED', 'PAUSED', 'STALE', 'LOST'];
   const dot: Record<DisplayState, string> = {
@@ -1228,15 +1440,32 @@ function MapLegend() {
     PAUSED: 'bg-[rgb(var(--kh-map-paused))]',
   };
   return (
-    // right-3 to share an edge with the selected-vehicle panel, which sits
-    // directly above this and is measured against its height.
-    <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-3 rounded-md bg-surface/90 px-2.5 py-1.5 text-2xs text-ink-2 shadow-sm ring-1 ring-line backdrop-blur">
-      {items.map((s) => (
-        <span key={s} className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${dot[s]}`} aria-hidden />
-          {t.signal.label[s]}
-        </span>
-      ))}
+    /*
+     * Centred along the bottom edge — but between the floating panels, not in
+     * the viewport.
+     *
+     * The bottom edge is the only strip of map that nothing else claims: the
+     * dock and the fleet rail hold the inline-start edge, the camera stack and
+     * the detail panel hold the inline-end, and MapLibre's scale and
+     * attribution hold the bottom-left corner. Centring on the viewport with a
+     * 20rem rail open puts the legend visibly left of where the eye expects the
+     * middle of the map to be, and at 1280px it reached the rail. Centring on
+     * the free area instead means it slides as panels open and close, which is
+     * the correct behaviour for something that belongs to the map rather than
+     * to the window.
+     */
+    <div
+      className="pointer-events-none absolute bottom-3 z-overlay flex justify-center"
+      style={{ left: inset.left, right: inset.right }}
+    >
+      <div className="kh-glass flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-xl px-3 py-1.5 text-2xs text-ink-2">
+        {items.map((s) => (
+          <span key={s} className="flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full ${dot[s]}`} aria-hidden />
+            {t.signal.label[s]}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
