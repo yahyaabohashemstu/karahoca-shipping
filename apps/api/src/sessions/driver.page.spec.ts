@@ -109,6 +109,31 @@ describe('the driver install page', () => {
     }
   });
 
+  it('gives the sequence somewhere to live', () => {
+    /*
+     * Structure, asserted, because this page has already been shipped twice
+     * with the design system's colours and none of its containers — a mark, a
+     * heading, a button and five loose paragraphs on a flat background, next to
+     * a consignee page with a hero, a map and three labelled groups.
+     *
+     * Also a cheap syntax canary. All of this CSS lives in a template literal,
+     * and a stray backtick in one of its comments terminates the string — which
+     * has happened three times in this file's history and takes the whole
+     * module down with it. If that recurs, this spec cannot even load.
+     */
+    const html = controller().landingApp('tr', undefined);
+    expect(html).toContain('class="glass panel"');
+    expect(html).toContain('class="panel__title"');
+    expect(html).toContain('<ol class="steps">');
+    // The connector between the numbers, and the aside that is not one of them.
+    expect(html).toContain('.steps li:not(:last-child)::after');
+    expect(html).toContain('class="note sheet"');
+    // What the file is and what it needs, under the button.
+    const t = driverStrings('tr');
+    expect(html).toContain(t.fileKind);
+    expect(html).toContain(t.requirement);
+  });
+
   it('points at the APK the nginx sidecar actually serves', () => {
     // karahoca-takip.apk, not -tracker.apk: the filename is fixed by the
     // publishing convention and the download 404'd in production once already.

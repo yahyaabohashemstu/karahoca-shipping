@@ -47,6 +47,10 @@ export interface DriverStrings {
   installHeading: string;
   installLead: string;
   download: string;
+  /** What the file is and what it needs, under the download button. */
+  fileKind: string;
+  requirement: string;
+  stepsTitle: string;
   steps: readonly string[];
   installNote: string;
 
@@ -66,6 +70,11 @@ const TR: DriverStrings = {
   installHeading: 'Sürücü Takip Uygulaması',
   installLead: 'Android telefonlar için.',
   download: 'Uygulamayı indir',
+  fileKind: 'APK dosyası',
+  // minSdk 26 in app/build.gradle.kts. Stated because a driver on a five-year-old
+  // handset should find out here rather than after a 20 MB download on mobile data.
+  requirement: 'Android 8.0 ve üzeri',
+  stepsTitle: 'Kurulum adımları',
   steps: [
     'İndirme bitince dosyaya dokunun.',
     'Telefon “bilinmeyen kaynak” uyarısı verirse izin verin — uygulama Play Store’da değildir.',
@@ -92,6 +101,9 @@ const AR: DriverStrings = {
   installHeading: 'تطبيق تتبّع السائق',
   installLead: 'لهواتف أندرويد.',
   download: 'نزّل التطبيق',
+  fileKind: 'ملف APK',
+  requirement: 'أندرويد 8.0 أو أحدث',
+  stepsTitle: 'خطوات التثبيت',
   steps: [
     'بعد انتهاء التنزيل، اضغط على الملف.',
     'إذا حذّرك الهاتف من «مصدر غير معروف»، فاسمح بالتثبيت — التطبيق ليس على متجر Play.',
@@ -118,6 +130,9 @@ const KU: DriverStrings = {
   installHeading: 'Sepana Şopandinê ya Ajokar',
   installLead: 'Ji bo têlefonên Android.',
   download: 'Sepanê daxîne',
+  fileKind: 'Pelê APK',
+  requirement: 'Android 8.0 û jortir',
+  stepsTitle: 'Gavên sazkirinê',
   steps: [
     'Piştî ku daxistin qediya, li pelî bitikîne.',
     'Heke têlefon hişyariya “çavkaniya nenas” bide, destûrê bide — sepan ne li Play Store ye.',

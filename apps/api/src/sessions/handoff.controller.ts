@@ -155,25 +155,45 @@ export class HandoffController {
      * numerals their locale uses and the marker on the correct side of the
      * line, and neither needed a second translation.
      */
-    const steps = t.steps.map((s) => `      <li>${s}</li>`).join('\n');
+    const steps = t.steps.map((s) => `          <li>${s}</li>`).join('\n');
 
     return `<!doctype html>
 <html lang="${locale}" dir="${isRtl(locale) ? 'rtl' : 'ltr'}">
 ${pageHead(t.installTitle, pageStyle(INSTALL_CSS))}
 <body>
   <main class="card rise">
-    <div class="mark" aria-hidden="true">KH</div>
-    <div class="logo">KARAHOCA</div>
-    <h1>${t.installHeading}</h1>
-    <p class="lead">${t.installLead}</p>
+    <header class="hero">
+      <div class="mark" aria-hidden="true">KH</div>
+      <div class="logo">KARAHOCA</div>
+      <h1>${t.installHeading}</h1>
+      <p class="lead">${t.installLead}</p>
+    </header>
 
-    <a class="btn btn--primary" href="${apkUrl}">${t.download}</a>
+    <a class="btn btn--primary btn--icon" href="${apkUrl}">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="btn__icon">
+        <path d="M10 3v9.4M6.2 9l3.8 3.8L13.8 9" stroke="currentColor" stroke-width="1.7"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3.6 15.4h12.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+      ${t.download}
+    </a>
+    <p class="meta">${t.fileKind}<span class="meta__sep" aria-hidden="true">·</span>${t.requirement}</p>
 
-    <ol class="steps">
+    <section class="glass panel">
+      <h2 class="panel__title">${t.stepsTitle}</h2>
+      <ol class="steps">
 ${steps}
-    </ol>
+      </ol>
+    </section>
 
-    <p class="note sheet">${t.installNote}</p>
+    <aside class="note sheet">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="note__icon">
+        <circle cx="10" cy="10" r="7.4" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M10 9.2v4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="10" cy="6.4" r="0.95" fill="currentColor"/>
+      </svg>
+      <p>${t.installNote}</p>
+    </aside>
 
     <footer class="foot">${languageSwitcher(locale, t)}</footer>
   </main>
@@ -305,23 +325,59 @@ const DRIVER_CSS = `
 const INSTALL_CSS = `
 ${DRIVER_CSS}
   /*
+   * The install page had the tokens and none of the structure.
+   *
+   * A mark, a heading, a button and five loose paragraphs on a flat background
+   * is what every other page in the product stopped looking like, and next to
+   * the consignee's tracking page — which has a hero, a map and three labelled
+   * groups — it read as an unfinished draft of the same design. What it was
+   * missing was not colour. It was containers: something for the sequence to
+   * live in, and something quieter for the aside that is not part of it.
+   */
+  .hero { text-align: center; margin-bottom: 24px; }
+
+  .btn--icon { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .btn__icon { width: 20px; height: 20px; flex: 0 0 auto; }
+
+  /*
+   * What the file is, and what it needs.
+   *
+   * A driver on mobile data at a loading dock should find out that their
+   * five-year-old handset is too old here, in one line under the button, rather
+   * than after twenty megabytes and a failed install.
+   */
+  .meta {
+    margin: 12px 0 0; text-align: center;
+    font-size: 12.5px; color: var(--ink-3);
+  }
+  .meta__sep { padding: 0 7px; opacity: .55; }
+
+  .panel { margin-top: 26px; padding: 18px 18px 6px; }
+  .panel__title {
+    margin: 0 0 16px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /*
    * Counters drawn by hand, because the default marker cannot be styled and a
    * grey "1." beside a five-line instruction is invisible at arm's length in a
    * lorry cab. These are the one place a filled brand-tinted shape appears on
    * these pages, and that is deliberate: the numbers are the only thing on the
    * screen that has to be followed in order.
    */
-  .steps { counter-reset: step; list-style: none; margin: 26px 0 0; padding: 0; }
+  .steps { counter-reset: step; list-style: none; margin: 0; padding: 0; }
   .steps li {
     counter-increment: step;
     position: relative;
     padding-inline-start: 38px;
-    margin-bottom: 16px;
+    padding-bottom: 20px;
     color: var(--ink-2);
     font-size: 14.5px;
     line-height: 1.55;
     text-wrap: pretty;
   }
+  .steps li:last-child { padding-bottom: 12px; }
   .steps li::before {
     content: counter(step);
     position: absolute;
@@ -336,14 +392,56 @@ ${DRIVER_CSS}
     font-variant-numeric: tabular-nums;
   }
 
+  /*
+   * The spine between the numbers.
+   *
+   * Five circles in a column are five separate things; five circles joined by a
+   * line are one sequence, and this is a sequence — step four cannot be done
+   * before step three. It fades downward so the last segment does not stop
+   * abruptly against nothing.
+   */
+  .steps li:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: 12px;
+    /*
+     * From just under one circle to just above the next, and both numbers are
+     * measured rather than chosen.
+     *
+     * The circle is 26px tall at top:-1px, so its lower edge is at 25px; four
+     * pixels of air puts the line at 29. A zero bottom is the item's
+     * padding-box edge, which is one pixel above the next circle's top — so the
+     * connector reaches both ends instead of floating between them. It was 4px,
+     * which on a one-line step left 6px of line: too short to read as a
+     * connector and just long enough to look like a rendering fault.
+     */
+    top: 29px;
+    bottom: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: linear-gradient(to bottom, var(--line-strong), var(--line));
+  }
+
+  /*
+   * The aside, quieter than the steps on purpose.
+   *
+   * It is the one block on the page that most readers should skip: it is for
+   * the driver who already has the app, and for the one who is stuck. Giving it
+   * the same weight as an instruction would put it in the sequence, which is
+   * exactly where it does not belong.
+   */
   .note {
-    margin: 26px 0 0;
+    display: flex; align-items: flex-start; gap: 11px;
+    margin: 16px 0 0;
     padding: 14px 16px;
     border-radius: var(--r-panel);
-    color: var(--ink-2);
+    color: var(--ink-3);
     font-size: 13.5px;
+    line-height: 1.55;
     text-wrap: pretty;
   }
+  .note p { margin: 0; }
+  .note__icon { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; opacity: .8; }
 `;
 
 const HANDOFF_CSS = `
