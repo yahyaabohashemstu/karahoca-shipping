@@ -52,11 +52,28 @@ export default function SessionMap({
   const installLayers = useCallback((instance: MapLibreMap) => {
     // Guarded per item, matching FleetMap — see the note there for why one
     // surviving source is not proof that everything else survived with it.
+    /*
+     * `instance.addSource`, not `addSource`.
+     *
+     * These two helpers exist to make reinstalling idempotent, and as first
+     * written each one called ITSELF instead of the map: `if (!getSource(id))
+     * addSource(id, spec)` recurses until the stack gives out. The whole of
+     * installLayers therefore threw RangeError on its very first line, every
+     * time, on both maps — so no source was ever created, no layer was ever
+     * added, and `setReady(true)` on the line after it never ran either. A map
+     * with a perfectly good basemap and nothing of ours on it, and because the
+     * throw happened inside a MapLibre event handler nothing surfaced but a
+     * stack trace nobody was watching.
+     *
+     * The consignee's page was untouched by this, which is exactly the shape of
+     * the report: it is a separate implementation that calls map.addSource
+     * directly.
+     */
     const addSource = (id: string, spec: maplibregl.SourceSpecification) => {
-      if (!instance.getSource(id)) addSource(id, spec);
+      if (!instance.getSource(id)) instance.addSource(id, spec);
     };
     const addLayer = (spec: maplibregl.LayerSpecification) => {
-      if (!instance.getLayer(spec.id)) addLayer(spec);
+      if (!instance.getLayer(spec.id)) instance.addLayer(spec);
     };
     const c = mapColors();
 
