@@ -2,8 +2,9 @@
 
 A complete specification of what the product must let people do, written for a
 designer who is starting from a blank page. It describes needs, users,
-scenarios, data and states. It does not describe any layout, screen, component
-or visual style — those are yours to invent.
+scenarios, data and states. Apart from one stated constraint (§6.0) it
+describes no layout, screen, component or visual style — those are yours to
+invent.
 
 ---
 
@@ -342,7 +343,55 @@ except the brand.
 ## 6. The staff application — jobs and scenarios
 
 Below are the things a dispatcher must be able to do. They are described as
-jobs, not as pages; how they are grouped into screens is your decision.
+jobs, not as pages; how they are grouped into screens is your decision — with
+the single exception stated immediately below.
+
+### 6.0 The one fixed constraint: the map is the ground
+
+This is the only layout decision in this brief that is already made, and it is
+not open to reinterpretation.
+
+**The map is the floor of the staff application.** It is not a panel, a card, a
+widget, a tile, or one region of a grid. It fills the entire working area of the
+screen, edge to edge, and everything else in the product — the fleet list,
+counts, filters, search, shipment details, alerts, navigation — sits *on top of*
+it.
+
+Why this is a requirement and not a preference:
+
+- The dispatcher's question is almost always geographic. *Where is it. How far
+  is left. Has it reached the border. Which two are nearest Mosul.* A map large
+  enough to answer those without panning is doing the work. A map small enough
+  to sit beside a table is decoration that must be opened before it becomes
+  useful — and by then the phone call has already gone badly.
+- The screen is open all day and glanced at from across the room. What is
+  legible from two metres is a shape moving across a country, not a row of text.
+- Nine lorries spread over a corridor of 800–1,400 km cannot be told apart in a
+  quarter of a screen at any zoom that also shows where they are.
+- Every other view in the product is entered from this one and returns to it. It
+  is the resting state of the application, not one of its destinations.
+
+What this forces you to design, rather than design around:
+
+- **Anything overlaying the map must earn the pixels it covers.** Prefer
+  surfaces that collapse, slide aside, or dismiss entirely. The dispatcher must
+  be able to reach a completely unobstructed map in one action, and put
+  everything back just as fast.
+- **Overlays must stay readable over whatever is beneath them** — pale desert,
+  dark night styling, dense city labels, empty terrain — without becoming opaque
+  rectangles that simply recreate the panels a full-bleed map was meant to
+  remove.
+- **The map cannot be the last thing to load.** Something honest and geographic
+  must be on screen before the shipment data arrives; a blank rectangle where
+  the floor should be reads as a broken product (§9.1).
+- **Full-bleed must never mean hidden.** If an overlay is open by default, the
+  map must be visibly continuous beneath and around it, so it is obvious there
+  is a map there and obvious how to get to it.
+- The map is also where selection is answered: choosing a lorry anywhere in the
+  product should be resolved on the map, not by leaving it.
+
+The customer's page (§7) is the one place this does not apply — it is read on a
+phone, not worked in. See §7.3.
 
 ### 6.1 Signing in
 
@@ -364,12 +413,14 @@ Before doing anything else they want to know: is everything moving, and is
 anything wrong.
 
 Requirements:
-- A **map** showing every active lorry in its real position, oriented the way it
-  is travelling, with an obvious visual difference between a lorry reporting
-  normally and one that has gone quiet
+- The **map** (§6.0) showing every active lorry in its real position, oriented
+  the way it is travelling, with an obvious visual difference between a lorry
+  reporting normally and one that has gone quiet. This is the screen itself, not
+  an element on the screen
 - A **list** of the same lorries, scannable without moving the mouse, and sorted
   so the ones needing attention are first — not alphabetically, and not by
-  whichever arrived last
+  whichever arrived last. It lives *over* the map rather than beside it, and it
+  must be possible to get it out of the way without losing your place in it
 - Selecting a lorry in either place highlights it in the other
 - A count of what matters: how many on the road, how many waiting for a driver
   to start, how many silent
@@ -377,6 +428,8 @@ Requirements:
   customer name, driver name, carrier — and to filter to just the silent ones
 - The map must be able to frame all lorries at once on demand, and must not
   fight the user for control of the viewport afterwards
+- A way to clear every overlay at once and see nothing but the corridor — and to
+  bring the working surfaces back in the same gesture
 
 **On the map, for a selected lorry**, without leaving the screen: order number,
 customer, driver and phone, distance travelled, distance remaining, how long
@@ -559,6 +612,12 @@ They are judging the supplier by this page.
   inferred from the customer's country, because these links get forwarded and
   the device that opens one is often not the device it was sent to. A visible
   way to change language must exist regardless
+- **The map is the largest single thing on the page.** It is not full-screen
+  here, because this page is read top to bottom, once, and the status sentence,
+  the arrival estimate and the load contents must not have to be hunted for. But
+  it should be the first thing the eye lands on after that opening sentence, big
+  enough to show the lorry's position relative to the destination at a glance,
+  and expandable to fill the screen for a reader who wants to look properly
 - Every state must be stated in words, not only implied by a colour or an icon:
   being prepared, about to depart, on the road, on a break, arrived, delivered,
   cancelled, tracking finished
@@ -732,6 +791,9 @@ them as hard constraints.
 11. **A view that requires a page reload to recover** from a normal event such as
     switching theme or language.
 12. **Treating a paused or not-yet-started shipment as an error.**
+13. **The map treated as a component.** In the staff product it is the surface
+    everything else lives on (§6.0). A map shrunk into a card beside a table is
+    the design of a different product.
 
 ---
 
@@ -747,6 +809,8 @@ them as hard constraints.
   dismiss
 - A dispatcher who has used it for eight hours has not once wondered whether the
   screen is still live
+- One action clears the screen down to nothing but the map, and one action puts
+  the working surfaces back
 
 ---
 
@@ -761,6 +825,11 @@ Design the four surfaces described in §5. For each:
   product, but usable on a tablet in a warehouse office
 - A component and token system consistent enough that a new screen can be built
   from it without inventing anything
+
+For the staff product specifically, show the two extremes of §6.0 together: one
+frame with the map completely unobstructed, and one with every overlay open at
+once. Both have to be something someone would want to sit in front of for eight
+hours.
 
 Brand: the company is **KaraHoca**. Industrial, Turkish, unglamorous, competent.
 It sells detergent by the pallet and is trusted with other people's freight. The
