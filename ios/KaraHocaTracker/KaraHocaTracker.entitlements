@@ -13,10 +13,13 @@
     Two things this file cannot do on its own:
 
       * The AASA file must exist and must name this app as
-        <TeamID>.com.karahoca.tracker. The Team ID does not exist yet — it comes
-        with an Apple Developer account — so the API's endpoint is not written
-        and the link route is not live. Everything else in the app works; the QR
-        falls back to the scheme.
+        <TeamID>.com.karahoca.tracker. The endpoint is written and deployed —
+        see the API's handoff controller — but it returns 404 until APPLE_APP_ID
+        is set, because the Team ID comes with an Apple Developer account and a
+        placeholder would be worse than nothing (Apple's CDN caches what it
+        fetches). Setting that one variable turns the route on with no code
+        change. Until then the QR falls back to the scheme, and everything else
+        in the app works.
 
       * The host is a literal. It cannot be derived from `KHApiBaseURL`, so a
         debug build pointed at a laptop gets no Universal Links. That is correct

@@ -825,6 +825,24 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
     const instance = map.current;
     if (!instance || !ready) return;
 
+    /*
+     * Self-heal, and the reason it earns a getSource call per tick.
+     *
+     * The failure this exists for is not hypothetical: a style swap that
+     * finishes without the layers being reinstalled leaves ready === true, a
+     * map with no vehicle sources on it, and no event still pending that would
+     * ever put them back. Every truck is invisible and stays invisible until
+     * somebody reloads the page — which is precisely how the theme-toggle bug
+     * presented, and it is the kind of silence this map has produced more than
+     * once.
+     *
+     * This effect already runs on every position tick, so checking whether the
+     * source exists costs one lookup and converts a permanent, silent failure
+     * into at most one frame of absence. installLayers is idempotent, so the
+     * ordinary case is the lookup and nothing else.
+     */
+    if (!instance.getSource('trucks')) installLayers(instance);
+
     const c = mapColors();
     const colourFor: Record<DisplayState, string> = {
       LIVE: c.LIVE,
@@ -982,7 +1000,9 @@ export default function FleetMap({ positions, liveUpdates, selectedId, onSelect,
       hasFitted.current = true;
       fitTo(instance, truckFeatures, dimensional ? DEFAULT_PITCH : 0);
     }
-  }, [ready, positions, liveUpdates, selectedId, now, resolved, dimensional]);
+    // installLayers is a useCallback with no dependencies and so is stable;
+    // listing it keeps the exhaustive-deps rule honest rather than suppressed.
+  }, [ready, positions, liveUpdates, selectedId, now, resolved, dimensional, installLayers]);
 
   /** Re-frame every truck on demand. Wired to the button over the map. */
   const fitAll = useCallback(() => {

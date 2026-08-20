@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Inject, Param } from '@nestjs/common';
+import { Controller, Get, Header, Inject, NotFoundException, Param } from '@nestjs/common';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { Public } from '../auth/decorators';
 import { normalizeClaimCode } from '../common/crypto.util';
@@ -57,6 +57,52 @@ export class HandoffController {
         },
       },
     ];
+  }
+
+  /**
+   * The iOS counterpart — `/.well-known/apple-app-site-association`.
+   *
+   * Same job as assetlinks.json and the same three silent failure modes: HTTPS
+   * only, `application/json`, and no redirect. Apple adds a fourth — the path
+   * has no file extension, which is why it is a route rather than a static file
+   * and why it is excluded from the global /api/v1 prefix in main.ts.
+   *
+   * Returns 404 until APPLE_APP_ID is set, and that is the correct answer
+   * rather than a gap. The value is `<TeamID>.<BundleID>`, the Team ID is
+   * issued by Apple to this company, and a placeholder would be actively worse
+   * than nothing: Apple's CDN caches what it fetches, so a wrong appID has to
+   * age out before a corrected one is believed. The day the Team ID exists,
+   * setting one environment variable turns this on with no code change.
+   *
+   * The component pattern matches the Android intent filter — `/t/*`, the QR
+   * hand-off link, and nothing else. The consignee's `/s/<token>` links are
+   * deliberately excluded: those are opened by customers who do not have the
+   * app and must stay in a browser.
+   */
+  @Public()
+  @Get('.well-known/apple-app-site-association')
+  @Header('Content-Type', 'application/json; charset=utf-8')
+  @Header('Cache-Control', 'public, max-age=300')
+  appleAppSiteAssociation() {
+    const appId = this.config.session.appleAppId;
+    if (!appId) {
+      throw new NotFoundException('No iOS application is associated with this host.');
+    }
+    return {
+      applinks: {
+        details: [
+          {
+            appIDs: [appId],
+            components: [
+              {
+                '/': '/t/*',
+                comment: 'Driver hand-off links open the tracker app directly.',
+              },
+            ],
+          },
+        ],
+      },
+    };
   }
 
   /**

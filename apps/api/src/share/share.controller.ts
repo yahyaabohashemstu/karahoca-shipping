@@ -506,6 +506,19 @@ function noticePage(title: string, message: string, locale: ShareLocale): string
     <div class="status status--stop">
       <p class="status__detail">${esc(message)}</p>
     </div>
+    ${
+      /*
+       * The switcher belongs here more than on the shipment page.
+       *
+       * Language is normally chosen from the consignee's country, and on this
+       * page there is no consignee — an expired or unknown token resolves to
+       * nobody, so the choice falls back to Accept-Language and then to
+       * Turkish. That is precisely the situation where a reader in Erbil is
+       * handed a page in a language they cannot read, telling them something
+       * has gone wrong, with no way to change it.
+       */
+      languagePicker(locale, t)
+    }
   `,
     '',
     locale,

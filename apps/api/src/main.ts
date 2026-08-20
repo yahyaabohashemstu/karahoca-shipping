@@ -123,6 +123,9 @@ async function bootstrap(): Promise<void> {
       // Android will only look here. The path is fixed by the platform and
       // cannot carry an /api/v1 prefix.
       { path: '.well-known/assetlinks.json', method: RequestMethod.GET },
+      // iOS looks only here, and the platform fixes this path the same
+      // way — no prefix, no extension, no redirect.
+      { path: '.well-known/apple-app-site-association', method: RequestMethod.GET },
       // Read down a phone line to a driver standing next to a truck.
       { path: 'app', method: RequestMethod.GET },
     ],

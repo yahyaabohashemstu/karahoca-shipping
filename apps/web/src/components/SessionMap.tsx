@@ -140,7 +140,12 @@ export default function SessionMap({ route, backfills, live, fallbackLat, fallba
 
   useEffect(() => {
     if (!ready || !route?.features?.length) return;
-    const src = map.current?.getSource('route') as maplibregl.GeoJSONSource | undefined;
+    const instance = map.current;
+    // Self-heal — see the note in FleetMap. A style swap that finishes without
+    // the layers being reinstalled leaves ready true, the route gone and no
+    // pending event that would ever bring it back.
+    if (instance && !instance.getSource('route')) installLayers(instance);
+    const src = instance?.getSource('route') as maplibregl.GeoJSONSource | undefined;
     src?.setData(route);
 
     const geom = route.features[0]?.geometry;

@@ -138,6 +138,7 @@ export interface AppConfig {
     deepLinkPackage: string;
     apkDownloadUrl: string | null;
     androidCertFingerprints: string[];
+    appleAppId: string | null;
   };
 
   bootstrap: { adminEmail: string | null; adminPassword: string | null; adminName: string };
@@ -233,6 +234,18 @@ export function loadConfig(): AppConfig {
         'ANDROID_CERT_SHA256',
         '1A:2B:12:86:9E:96:9C:E6:07:AE:59:78:73:A8:83:C2:4A:D9:3E:C0:DF:C3:D8:24:3F:C0:07:C7:E8:3E:30:79',
       ),
+      /*
+       * The iOS half of the same idea — `<TeamID>.<BundleID>`, for example
+       * `ABCDE12345.com.karahoca.tracker`.
+       *
+       * No default, deliberately. The Team ID is issued by Apple to this
+       * company and cannot be guessed, and publishing a placeholder would be
+       * worse than publishing nothing: Apple's CDN caches what it fetches, so a
+       * wrong appID has to age out before a corrected one is believed. Left
+       * unset the endpoint 404s, which is what a site with no iOS app should
+       * return.
+       */
+      appleAppId: process.env.APPLE_APP_ID?.trim() || null,
     },
 
     bootstrap: {

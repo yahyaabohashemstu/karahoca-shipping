@@ -147,6 +147,22 @@ describe('the consignee page', () => {
     expect(html).toContain('کاتی بەستەرەکە بەسەرچووە');
   });
 
+  it('offers the switcher on the notice pages too', async () => {
+    /*
+     * These are the pages with no consignee behind them: an expired or unknown
+     * token resolves to nobody, so the country signal is unavailable and the
+     * language falls back to Accept-Language and then Turkish. A reader who
+     * lands here in a language they cannot read is being told something has
+     * gone wrong and needs a way out of it.
+     */
+    for (const kind of ['expired', 'unknown'] as const) {
+      const html = await render({ lang: 'tr', resolution: { kind } });
+      expect(html, `${kind} must link to ar`).toContain('href="?lang=ar"');
+      expect(html, `${kind} must link to ckb`).toContain('href="?lang=ckb"');
+      expect(html, `${kind} must not link to itself`).not.toContain('href="?lang=tr"');
+    }
+  });
+
   it('shows the distance and the plate without changing digit script', async () => {
     const html = await render({ lang: 'ckb' });
     expect(html).toContain('1,100 km');

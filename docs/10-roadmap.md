@@ -26,6 +26,47 @@ cheap now and expensive to retrofit later.
 - **The carrier scorecard arithmetic** — a real denominator, and a sampling
   rate that stops being presented as driver behaviour.
 
+## Shipped 2026-08-20
+
+- **Three languages, everywhere a person reads.** Turkish, Arabic and Kurdish
+  across the dashboard, the consignee page and the driver app. The row below
+  estimated this as "thirty strings inside the share-link feature"; it is closer
+  to 1,600 across three surfaces, and the surface never in the estimate is the
+  dashboard — an Arabic-speaking dispatcher in Gaziantep reads those screens all
+  day and every one of them was Turkish.
+
+  Which Kurdish differs by audience, deliberately. Kurmanji in Latin script for
+  the driver app and the dashboard, whose readers are hired out of Gaziantep,
+  Şanlıurfa, Mardin and Şırnak. Sorani in Arabic script for the consignee page,
+  whose reader is in Erbil. Neither readership can read the other's script, so
+  shipping one for both would have been worse than shipping Turkish.
+
+  Right-to-left is real rather than a `dir` attribute: logical CSS properties
+  throughout, and an Arabic face threaded *ahead* of Inter in the font stack —
+  Inter has no Arabic glyphs, and next/font's metric-adjusted fallback is an
+  unrestricted local("Arial") that silently swallows Arabic if it is ordered
+  first. Numbers and dates format per locale, because "1.100" read by an Arabic
+  eye is 1.1.
+
+  Guarded rather than trusted: the dictionaries are typed against the Turkish,
+  so a missing translation does not compile, and `check-i18n` fails the lint if
+  any user-facing string is left hard-coded. Both guards were verified to fail
+  when the defect they describe is reintroduced.
+
+- **Two misreadings that were never translation bugs.** The consignee page
+  rendered planned delivery on a 12-hour clock in Arabic while the Turkish page
+  beside it said 17:30, and rendered the load as "22 palet · 18,4 ton" — a
+  Turkish decimal comma, which in Arabic and Kurdish grouping reads as a
+  thousands separator. Both fixed, both now asserted.
+
+- **The Turkish I, twice.** `toLocaleUpperCase('tr')` turned a typed `istanbul-01`
+  into `İSTANBUL-01` on four identifier fields; the code column is citext with a
+  UNIQUE constraint, and `lower('İ')` is `i` plus a combining dot, so the
+  constraint never fired and the same firm could be entered twice. The search
+  filters had the mirror of it — folding with `toLocaleLowerCase('tr')` meant
+  typing `istanbul` did not find `Istanbul Lojistik`.
+
+
 ## Next — real value, not yet built
 
 | Feature | Impact | Effort | Why not yet |
@@ -37,7 +78,7 @@ cheap now and expensive to retrofit later.
 | Backfill reconciliation — recompute derived state when late points land | 6 | 5 | The three defects are all verified-by-inspection and genuinely perverse: the continuous aggregate's 3-hour start_offset silently omits exactly the dead-zone stretches from the record that is meant to outlive raw retention, largest_gap_sec only ever rises so... |
 | Telemetry integrity record — separating no coverage from app killed | 5 | 5 | The device-side half is the genuinely unretrofittable part: NETWORK_LOST/RECOVERED are detected precisely by NetworkMonitor and only written to a log line, SERVICE_KILLED and BATTERY_LOW have enum values with no emitter, and once a gap has happened you can ... |
 | Proactive consignee milestone notifications | 7 | 6 | The insight is right — the expensive moment in a delayed shipment is the customer discovering it themselves, and inverting that is what purchasing managers remember at renewal. But it is fourth in a dependency chain: it needs the share link (building now), ... |
-| Arabic and multi-locale for customer- and driver-facing artefacts | 6 | 5 | The corridor argument is correct: an Erbil consignee handed a Turkish-only page reads it as somebody else's internal paperwork and phones anyway. But the version that matters — the share card in Arabic — is thirty strings and belongs inside the share-link f... |
+| ~~Arabic and multi-locale for customer- and driver-facing artefacts~~ | 6 | 5 | **Shipped 2026-08-20, wider than scoped.** The estimate here — "thirty strings, inside the share-link feature" — was wrong by a factor of fifty, and wrong about which surfaces count: the dashboard was never in it, and it is the one a dispatcher reads all day. It also assumed one Kurdish, where the corridor needs two in two scripts. See Shipped 2026-08-20. |
 | Delay attribution — cause codes on every stop | 6 | 5 | This is the feature that decides whether the scorecard survives its first meeting with a carrier — 'half of that is the border' is a true objection and today it cannot be answered. Seeding Habur, Cilvegözü and Öncüpınar as three rows in the already-complete... |
 | Lane baselines and corridor benchmarking | 6 | 6 | Not wrong, just arithmetically impossible right now: percentile_cont over completed sessions per lane needs dozens of runs per lane and there are four orders in total. Everything it would output — p50/p90 transit, the per-carrier split, the p80 fallback SLA... |
 | Carrier review pack with a working export | 4 | 5 | Two things bundled with very different urgency. The 401 evidence download is a defect — the NDJSON export is built, cursor-streamed and correct, and the UI renders it as a bare anchor with no Authorization header behind a fail-closed guard, so the one artef... |

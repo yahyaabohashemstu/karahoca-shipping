@@ -288,6 +288,10 @@ services:
       DEEP_LINK_SCHEME: karahoca
       DEEP_LINK_PACKAGE: ${DEEP_LINK_PACKAGE}
       APK_DOWNLOAD_URL: ${APK_DOWNLOAD_URL}
+      # Without this passthrough, setting APPLE_APP_ID in Coolify's environment
+      # UI would change nothing — the container would never see it, and the
+      # association document would keep returning 404 with no clue why.
+      APPLE_APP_ID: ${APPLE_APP_ID}
 
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
