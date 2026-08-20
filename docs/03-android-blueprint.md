@@ -374,8 +374,10 @@ deterministic and reports every diagnostic.
 
 One universal APK, no ABI splits, no bundle — drivers install it by hand over a
 hotspot and the file must always be the same file. Serve it from
-`/downloads/karahoca-tracker.apk` so the QR landing page's
-`S.browser_fallback_url` resolves.
+`/downloads/karahoca-takip.apk` so the QR landing page's
+`S.browser_fallback_url` resolves. Publishing it is a file copy onto a host
+bind mount, outside the deploy cycle, and it has to be done atomically — the
+procedure is in [05 §6](05-deployment-coolify.md).
 
 ## 8. Field verification checklist
 

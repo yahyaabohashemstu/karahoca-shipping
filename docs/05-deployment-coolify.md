@@ -113,17 +113,64 @@ docker compose run --rm migrate node /app/migrate.mjs --seed
 
 ## 6. Build and publish the driver APK
 
+The APK is **outside the deploy cycle**. It is a host bind mount —
+`/opt/karahoca/downloads` → the `apk` nginx sidecar, read-only — so publishing
+is a file copy, not a redeploy. Pushing to `main` does not ship a new APK, and
+nothing about this step is automated.
+
+The served path is `https://track.karahoca.com/downloads/karahoca-takip.apk`.
+**The filename is load-bearing**: the QR landing page's
+`S.browser_fallback_url` points at it, so a driver who scans a code on a phone
+without the app gets the installer instead of a 404. Do not rename it.
+
+### Build
+
 ```bash
 cd android
-./gradlew assembleRelease -PkhApiBaseUrl=https://track.karahoca.com/api/v1/
+./gradlew :app:assembleRelease
 ```
 
-Serve the APK at `https://track.karahoca.com/downloads/karahoca-tracker.apk` —
-the QR landing page's `S.browser_fallback_url` points there, so a driver who
-scans a code on a phone without the app gets the installer instead of an error.
+The production URL is already the default; `-PkhApiBaseUrl=` only exists to
+point a release-configuration build at a test API. Signing comes from
+`android/keystore.properties` (git-ignored) — see [08](08-signing-key-runbook.md).
 
-Any static host works; the simplest is an `nginx:alpine` service with a mounted
-volume, or Coolify's own static-site resource on the same domain.
+Bump `versionCode` in `app/build.gradle.kts` **before** building. A driver's
+phone will not offer an update for an equal or lower code, and the install will
+simply appear to do nothing.
+
+### Verify before uploading, every time
+
+```bash
+apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+curl -sO https://track.karahoca.com/downloads/karahoca-takip.apk   # the live one
+apksigner verify --print-certs karahoca-takip.apk
+```
+
+The two SHA-256 digests must match each other **and** the fingerprint in
+`/.well-known/assetlinks.json` (`1a2b1286…3079`). A mismatch means the update
+will not install over the app already on a driver's phone, and App Links
+verification breaks — see [08](08-signing-key-runbook.md).
+
+`aapt2 dump badging` on the new APK confirms the version actually moved.
+
+### Upload atomically
+
+Never `scp` straight over the live path: nginx serves that file while the
+upload is in flight, and a driver downloading at that moment gets a truncated
+APK that installs as a parse error.
+
+```bash
+scp app-release.apk root@<host>:/opt/karahoca/downloads/.karahoca-takip.apk.incoming
+ssh root@<host> '
+  cd /opt/karahoca/downloads
+  sha256sum .karahoca-takip.apk.incoming            # compare with the local sum
+  cp karahoca-takip.apk karahoca-takip-<old>.apk.bak
+  mv .karahoca-takip.apk.incoming karahoca-takip.apk
+'
+```
+
+A rename on the same filesystem is atomic, and an in-flight download keeps the
+old inode and finishes cleanly.
 
 ---
 

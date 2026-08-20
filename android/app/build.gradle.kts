@@ -25,11 +25,25 @@ android {
         applicationId = "com.karahoca.tracker"
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
-        // 15 / 1.2.2 — the claim-failure messages. A driver whose code fails
-        // during a deploy is now told the server is unreachable and the code is
-        // still valid, instead of being told the code was rejected.
-        versionCode = 17
-        versionName = "1.3.1"
+        /*
+         * 18 / 1.4.0 — three releases' worth, because 17 was the last one that
+         * actually reached a handset:
+         *
+         *   - the app on the same design language as the dashboard and the
+         *     driver pages, light and dark;
+         *   - the language chips on every screen, not only the claim one, so a
+         *     driver who picks the wrong flag at the yard gate is not stuck in
+         *     a language they cannot read for the rest of the run;
+         *   - and the reboot crash: the service missed the ten-second
+         *     startForeground deadline during the boot storm and Android killed
+         *     the process, so a phone that restarted mid-shipment came back
+         *     tracking nothing.
+         *
+         * Minor rather than patch: the second is a feature and the first is
+         * every screen the driver sees.
+         */
+        versionCode = 18
+        versionName = "1.4.0"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",
