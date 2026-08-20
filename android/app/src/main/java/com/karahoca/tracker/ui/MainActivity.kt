@@ -18,6 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.app.ActivityCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -132,6 +134,24 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = { CrashReporter.clear(context); crash = null },
                             )
                         }
+                        /*
+                         * The language switcher, on every screen rather than on
+                         * the first one only.
+                         *
+                         * It used to live in the body of the claim screen, which
+                         * meant it disappeared the moment a code was accepted —
+                         * so a driver who took the phone from a colleague, or
+                         * tapped the wrong flag at the yard gate, was locked into
+                         * a language they could not read for the whole run. The
+                         * one screen they then spend eight hours on is the one
+                         * that had no way out.
+                         *
+                         * Above the content and outside its scroll container, so
+                         * it is reachable without scrolling on a screen the
+                         * driver may never scroll.
+                         */
+                        LanguageBar()
+
                         // weight(1f), not the children's fillMaxSize(): a child
                         // that fills the whole column would overflow it once the
                         // banner takes vertical space, pushing the UI off-screen.
@@ -324,8 +344,6 @@ private fun ClaimScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
                 }
             }
 
-            Spacer(Modifier.height(26.dp))
-            LanguagePicker()
             Spacer(Modifier.height(8.dp))
         }
     }
@@ -644,7 +662,20 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
 @Composable
 private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
     val context = LocalContext.current
-    val time = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    /*
+     * Locale.ROOT, not getDefault, and the reason is the digits.
+     *
+     * The pattern is already pinned to a 24-hour clock, so the locale changes
+     * one thing here: which numerals are drawn. In Arabic, getDefault renders
+     * ١٣:٤٧:٢٠ — while the two rows above it show TR-1042 and SIP-2026-0481 and
+     * the distance above that shows 11790 km, all in Latin figures, because
+     * they come from data that will never be transliterated. One screen in two
+     * numeral systems reads as broken.
+     *
+     * The consignee's page pins every locale to Latin digits for exactly this
+     * reason; see the note at the top of apps/api/src/share/share.i18n.ts.
+     */
+    val time = remember { SimpleDateFormat("HH:mm:ss", Locale.ROOT) }
 
     val locationSettingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
@@ -1032,18 +1063,52 @@ private fun RemainingDistance(state: TrackerUiState) {
 }
 
 /**
- * Language, in the languages themselves.
+ * The persistent language bar.
  *
- * On the claim screen because that is the first thing a driver sees and the
- * moment the choice matters — after this screen they are reading a running
- * shipment, not deciding anything.
+ * Transparent rather than a filled strip: every screen paints a wash of the
+ * brand colour down from the top, and a solid bar would cut a band out of it
+ * two pixels below the status bar.
+ *
+ * Horizontally scrollable, because four chips in three scripts is not a width
+ * that can be guaranteed. On a 360dp phone in Kurmanji they fit with a little
+ * room; the day a fifth language is added, or a translation runs long, this
+ * scrolls instead of clipping the last one off the edge.
+ */
+@Composable
+private fun LanguageBar() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            /*
+             * statusBarsPadding first, and before the scroll.
+             *
+             * This is the topmost thing the application draws, so without the
+             * inset the chips sit underneath the system clock — which is where
+             * they landed the first time. Applied before horizontalScroll so the
+             * padding is part of the fixed frame rather than something that
+             * scrolls away with the content.
+             */
+            .statusBarsPadding()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LanguagePicker()
+    }
+}
+
+/**
+ * Language, in the languages themselves.
  *
  * Every label is written in its own language. A picker offering "Arapça" is no
  * use to somebody who cannot read Turkish, which is precisely who it is for.
  *
  * Changing it recreates the activity, which is what re-resolves a Compose tree
- * whose strings have already been read. The tracking notification needs no
- * restart — the service resolves its strings at post time.
+ * whose strings have already been read. That is safe from any screen: the
+ * ViewModel survives a recreate, and the tracking service is a separate process
+ * component that keeps running and resolves its own strings at post time — so a
+ * driver can switch language mid-run without interrupting the shipment.
  */
 @Composable
 private fun LanguagePicker() {
@@ -1061,37 +1126,32 @@ private fun LanguagePicker() {
     val labels: List<Pair<String, String>> =
         listOf(AppLocale.SYSTEM to stringResource(R.string.language_system)) + AppLocale.options
 
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        labels.forEach { (tag, label) ->
-            val active = tag == selected
-            FilterChip(
+    labels.forEach { (tag, label) ->
+        val active = tag == selected
+        FilterChip(
+            selected = active,
+            onClick = {
+                if (active) return@FilterChip
+                selected = tag
+                AppLocale.set(context, tag)
+                // On API 33+ the platform recreates us itself once the
+                // LocaleManager write lands; below that nothing does.
+                // Calling it either way is harmless and covers both.
+                (context as? Activity)?.recreate()
+            },
+            shape = MaterialTheme.shapes.extraSmall,
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+            border = FilterChipDefaults.filterChipBorder(
+                enabled = true,
                 selected = active,
-                onClick = {
-                    if (active) return@FilterChip
-                    selected = tag
-                    AppLocale.set(context, tag)
-                    // On API 33+ the platform recreates us itself once the
-                    // LocaleManager write lands; below that nothing does.
-                    // Calling it either way is harmless and covers both.
-                    (context as? Activity)?.recreate()
-                },
-                shape = MaterialTheme.shapes.extraSmall,
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true,
-                    selected = active,
-                    borderColor = MaterialTheme.colorScheme.outlineVariant,
-                    selectedBorderColor = MaterialTheme.colorScheme.primary,
-                ),
-                label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-            )
-        }
+                borderColor = MaterialTheme.colorScheme.outlineVariant,
+                selectedBorderColor = MaterialTheme.colorScheme.primary,
+            ),
+            label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        )
     }
 }
 

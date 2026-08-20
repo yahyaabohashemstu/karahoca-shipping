@@ -393,10 +393,19 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 alt={t.sessionDetail.qrAlt}
                 className="mx-auto h-36 w-36 rounded-lg bg-white p-1"
               />
+              {/*
+                An outlined button, not a ghost one.
+
+                Ghost gives no border and no fill, so at rest this read as a
+                line of tinted prose sitting under a paragraph of prose — and
+                the thing it does is revoke the code on a driver's phone. An
+                action that invalidates somebody's device has to look like an
+                action before it is pressed, not only after.
+              */}
               <Button
                 size="sm"
-                variant="ghost"
-                className="mt-2"
+                variant="secondary"
+                className="mt-3"
                 loading={regenerate.isPending}
                 onClick={() => regenerate.mutate()}
               >
@@ -422,8 +431,8 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               </p>
               <Button
                 size="sm"
-                variant="ghost"
-                className="mt-2"
+                variant="secondary"
+                className="mt-3"
                 loading={regenerate.isPending}
                 onClick={() => regenerate.mutate()}
               >
