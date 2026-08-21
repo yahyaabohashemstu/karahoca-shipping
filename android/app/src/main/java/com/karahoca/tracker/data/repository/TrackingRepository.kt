@@ -12,6 +12,7 @@ import com.karahoca.tracker.data.local.LocationPointEntity
 import com.karahoca.tracker.data.local.PendingEventDao
 import com.karahoca.tracker.data.local.PendingEventEntity
 import com.karahoca.tracker.data.local.SessionStore
+import com.karahoca.tracker.update.UpdateRepository
 import com.karahoca.tracker.data.remote.ApiFailure
 import com.karahoca.tracker.data.remote.ClaimRequest
 import com.karahoca.tracker.data.remote.DriverEventRequest
@@ -61,6 +62,15 @@ class TrackingRepository @Inject constructor(
     private val store: SessionStore,
     private val network: NetworkMonitor,
     private val deviceInfo: DeviceInfoProvider,
+    /*
+     * The updater, so a telemetry response can tell a phone a release exists.
+     *
+     * Not a layering violation so much as an acknowledgement of one: this app
+     * has no push channel, and the ingest response is the only thing a working
+     * driver's phone reads often enough to serve as one. Everything the updater
+     * then does happens on its own scope and its own HTTP client.
+     */
+    private val updates: UpdateRepository,
 ) {
 
     companion object {
@@ -450,6 +460,13 @@ class TrackingRepository @Inject constructor(
 
             body?.let {
                 if (it.serverTime > 0) store.recordServerTime(it.serverTime)
+                /*
+                 * The one place a release can reach a phone in seconds.
+                 *
+                 * Guarded inside onServerHint rather than here: a batch goes up
+                 * every ten seconds and the hint is on every one of them.
+                 */
+                runCatching { updates.onServerHint(it.releasedAppBuild) }
                 it.policy?.let { policy ->
                     store.savePolicy(
                         policy.pingIntervalSec,

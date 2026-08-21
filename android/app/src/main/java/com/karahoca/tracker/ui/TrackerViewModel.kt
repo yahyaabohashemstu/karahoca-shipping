@@ -125,6 +125,21 @@ class TrackerViewModel @Inject constructor(
         viewModelScope.launch { runCatching { updates.check(force = true) } }
     }
 
+    /**
+     * Opening the app is a deliberate act, so it always asks.
+     *
+     * The background timer exists to protect a driver's data allowance from a
+     * poll they did not ask for. A driver with the app in front of them is not
+     * that case, and treating them as if they were is what made a release
+     * invisible for the rest of the day to the one person watching for it.
+     */
+    private fun checkForUpdateNow() {
+        viewModelScope.launch {
+            runCatching { updates.check(force = true) }
+                .onFailure { Log.d(TAG, "Update check on open failed", it) }
+        }
+    }
+
     fun onReturnedFromInstallSettings() = updates.onReturnedFromSettings()
 
     fun unknownSourcesIntent() = updates.unknownSourcesIntent()
@@ -179,6 +194,8 @@ class TrackerViewModel @Inject constructor(
             runCatching {
                 if (repository.dispatcherResumedTracking()) resumeFromDispatcher()
             }.onFailure { Log.e(TAG, "Remote resume check failed", it) }
+
+            checkForUpdateNow()
 
             // 2 s poll instead of a bound service: the UI is open for seconds at
             // a time and a poll cannot leak a binding when the driver pockets

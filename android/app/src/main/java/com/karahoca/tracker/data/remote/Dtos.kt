@@ -152,6 +152,16 @@ data class IngestResponse(
     val pointsTotal: Long = 0,
     val distanceM: Double = 0.0,
     val policy: PolicyDto? = null,
+    /**
+     * The build the server has released, if it has released one.
+     *
+     * Carried here because this is the only response a phone reliably reads
+     * while it is on the road — it posts a batch every ten seconds and reads
+     * the update manifest twice a day, so without this a release could sit
+     * unnoticed for hours on exactly the handsets that are out working.
+     * Absent from older servers, which is why it is nullable.
+     */
+    val releasedAppBuild: Int? = null,
     /** "CONTINUE" | "PAUSE" — an instruction, not something the client infers. */
     val nextAction: String? = null,
 )

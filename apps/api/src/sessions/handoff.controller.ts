@@ -210,6 +210,7 @@ ${steps}
       <dl class="release__rows">
         <dt>${t.releaseLive}</dt><dd id="kh-live">&mdash;</dd>
         <dt>${t.releaseStaged}</dt><dd id="kh-staged">&mdash;</dd>
+        <dt>${t.releaseCheckIns}</dt><dd id="kh-checkins">&mdash;</dd>
       </dl>
       <button type="button" class="btn btn--primary" id="kh-announce" disabled>
         ${t.releaseAnnounce}
@@ -380,10 +381,19 @@ function releaseScript(t: DriverStrings): string {
     return release ? release.versionName + ' (' + release.versionCode + ')' : null;
   }
 
+  function checkIns(c) {
+    if (!c || !c.total) return ${s(t.releaseCheckInsNone)};
+    var builds = Object.keys(c.builds)
+      .map(function (b) { return b + '×' + c.builds[b]; })
+      .join(', ');
+    return c.total + ' (' + builds + ')';
+  }
+
   function render(status) {
     box.hidden = false;
     live.textContent = name(status.live) || ${s(t.releaseNone)};
     staged.textContent = name(status.staged) || ${s(t.releaseNone)};
+    document.getElementById('kh-checkins').textContent = checkIns(status.checkIns);
     button.disabled = !status.canAnnounce;
     if (!status.canAnnounce) {
       message.textContent = status.staged ? ${s(t.releaseUpToDate)} : ${s(t.releaseExplain)};

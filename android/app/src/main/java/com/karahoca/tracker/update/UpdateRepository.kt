@@ -150,12 +150,40 @@ class UpdateRepository @Inject constructor(
         notifications.updateAvailable(manifest.versionName)
     }
 
+    /**
+     * The server, on a telemetry response, mentioning a build newer than ours.
+     *
+     * Self-limiting by design, and it has to be: a tracking phone posts every
+     * ten seconds, so anything that fetched the manifest on each hint would
+     * make one release into several thousand requests per driver per shift.
+     * Once the check has produced a state — Available, or a download in flight,
+     * or a failure the driver is looking at — further hints are ignored, and
+     * the one fetch this triggers is the same one the six-hourly timer would
+     * have done later.
+     */
+    suspend fun onServerHint(releasedBuild: Int?) {
+        if (releasedBuild == null || releasedBuild <= BuildConfig.VERSION_CODE) return
+        if (_state.value !is UpdateState.Idle) return
+        Log.i(TAG, "Server mentioned build $releasedBuild — checking now")
+        check(force = true)
+    }
+
     private fun dueForCheck(): Boolean =
         System.currentTimeMillis() - prefs.getLong(KEY_LAST_CHECK, 0L) > CHECK_INTERVAL_MS
 
     private suspend fun fetchManifest(): UpdateManifest = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(BuildConfig.UPDATE_MANIFEST_URL)
+            /*
+             * Who is asking.
+             *
+             * The server keeps the last few of these so a dispatcher who has
+             * just pressed the release button can see whether any phone
+             * actually came to look. Without it the question is unanswerable
+             * from the outside: the API logs nothing per request, and the one
+             * time it was asked in anger the answer took an hour to not find.
+             */
+            .header("X-KH-App-Build", BuildConfig.VERSION_CODE.toString())
             // The file is small and changes rarely; a stale cached copy would
             // hide a release for as long as the cache lived.
             .header("Cache-Control", "no-cache")
@@ -311,13 +339,20 @@ class UpdateRepository @Inject constructor(
         const val DIR = "updates"
 
         /**
-         * Six hours: twice a shift.
+         * One hour, for the background timer only.
          *
-         * Short enough that a fix published in the morning reaches a driver who
-         * is still on the road that evening, long enough that a phone with no
-         * signal is not retrying a DNS lookup every fifteen minutes for a file
-         * that changes twice a month.
+         * It was six, and six was wrong in a way that only showed up the first
+         * time somebody pressed the release button and watched a phone: a
+         * driver who had opened the app an hour earlier could not be told about
+         * a release until the afternoon, and from the outside that is
+         * indistinguishable from the button not working.
+         *
+         * An hour costs at most twenty-four requests a day for a few hundred
+         * bytes each — about 12 KB, against the 24 MB the driver is being
+         * offered. The paths that actually matter no longer wait for this timer
+         * at all: opening the app forces a check, and a tracking phone is told
+         * on its next telemetry response.
          */
-        const val CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+        const val CHECK_INTERVAL_MS = 60 * 60 * 1000L
     }
 }

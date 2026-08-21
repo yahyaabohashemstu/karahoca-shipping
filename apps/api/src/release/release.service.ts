@@ -21,6 +21,14 @@ export interface ReleaseManifest {
   notes?: Record<string, string>;
 }
 
+/** One phone asking what the current release is. */
+export interface ReleaseCheckIn {
+  at: string;
+  /** From X-KH-App-Build. Absent on 1.6.0 and earlier, which do not send it. */
+  build: number | null;
+  userAgent: string | null;
+}
+
 /**
  * Publishing a build and releasing it to drivers are two different decisions.
  *
@@ -49,7 +57,75 @@ export class ReleaseService {
   private static readonly LIVE_APK = 'karahoca-takip.apk';
   private static readonly STAGED_MANIFEST = 'latest.staged.json';
 
+  /*
+   * The last few check-ins, in memory.
+   *
+   * Added the day a release went out and the answer to "did any phone hear it?"
+   * turned out to be unobtainable: the API logs nothing per request, Traefik
+   * logs nothing, and the manifest is the one file under /downloads the nginx
+   * sidecar no longer serves — so the only component that could have seen the
+   * request was the only one keeping no record of it. An hour went into proving
+   * that a question with a one-line answer could not be answered at all.
+   *
+   * In memory rather than a table, and labelled as such on the panel: this
+   * answers "is anything asking, right now", which is what a dispatcher needs
+   * in the minute after pressing the button. Losing it on redeploy is fine.
+   * Uptake over weeks is a different question and would want different
+   * machinery.
+   */
+  private static readonly CHECK_IN_HISTORY = 50;
+  private readonly checkIns: ReleaseCheckIn[] = [];
+
+  /*
+   * The released versionCode, cached, for the ingest hot path.
+   *
+   * Every tracking phone posts a batch every ten seconds; a stat() and a JSON
+   * parse per batch to answer a question whose answer changes twice a month
+   * would be absurd. This service is the only writer of the live manifest, so
+   * the cache can only go stale if somebody edits the file by hand on the box —
+   * hence a TTL rather than trusting it forever.
+   */
+  private static readonly VERSION_CACHE_MS = 60_000;
+  private cachedVersionCode: number | null = null;
+  private cachedAt = 0;
+
   constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+
+  recordCheckIn(build: number | null, userAgent: string | null): void {
+    this.checkIns.unshift({ at: new Date().toISOString(), build, userAgent });
+    if (this.checkIns.length > ReleaseService.CHECK_IN_HISTORY) this.checkIns.pop();
+  }
+
+  /** What the release panel shows under the button. */
+  recentCheckIns(): { total: number; lastAt: string | null; builds: Record<string, number> } {
+    const builds: Record<string, number> = {};
+    for (const c of this.checkIns) {
+      const key = c.build === null ? 'unknown' : String(c.build);
+      builds[key] = (builds[key] ?? 0) + 1;
+    }
+    return { total: this.checkIns.length, lastAt: this.checkIns[0]?.at ?? null, builds };
+  }
+
+  /**
+   * The released build, or null if we have not read it yet.
+   *
+   * Deliberately synchronous and deliberately allowed to answer null: it is
+   * consumed as an optional hint on the ingest response, and a phone that does
+   * not get the hint simply falls back to its own manifest check. Blocking a
+   * telemetry batch on a disk read to deliver a hint would be the wrong trade
+   * in every direction.
+   */
+  liveVersionCode(): number | null {
+    if (Date.now() - this.cachedAt > ReleaseService.VERSION_CACHE_MS) {
+      this.cachedAt = Date.now();
+      // Fire and forget: this call returns the previous value and the next one
+      // gets the fresh answer. Nothing here is worth awaiting in an ingest.
+      void this.live().then((m) => {
+        this.cachedVersionCode = m?.versionCode ?? null;
+      });
+    }
+    return this.cachedVersionCode;
+  }
 
   private path(name: string): string {
     return join(this.config.session.apkDir, name);
@@ -134,6 +210,11 @@ export class ReleaseService {
     await rename(stagedApk, liveApk);
     await this.writeAtomic(liveManifest, stamped);
     await unlink(stagedManifest).catch(() => undefined);
+
+    // The one moment the cache is certainly wrong, and the one moment it
+    // matters most: every tracking phone should get the hint on its next batch.
+    this.cachedVersionCode = stamped.versionCode;
+    this.cachedAt = Date.now();
 
     this.log.warn(
       `Released ${stamped.versionName} (${stamped.versionCode}) to the fleet` +

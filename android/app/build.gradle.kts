@@ -26,6 +26,24 @@ android {
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
         /*
+         * 21 / 1.7.0 — a release that reaches a phone the same day.
+         *
+         * 1.6.0 went out and nothing appeared on the handset watching for it.
+         * Nothing was broken: the background check is throttled, the phone had
+         * looked an hour earlier, and the next look was five hours away. From
+         * the outside that is indistinguishable from a button that does not
+         * work — which is the worst property a release mechanism can have.
+         *
+         * Three paths now, shortest first: opening the app always checks; a
+         * tracking phone is told on its next telemetry response, within
+         * seconds; and the background timer is an hour rather than six. The app
+         * also identifies itself when it checks, so the dashboard can show
+         * whether any phone came to look at all.
+         */
+        versionCode = 21
+        versionName = "1.7.0"
+
+        /*
          * 20 / 1.6.0 — the shipment a driver stopped by mistake.
          *
          * Stopping is the one action on this phone that nothing recovers from:
@@ -39,9 +57,6 @@ android {
          * the server raises PAUSED_TOO_LONG after ten minutes, and pressing
          * Resume reaches the phone through the session check here.
          */
-        versionCode = 20
-        versionName = "1.6.0"
-
         /*
          * 19 / 1.5.0 — the last release that has to be installed by hand.
          *

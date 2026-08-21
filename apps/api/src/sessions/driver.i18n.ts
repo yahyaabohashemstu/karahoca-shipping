@@ -80,6 +80,8 @@ export interface DriverStrings {
   releaseFailed: string;
   releaseUpToDate: string;
   releaseExplain: string;
+  releaseCheckIns: string;
+  releaseCheckInsNone: string;
 }
 
 const TR: DriverStrings = {
@@ -123,6 +125,8 @@ const TR: DriverStrings = {
   releaseUpToDate: 'Sürücüler zaten bu sürümde.',
   releaseExplain:
     'Bildirim yalnızca daha eski sürümdeki telefonlara gider. Güncel olanlar hiçbir şey görmez.',
+  releaseCheckIns: 'Soran telefonlar',
+  releaseCheckInsNone: 'Sunucu açıldığından beri soran olmadı',
 };
 
 const AR: DriverStrings = {
@@ -164,6 +168,8 @@ const AR: DriverStrings = {
   releaseUpToDate: 'السائقون على هذه النسخة أصلًا.',
   releaseExplain:
     'يصل الإشعار إلى الهواتف ذات النسخة الأقدم فقط. ومن لديه النسخة الأخيرة لا يصله شيء.',
+  releaseCheckIns: 'هواتف استعلمت',
+  releaseCheckInsNone: 'لم يستعلم أي هاتف منذ تشغيل الخادم',
 };
 
 const KU: DriverStrings = {
@@ -205,6 +211,8 @@ const KU: DriverStrings = {
   releaseUpToDate: 'Şofêr jixwe li ser vê guhertoyê ne.',
   releaseExplain:
     'Agahdarî tenê diçe telefonên bi guhertoyeke kevntir. Yên nûtirîn tiştekî nabînin.',
+  releaseCheckIns: 'Telefonên pirsîn',
+  releaseCheckInsNone: 'Ji vekirina serverê ve kesî nepirsiye',
 };
 
 const DICTIONARIES: Record<DriverLocale, DriverStrings> = { tr: TR, ar: AR, ku: KU };

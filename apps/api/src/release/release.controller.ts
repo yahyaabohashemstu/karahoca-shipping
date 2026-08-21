@@ -1,4 +1,4 @@
-import { Controller, Get, Header, HttpCode, Post } from '@nestjs/common';
+import { Controller, Get, Header, Headers, HttpCode, Post } from '@nestjs/common';
 import { CurrentUser, Public, Roles } from '../auth/decorators';
 import { ReleaseService } from './release.service';
 
@@ -34,7 +34,17 @@ export class ReleaseController {
   @Get('downloads/latest.json')
   @Header('Content-Type', 'application/json; charset=utf-8')
   @Header('Cache-Control', 'no-store')
-  manifest() {
+  manifest(
+    @Headers('x-kh-app-build') build: string | undefined,
+    @Headers('user-agent') userAgent: string | undefined,
+  ) {
+    /*
+     * Recorded before the manifest is read, so a phone asking about a release
+     * that does not exist still counts as a phone that asked. The 404 branch is
+     * exactly the case somebody will be trying to diagnose.
+     */
+    const parsed = Number.parseInt(build ?? '', 10);
+    this.releases.recordCheckIn(Number.isFinite(parsed) ? parsed : null, userAgent ?? null);
     return this.releases.manifestForDevices();
   }
 
@@ -50,6 +60,9 @@ export class ReleaseController {
     return {
       live,
       staged,
+      // Answers "has anything actually asked since I pressed it?" — see the
+      // note on ReleaseService.checkIns for why this exists.
+      checkIns: this.releases.recentCheckIns(),
       // Computed here so the page does not have to reimplement the comparison
       // and get it subtly different.
       canAnnounce: !!staged && (!live || staged.versionCode > live.versionCode),

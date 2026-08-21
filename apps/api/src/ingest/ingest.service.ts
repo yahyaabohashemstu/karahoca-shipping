@@ -11,6 +11,7 @@ import { CONFIG, type AppConfig } from '../config/configuration';
 import { DatabaseService } from '../database/database.service';
 import { RedisService } from '../redis/redis.service';
 import { RealtimePublisher } from '../realtime/realtime.publisher';
+import { ReleaseService } from '../release/release.service';
 import type { DriverContext } from '../auth/auth.types';
 
 /** Shape accepted by `kh.ingest_points` via jsonb_to_recordset. */
@@ -70,6 +71,7 @@ export class IngestService {
     private readonly db: DatabaseService,
     private readonly redis: RedisService,
     private readonly publisher: RealtimePublisher,
+    private readonly releases: ReleaseService,
   ) {}
 
   /**
@@ -177,6 +179,21 @@ export class IngestService {
       policy: result.policy,
       // Explicit instruction rather than an inference the client has to make.
       nextAction: result.sessionStatus === 'PAUSED' ? 'PAUSE' : 'CONTINUE',
+      /*
+       * The released build, on the one response a phone is guaranteed to read.
+       *
+       * A tracking phone posts here every ten seconds and reads the manifest
+       * twice a day, so a release could sit unnoticed for hours on exactly the
+       * handsets that are out on the road. This is the only channel this
+       * architecture has that resembles a push: no FCM, no socket from the app,
+       * and a phone that is not tracking sends nothing at all.
+       *
+       * Just the number. The client already knows how to fetch and verify a
+       * manifest; being told "there is something newer than you" is enough to
+       * make it look, and keeps this out of the business of describing
+       * releases.
+       */
+      releasedAppBuild: this.releases.liveVersionCode(),
     };
   }
 
