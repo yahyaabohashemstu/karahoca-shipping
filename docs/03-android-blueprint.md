@@ -449,10 +449,27 @@ From 1.5.0 the app carries its own updater.
                                           BootReceiver resumes the session
 ```
 
-**The check is cheap and rare.** A few hundred bytes of JSON, throttled to once
-every six hours, on work that was going to run anyway — process start and
-`SyncWorker`. It is placed *before* SyncWorker's session guard on purpose: a
-driver between shipments is exactly the driver with time to install something.
+**Three paths reach a phone, shortest first.** Opening the app always checks —
+no throttle, because a driver with the app in front of them is not the case the
+throttle protects. A *tracking* phone is told on its next telemetry response,
+within seconds: the ingest response carries the released `versionCode`, which is
+the only thing a working driver's phone reads often enough to serve as a push.
+Everything else falls back to a one-hour background timer on process start and
+`SyncWorker`, placed *before* SyncWorker's session guard on purpose — a driver
+between shipments is exactly the driver with time to install something.
+
+That timer was six hours, and six was wrong in a way that only showed the first
+time somebody pressed the release button and watched a handset: the phone had
+looked an hour earlier, the next look was five hours away, and from the outside
+that is indistinguishable from a button that does not work.
+
+**The phone says who it is.** `X-KH-App-Build` on the check, kept by the API as
+its last fifty check-ins and shown under the release button. Added because the
+first time anyone asked "did any phone hear that release?", the answer turned
+out to be unobtainable — the API logs nothing per request, Traefik logs nothing,
+and the manifest is the one file under `/downloads` the nginx sidecar no longer
+serves, so the only component that could have seen the request was the only one
+keeping no record of it.
 
 **Nothing downloads until the driver presses the button.** 24 MB on a roaming
 plan in Iraq is their money. The banner shows the size before they commit, and

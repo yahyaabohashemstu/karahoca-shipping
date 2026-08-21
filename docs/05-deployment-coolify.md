@@ -187,6 +187,18 @@ Only phones on an **older** build are notified. The app raises its banner when
 the manifest's `versionCode` is above its own, so anyone already on the released
 build sees nothing at all.
 
+**How fast.** A phone that is tracking hears within seconds — the released
+version rides the ingest response it posts every ten seconds. A driver who opens
+the app checks immediately. Everything else is within an hour. From **1.7.0**
+onward; earlier builds only have the timer they shipped with, so the hop *to*
+1.7.0 still waits on the old six-hour one.
+
+**Did anybody hear it?** The panel shows the last check-ins under the button —
+how many phones asked and which builds they are on, since the API last started.
+If that stays empty after a release, no phone is asking, and the cause is on the
+handset (an old build with no updater, or the app never opened) rather than in
+the release.
+
 ### Two things about the box
 
 `/downloads/latest.json` is served by the **API**, not the nginx sidecar — a
