@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { DatabaseService } from '../database/database.service';
 import { RedisService } from '../redis/redis.service';
 import { RealtimePublisher } from '../realtime/realtime.publisher';
+import { ReleaseService } from '../release/release.service';
 
 type AlertKind =
   | 'SIGNAL_LOST'
@@ -11,7 +12,8 @@ type AlertKind =
   | 'MOCK_LOCATION'
   | 'NOT_STARTED'
   | 'STOPPED_TOO_LONG'
-  | 'PAUSED_TOO_LONG';
+  | 'PAUSED_TOO_LONG'
+  | 'APP_OUTDATED';
 
 type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
@@ -52,6 +54,20 @@ const NOT_STARTED_MINUTES = 90;
 const PAUSED_MINUTES = 10;
 
 /**
+ * How long after a release a lorry may still be on the old build.
+ *
+ * A day. Long enough that a driver mid-haul with the phone in a door pocket is
+ * not an exception before they have next looked at it — the app checks hourly
+ * and tells them within seconds while tracking, so twenty-four hours means they
+ * have declined or not noticed, not that they have not been asked.
+ *
+ * Short enough to matter: the reason this detector exists is that a release is
+ * usually a fix, and the whole point of knowing is to ring the one driver still
+ * carrying the bug.
+ */
+const OUTDATED_GRACE_HOURS = 24;
+
+/**
  * Battery thresholds, with deliberate hysteresis.
  *
  * Raise at 15%, clear at 25%. A phone sitting on the threshold crosses it back
@@ -88,6 +104,8 @@ export class MaintenanceService {
     private readonly db: DatabaseService,
     private readonly redis: RedisService,
     private readonly publisher: RealtimePublisher,
+    // For the released build. See detectOutdatedApps.
+    private readonly releases: ReleaseService,
   ) {}
 
   private async withLeaderLock(name: string, ttlSec: number, fn: () => Promise<void>) {
@@ -432,6 +450,89 @@ export class MaintenanceService {
     );
     for (const row of rows) {
       await this.clearAlert(row.session_id, 'PAUSED_TOO_LONG');
+    }
+  }
+
+  /**
+   * The lorry running software we have already replaced.
+   *
+   * Only fires against a build that has actually been *released* — staged ones
+   * are invisible to phones by design, so holding a driver to one would be
+   * holding them to something they were never offered.
+   *
+   * The device row is the source of truth for what a phone is running, and it
+   * is only as fresh as the last token refresh — about hourly, from 1.8.0
+   * onward. A phone on an older build never reports again after its claim,
+   * which is not a gap here: it is outdated, it will stay outdated in the
+   * ledger, and the alert clears when the session ends. Exactly right.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async detectOutdatedApps(): Promise<void> {
+    await this.withLeaderLock('detect-outdated-app', 350, async () => {
+      const released = await this.releases.live();
+      // Nothing released yet, or released too recently to hold anyone to.
+      if (!released?.announcedAt) return;
+      const announcedAt = new Date(released.announcedAt);
+      if (Number.isNaN(announcedAt.getTime())) return;
+      if (Date.now() - announcedAt.getTime() < OUTDATED_GRACE_HOURS * 3_600_000) return;
+
+      await this.raiseOutdatedAlerts(released.versionCode, released.versionName);
+      await this.clearUpdatedApps(released.versionCode);
+    });
+  }
+
+  private async raiseOutdatedAlerts(releasedCode: number, releasedName: string): Promise<void> {
+    const rows = await this.db.query<{
+      id: string;
+      reference: string;
+      app_version: string | null;
+      app_build: number | null;
+    }>(
+      `SELECT s.id, s.reference, d.app_version, d.app_build
+         FROM kh.tracking_sessions s
+         JOIN kh.session_devices d ON d.session_id = s.id AND d.revoked_at IS NULL
+        WHERE s.status = 'ACTIVE'
+          -- A build we have never heard of is not a build we can call old.
+          AND d.app_build IS NOT NULL
+          AND d.app_build < $1::int
+          AND NOT EXISTS (
+            SELECT 1 FROM kh.alerts al
+            WHERE al.session_id = s.id
+              AND al.kind = 'APP_OUTDATED'
+              AND al.resolved_at IS NULL
+          )`,
+      [releasedCode],
+    );
+
+    for (const row of rows) {
+      await this.raiseAlert(
+        row.id,
+        row.reference,
+        'APP_OUTDATED',
+        'WARNING',
+        'Uygulama sürümü eski',
+        `Araçtaki telefon ${row.app_version ?? 'bilinmeyen'} sürümünü çalıştırıyor; ` +
+          `yayındaki sürüm ${releasedName}. Sürücüden uygulamayı güncellemesini isteyin.`,
+        { appVersion: row.app_version, appBuild: row.app_build, releasedCode, releasedName },
+      );
+    }
+  }
+
+  /** Updated, or the shipment ended. Either way there is nothing left to say. */
+  private async clearUpdatedApps(releasedCode: number): Promise<void> {
+    const rows = await this.db.query<{ session_id: string }>(
+      `SELECT DISTINCT al.session_id
+         FROM kh.alerts al
+         JOIN kh.tracking_sessions s ON s.id = al.session_id
+         LEFT JOIN kh.session_devices d
+                ON d.session_id = s.id AND d.revoked_at IS NULL
+        WHERE al.kind = 'APP_OUTDATED'
+          AND al.resolved_at IS NULL
+          AND (s.status <> 'ACTIVE' OR COALESCE(d.app_build, 0) >= $1::int)`,
+      [releasedCode],
+    );
+    for (const row of rows) {
+      await this.clearAlert(row.session_id, 'APP_OUTDATED');
     }
   }
 

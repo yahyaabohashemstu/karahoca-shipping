@@ -395,7 +395,8 @@ export type AlertKind =
   | 'MOCK_LOCATION'
   | 'NOT_STARTED'
   | 'STOPPED_TOO_LONG'
-  | 'PAUSED_TOO_LONG';
+  | 'PAUSED_TOO_LONG'
+  | 'APP_OUTDATED';
 
 /** Declared INFO < WARNING < CRITICAL in the database, and ranked that way here. */
 export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';

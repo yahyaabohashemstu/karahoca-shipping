@@ -10,6 +10,18 @@
  *   node migrate.mjs --seed     apply migrations, then db/seed/*.sql
  *   node migrate.mjs --status   list applied / pending, exit 0
  *   node migrate.mjs --verify   fail if any applied migration's checksum drifted
+ *   node migrate.mjs --reseal <file>
+ *                               re-record one applied migration's checksum
+ *
+ * --reseal exists for one narrow case: a file whose *comments* were edited
+ * after it was applied. The drift check compares bytes, correctly — it is there
+ * to catch someone quietly changing the SQL under a database that has already
+ * run it — but it cannot tell a corrected paragraph from a dropped column, and
+ * a warning nobody can ever clear is a warning everybody learns to scroll past.
+ *
+ * It takes one exact filename, never a pattern, prints both checksums, and
+ * makes you assert the SQL is untouched. If you are resealing more than once in
+ * a blue moon, the thing to fix is the habit of editing applied migrations.
  *
  * A file may opt out of the wrapping transaction with a first-line directive:
  *   -- migrate:no-transaction
@@ -29,6 +41,12 @@ const args = new Set(process.argv.slice(2));
 const WANT_SEED = args.has('--seed');
 const STATUS_ONLY = args.has('--status');
 const VERIFY = args.has('--verify');
+/** `--reseal 0013_foo.sql` — the filename is the argument after the flag. */
+const RESEAL = (() => {
+  const argv = process.argv.slice(2);
+  const i = argv.indexOf('--reseal');
+  return i >= 0 ? argv[i + 1] : undefined;
+})();
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -194,6 +212,43 @@ async function applyFile(client, dir, filename, ledger) {
   return true;
 }
 
+/**
+ * Re-record the checksum of one already-applied migration.
+ *
+ * Runs no SQL from the file. That is the whole point: the schema is presumed
+ * unchanged, and if it is not, this is the wrong tool — the right one is a new
+ * migration.
+ */
+async function reseal(client, filename) {
+  const raw = await readFile(join(MIGRATIONS_DIR, filename), 'utf8').catch(() => null);
+  if (raw === null) throw new Error(`no such migration: ${filename}`);
+
+  const { rows } = await client.query(
+    'SELECT checksum FROM public.kh_migrations WHERE filename = $1',
+    [filename],
+  );
+  if (rows.length === 0) throw new Error(`${filename} has never been applied; nothing to reseal`);
+
+  const recorded = rows[0].checksum;
+  const current = sha256(raw);
+  if (recorded === current) {
+    log(`${filename} already matches; nothing to do`);
+    return;
+  }
+
+  console.warn(
+    `[migrate] RESEALING ${filename}\n` +
+      `[migrate]   recorded ${recorded}\n` +
+      `[migrate]   on disk  ${current}\n` +
+      `[migrate]   No SQL is run. Only do this when the difference is comments.`,
+  );
+  await client.query(
+    'UPDATE public.kh_migrations SET checksum = $2 WHERE filename = $1',
+    [filename, current],
+  );
+  log(`${filename} resealed`);
+}
+
 async function main() {
   const client = new pg.Client({ connectionString, application_name: 'kh-migrate' });
 
@@ -211,6 +266,11 @@ async function main() {
 
   try {
     await ensureLedger(client);
+
+    if (RESEAL) {
+      await reseal(client, RESEAL);
+      return;
+    }
 
     const { rows } = await client.query('SELECT filename, checksum FROM public.kh_migrations');
     const ledger = new Map(rows.map((r) => [r.filename, r.checksum]));

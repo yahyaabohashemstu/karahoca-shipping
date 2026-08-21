@@ -708,10 +708,22 @@ export class SessionsService {
       });
     }
 
+    /*
+     * COALESCE, not assignment.
+     *
+     * Every build before 1.8.0 refreshes without these fields, and this row is
+     * the only record of which version a phone is running. Overwriting with
+     * null would mean one refresh from an old app erasing what a new one had
+     * reported, and the outdated-app detector would go blind exactly where it
+     * is meant to see.
+     */
     await this.db.query(
-      `UPDATE kh.session_devices SET last_seen_at = now()
-       WHERE session_id = $1 AND device_id = $2`,
-      [row.session_id, dto.deviceId],
+      `UPDATE kh.session_devices
+          SET last_seen_at = now(),
+              app_version  = COALESCE($3, app_version),
+              app_build    = COALESCE($4, app_build)
+        WHERE session_id = $1 AND device_id = $2`,
+      [row.session_id, dto.deviceId, dto.appVersion ?? null, dto.appBuild ?? null],
     );
 
     return {

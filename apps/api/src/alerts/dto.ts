@@ -18,6 +18,7 @@ export const ALERT_KINDS = [
   'NOT_STARTED',
   'STOPPED_TOO_LONG',
   'PAUSED_TOO_LONG',
+  'APP_OUTDATED',
 ] as const;
 
 export const ALERT_SEVERITIES = ['INFO', 'WARNING', 'CRITICAL'] as const;

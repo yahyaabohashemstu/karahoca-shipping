@@ -170,6 +170,19 @@ export class DriverRefreshDto {
 
   @IsString() @Length(8, 128)
   deviceId!: string;
+
+  /*
+   * What the phone is running, refreshed roughly hourly.
+   *
+   * Optional because every build before 1.8.0 refreshes without them, and the
+   * service COALESCEs rather than overwrites for the same reason: an older app
+   * must not blank a value a newer one recorded.
+   */
+  @IsOptional() @IsString() @MaxLength(32)
+  appVersion?: string;
+
+  @IsOptional() @IsInt() @Min(1)
+  appBuild?: number;
 }
 
 export class DriverEventDto {

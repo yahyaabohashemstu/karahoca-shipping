@@ -71,7 +71,24 @@ data class ClaimResponse(
 )
 
 @Serializable
-data class RefreshRequest(val refreshToken: String, val deviceId: String)
+data class RefreshRequest(
+    val refreshToken: String,
+    val deviceId: String,
+    /*
+     * Which build is asking.
+     *
+     * The device row records this at claim and never again, so a phone that
+     * updated itself mid-shipment still read as the version it was handed the
+     * code on — which made "this truck is running a build we have replaced"
+     * unanswerable, and any alert about it impossible to clear.
+     *
+     * Carried here rather than on ingest because the refresh already exists,
+     * already identifies the device, already writes to that row, and happens
+     * about once an hour: often enough to be current, rare enough to be free.
+     */
+    val appVersion: String? = null,
+    val appBuild: Int? = null,
+)
 
 @Serializable
 data class RefreshResponse(

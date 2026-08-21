@@ -649,5 +649,13 @@ function KindIcon({ kind }: { kind: AlertKind }) {
           <path d="M7 1.6v4.5" {...p} strokeWidth={1.5} />
         </svg>
       );
+    /* An arrow pointing down into a tray: the update this phone has not taken. */
+    case 'APP_OUTDATED':
+      return (
+        <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
+          <path d="M7 1.9v6.2M4.4 5.9 7 8.5l2.6-2.6" {...p} />
+          <path d="M2.6 11.1h8.8" {...p} strokeWidth={1.5} />
+        </svg>
+      );
   }
 }

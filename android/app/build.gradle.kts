@@ -26,6 +26,21 @@ android {
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
         /*
+         * 23 / 1.8.0 — the phone says which build it is, so the desk can see it.
+         *
+         * The device row recorded a version at claim and never again, which
+         * made "is this driver running the build with the fix?" a psql query
+         * and an alert about it impossible to clear. The token refresh already
+         * identifies the device, already writes to that row and already happens
+         * about hourly, so it carries the version now.
+         *
+         * The dashboard renders it, and the server raises APP_OUTDATED against
+         * a lorry still on an old build a day after a release.
+         */
+        versionCode = 23
+        versionName = "1.8.0"
+
+        /*
          * 22 / 1.7.1 — the updater's own disk work, off the main thread.
          *
          * 1.7.0 made the app-open path call check(), which put a first-touch
@@ -37,9 +52,6 @@ android {
          * Functionally identical to 1.7.0 otherwise. Shipped separately because
          * 1.7.0 was already released to the fleet by the time it was found.
          */
-        versionCode = 22
-        versionName = "1.7.1"
-
         /*
          * 21 / 1.7.0 — a release that reaches a phone the same day.
          *

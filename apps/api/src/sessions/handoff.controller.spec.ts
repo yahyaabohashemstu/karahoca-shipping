@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { HandoffController } from './handoff.controller';
 import type { AppConfig } from '../config/configuration';
+import type { ReleaseService } from '../release/release.service';
 
 /*
  * The two association documents, which are the only reason a QR code opens the
@@ -21,8 +22,10 @@ function controllerWith(appleAppId: string | null): HandoffController {
       appleAppId,
     },
   } as unknown as AppConfig;
-  // The controller takes only the config, through DI.
-  return new HandoffController(config);
+  // These two documents never touch the release state; the stub only exists to
+  // satisfy the constructor.
+  const releases = { live: async () => null } as unknown as ReleaseService;
+  return new HandoffController(config, releases);
 }
 
 describe('apple-app-site-association', () => {

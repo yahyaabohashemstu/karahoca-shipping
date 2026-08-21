@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { HandoffController } from './handoff.controller';
 import { DRIVER_LOCALES, driverStrings, resolveDriverLocale, type DriverLocale } from './driver.i18n';
 import type { AppConfig } from '../config/configuration';
+import type { ReleaseService } from '../release/release.service';
 
 /*
  * The two pages a driver sees.
@@ -15,7 +16,7 @@ import type { AppConfig } from '../config/configuration';
  * in the order they were printed.
  */
 
-function controller(): HandoffController {
+function controller(released?: { versionName: string; versionCode: number }): HandoffController {
   const config = {
     publicApiUrl: 'https://track.karahoca.com',
     session: {
@@ -26,7 +27,9 @@ function controller(): HandoffController {
       apkDownloadUrl: null,
     },
   } as unknown as AppConfig;
-  return new HandoffController(config);
+  // Only live() is reached from these pages; a stub keeps the spec off the disk.
+  const releases = { live: async () => released ?? null } as unknown as ReleaseService;
+  return new HandoffController(config, releases);
 }
 
 describe('the driver hand-off page', () => {
@@ -174,6 +177,41 @@ describe('the driver install page', () => {
         width: 512,
       }),
     );
+  });
+
+  /**
+   * The page names what it is handing out — but only once something is actually
+   * released. Before the first release the download link still works (the
+   * filename is fixed), and inventing a version for it would be a lie.
+   */
+  it('names the released version, and says nothing when there is none', async () => {
+    /*
+     * Read the meta line specifically rather than searching the whole page.
+     * The first version of this test looked for the Turkish word for "version"
+     * anywhere in the document and failed on 'Sürücülerdeki sürüm' — a label in
+     * the admin release panel, which is hidden but always present in the markup.
+     */
+    const meta = (html: string) => /<p class="meta">(.*?)<\/p>/s.exec(html)?.[1] ?? '';
+
+    const named = meta(
+      await controller({ versionName: '1.8.0', versionCode: 23 }).landingApp('tr', undefined),
+    );
+    expect(named).toContain('1.8.0');
+    expect(named).toContain(driverStrings('tr').versionLabel);
+
+    const unreleased = meta(await controller().landingApp('tr', undefined));
+    expect(unreleased).not.toContain(driverStrings('tr').versionLabel);
+    expect(unreleased).toContain(driverStrings('tr').fileKind);
+  });
+
+  /** Latin digits and a Latin version string, whichever way the page runs. */
+  it('keeps the version number left-to-right on an RTL page', async () => {
+    const html = await controller({ versionName: '1.8.0', versionCode: 23 }).landingApp(
+      'ar',
+      undefined,
+    );
+    expect(html).toContain('dir="rtl"');
+    expect(html).toMatch(/<span dir="ltr">[^<]*1\.8\.0<\/span>/);
   });
 
   it('captions the QR in every language', async () => {

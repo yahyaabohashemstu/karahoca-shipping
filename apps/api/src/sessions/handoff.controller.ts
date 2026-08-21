@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import QRCode from 'qrcode';
+import { ReleaseService } from '../release/release.service';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { Public } from '../auth/decorators';
 import { normalizeClaimCode } from '../common/crypto.util';
@@ -41,7 +42,10 @@ import {
  */
 @Controller()
 export class HandoffController {
-  constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+  constructor(
+    @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly releases: ReleaseService,
+  ) {}
 
   /**
    * The download QR, rendered once.
@@ -190,16 +194,34 @@ export class HandoffController {
   @Public()
   @Get('app')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  // Short, not long: the page names no version, but the day it does — or the
-  // day the install steps change — a driver on a cached copy is a driver
-  // following the wrong instructions.
+  /*
+   * That day has arrived: the page names a version now.
+   *
+   * Ten minutes was chosen against exactly this, and it is the right order of
+   * magnitude — a release is a deliberate act somebody is watching, and the
+   * worst case is a driver seeing the previous version number for a few minutes
+   * on a page whose download link is already correct, because the link is a
+   * fixed filename and the file behind it was swapped first.
+   */
   @Header('Cache-Control', 'public, max-age=600')
   async landingApp(
     @Query('lang') lang: string | undefined,
     @Headers('accept-language') acceptLanguage: string | undefined,
   ): Promise<string> {
     const apkUrl = this.apkUrl();
-    const [qr, qrPng] = await Promise.all([this.downloadQr(), this.downloadQrPng()]);
+    /*
+     * Read per request, not cached with the QR beside it.
+     *
+     * The QR encodes a filename that never changes; this is the version behind
+     * that filename and it moves every time somebody presses the release
+     * button. A stale number here is worse than none — it is the page telling
+     * a driver they already have what they are about to download.
+     */
+    const [qr, qrPng, released] = await Promise.all([
+      this.downloadQr(),
+      this.downloadQrPng(),
+      this.releases.live().catch(() => null),
+    ]);
     const locale = resolveDriverLocale(lang, acceptLanguage);
     const t = driverStrings(locale);
 
@@ -231,7 +253,11 @@ ${pageHead(t.installTitle, pageStyle(INSTALL_CSS))}
       </svg>
       ${t.download}
     </a>
-    <p class="meta">${t.fileKind}<span class="meta__sep" aria-hidden="true">·</span>${t.requirement}</p>
+    <p class="meta">${t.fileKind}<span class="meta__sep" aria-hidden="true">·</span>${t.requirement}${
+      released
+        ? `<span class="meta__sep" aria-hidden="true">·</span><span dir="ltr">${t.versionLabel} ${released.versionName}</span>`
+        : ''
+    }</p>
 
     <!--
       Straight at the APK, not at this page.

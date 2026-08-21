@@ -87,6 +87,8 @@ export interface DriverStrings {
   qrHeading: string;
   qrHint: string;
   qrDownload: string;
+  /** "sürüm 1.7.1" under the download button. */
+  versionLabel: string;
 }
 
 const TR: DriverStrings = {
@@ -136,6 +138,7 @@ const TR: DriverStrings = {
   qrHeading: 'Başka bir telefona kurmak için',
   qrHint: 'Kamerayı kodun üzerine tutun; indirme hemen başlar.',
   qrDownload: 'Karekodu indir',
+  versionLabel: 'sürüm',
 };
 
 const AR: DriverStrings = {
@@ -183,6 +186,7 @@ const AR: DriverStrings = {
   qrHeading: 'للتثبيت على هاتف آخر',
   qrHint: 'وجّه الكاميرا نحو الرمز؛ يبدأ التنزيل مباشرة.',
   qrDownload: 'نزّل الباركود',
+  versionLabel: 'الإصدار',
 };
 
 const KU: DriverStrings = {
@@ -230,6 +234,7 @@ const KU: DriverStrings = {
   qrHeading: 'Ji bo sazkirina li ser telefoneke din',
   qrHint: 'Kamerayê bide ser koda; daxistin yekser dest pê dike.',
   qrDownload: 'Barkodê daxe',
+  versionLabel: 'guherto',
 };
 
 const DICTIONARIES: Record<DriverLocale, DriverStrings> = { tr: TR, ar: AR, ku: KU };

@@ -639,7 +639,14 @@ class TrackingRepository @Inject constructor(
         val refresh = store.refreshToken() ?: return false
         val deviceId = store.deviceId()
         return runCatching {
-            val response = api.refresh(RefreshRequest(refresh, deviceId))
+            val response = api.refresh(
+                RefreshRequest(
+                    refreshToken = refresh,
+                    deviceId = deviceId,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    appBuild = BuildConfig.VERSION_CODE,
+                ),
+            )
             if (!response.isSuccessful) return@runCatching false
             val body = response.body() ?: return@runCatching false
             store.saveCredentials(

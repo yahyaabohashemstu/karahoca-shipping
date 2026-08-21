@@ -509,6 +509,23 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 }
               />
               <Row label={t.sessionDetail.android} value={String(session.device.os_version ?? '—')} mono />
+              {/*
+                Which build this phone is on.
+                
+                The API has always returned it and nothing rendered it, so
+                answering "is this driver running the version with the fix?"
+                meant a psql query. It is the first thing you want when a
+                shipment behaves like a bug you already fixed.
+              */}
+              <Row
+                label={t.sessionDetail.appVersion}
+                value={
+                  session.device.app_version
+                    ? `${session.device.app_version} (${session.device.app_build ?? '?'})`
+                    : '—'
+                }
+                mono
+              />
               <DeviceFlag
                 label={t.sessionDetail.batteryOptimisation}
                 ok={Boolean(session.device.battery_optimisation_ignored)}
