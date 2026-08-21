@@ -297,6 +297,25 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_NAME: ${ADMIN_NAME}
       APP_VERSION: ${APP_VERSION}
+      APK_DIR: /srv/downloads
+    volumes:
+      # The same directory the apk sidecar serves, mounted read-WRITE here.
+      #
+      # Publishing an APK and releasing it to drivers are two decisions: the
+      # publish script stages both files, and the button in the app-download
+      # page promotes them. That promotion is two renames inside this
+      # directory, so this container needs to write to it — the sidecar, which
+      # only ever serves bytes, keeps its :ro.
+      #
+      # Absolute host path, deliberately: Coolify materialises only the
+      # rendered compose file, so a relative bind source resolves to a path
+      # that does not exist and Docker silently creates an empty directory over
+      # the mount point.
+      #
+      # The directory must be writable by uid 1000 — the api image runs as the
+      # `node` user. `chown -R 1000:1000 /opt/karahoca/downloads` on the host,
+      # once; see docs/05 §6.
+      - /opt/karahoca/downloads:/srv/downloads
     depends_on:
       kh-postgres: { condition: service_healthy }
       kh-redis: { condition: service_healthy }
@@ -348,6 +367,18 @@ services:
       - traefik.http.routers.kh-api.priority=100
       - traefik.http.routers.kh-api.tls=true
       - traefik.http.routers.kh-api.tls.certresolver=letsencrypt
+
+      # /downloads/latest.json is the one file under here the API owns: it is
+      # the answer to "has this build been released to the fleet yet", and a
+      # static file server cannot know that. Priority 200 rather than leaning
+      # on Traefik's longest-rule tie-break at 100, which is implicit and would
+      # quietly invert the day either rule is edited.
+      - traefik.http.routers.kh-manifest.entryPoints=https
+      - traefik.http.routers.kh-manifest.rule=Host(`${APP_DOMAIN}`) && Path(`/downloads/latest.json`)
+      - traefik.http.routers.kh-manifest.priority=200
+      - traefik.http.routers.kh-manifest.tls=true
+      - traefik.http.routers.kh-manifest.tls.certresolver=letsencrypt
+      - traefik.http.routers.kh-manifest.service=kh-api
       - traefik.http.routers.kh-api.service=kh-api
 
       - traefik.http.services.kh-api.loadbalancer.server.port=4000

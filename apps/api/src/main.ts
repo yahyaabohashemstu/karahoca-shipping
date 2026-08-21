@@ -128,6 +128,12 @@ async function bootstrap(): Promise<void> {
       { path: '.well-known/apple-app-site-association', method: RequestMethod.GET },
       // Read down a phone line to a driver standing next to a truck.
       { path: 'app', method: RequestMethod.GET },
+      /*
+       * The update manifest, at the path already baked into every APK in the
+       * field. It cannot move: 1.5.0 reads this exact URL and there is no way
+       * to change the mind of a phone that is already out there.
+       */
+      { path: 'downloads/latest.json', method: RequestMethod.GET },
     ],
   });
 

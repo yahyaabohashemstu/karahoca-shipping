@@ -137,6 +137,7 @@ export interface AppConfig {
     deepLinkScheme: string;
     deepLinkPackage: string;
     apkDownloadUrl: string | null;
+    apkDir: string;
     androidCertFingerprints: string[];
     appleAppId: string | null;
   };
@@ -219,6 +220,16 @@ export function loadConfig(): AppConfig {
       // silently fail to open the app during field testing.
       deepLinkPackage: optional('DEEP_LINK_PACKAGE', 'com.karahoca.tracker'),
       apkDownloadUrl: process.env.APK_DOWNLOAD_URL?.trim() || null,
+      /*
+       * The host directory the nginx sidecar serves /downloads from, mounted
+       * into this container as well.
+       *
+       * Read for the staged and live manifests, written when a release is
+       * announced — which is why the api mount is read-write while the apk
+       * sidecar's is read-only. Whether a build has been *released* is a
+       * decision this service holds; serving the bytes is not.
+       */
+      apkDir: optional('APK_DIR', '/srv/downloads'),
       /*
        * Signing certificates allowed to claim https://<host>/t/* as an Android
        * App Link. Published at /.well-known/assetlinks.json; Android verifies

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AlertsModule } from './alerts/alerts.module';
+import { ReleaseModule } from './release/release.module';
 import { AppConfigModule } from './config/config.module';
 import { AuthModule } from './auth/auth.module';
 import { UserAuthGuard } from './auth/guards/user-auth.guard';
@@ -33,6 +34,7 @@ import { TrackingModule } from './tracking/tracking.module';
     TrackingModule,
     CatalogModule,
     AlertsModule,
+    ReleaseModule,
     // Elevation tiles for the 3D map. Deliberately last and deliberately
     // dependency-free: it must keep serving when the database is busy.
     // Place search for the destination picker. Same shape as TerrainModule:

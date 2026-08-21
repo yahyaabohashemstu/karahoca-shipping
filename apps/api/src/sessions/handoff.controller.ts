@@ -195,8 +195,31 @@ ${steps}
       <p>${t.installNote}</p>
     </aside>
 
+    <!--
+      The release control. Hidden markup until proven otherwise.
+
+      This page is public — a driver reaches it from the QR fallback with no
+      account — so the button that puts a notification on every phone in the
+      fleet cannot simply be here. It is revealed only when the browser is
+      carrying a dashboard session, and the endpoint behind it is ADMIN-only
+      regardless of what the page chooses to show. Hiding it is courtesy;
+      the guard is what makes it safe.
+    -->
+    <section class="glass panel release" id="kh-release" hidden>
+      <h2 class="panel__title">${t.releaseTitle}</h2>
+      <dl class="release__rows">
+        <dt>${t.releaseLive}</dt><dd id="kh-live">&mdash;</dd>
+        <dt>${t.releaseStaged}</dt><dd id="kh-staged">&mdash;</dd>
+      </dl>
+      <button type="button" class="btn btn--primary" id="kh-announce" disabled>
+        ${t.releaseAnnounce}
+      </button>
+      <p class="meta" id="kh-release-msg">${t.releaseExplain}</p>
+    </section>
+
     <footer class="foot">${languageSwitcher(locale, t)}</footer>
   </main>
+  <script>${releaseScript(t)}</script>
 </body>
 </html>`;
   }
@@ -322,6 +345,77 @@ const DRIVER_CSS = `
   .foot { margin-top: 30px; display: flex; justify-content: center; font-size: 13px; }
 `;
 
+/**
+ * The release panel's behaviour, inlined.
+ *
+ * Inline because this page has always been one self-contained response — it has
+ * to render on a driver's phone with no network beyond this request — and a
+ * second asset would be a second thing to cache wrongly.
+ *
+ * The dashboard keeps its access token in localStorage under 'kh.access', and
+ * this page is same-origin with it, which is the whole reason the control can
+ * live here at all rather than needing a page inside the Next app.
+ *
+ * Every failure path ends the same way: leave the section hidden. A driver has
+ * no token, a VIEWER or DISPATCHER gets 403 from the status endpoint, and an
+ * expired token gets 401 — none of them should see a control they cannot use,
+ * and none of them should see an error about it either.
+ */
+function releaseScript(t: DriverStrings): string {
+  const s = (value: string) => JSON.stringify(value);
+  return `
+(function () {
+  var token = null;
+  try { token = window.localStorage.getItem('kh.access'); } catch (e) { return; }
+  if (!token) return;
+
+  var box = document.getElementById('kh-release');
+  var live = document.getElementById('kh-live');
+  var staged = document.getElementById('kh-staged');
+  var button = document.getElementById('kh-announce');
+  var message = document.getElementById('kh-release-msg');
+  var auth = { Authorization: 'Bearer ' + token };
+
+  function name(release) {
+    return release ? release.versionName + ' (' + release.versionCode + ')' : null;
+  }
+
+  function render(status) {
+    box.hidden = false;
+    live.textContent = name(status.live) || ${s(t.releaseNone)};
+    staged.textContent = name(status.staged) || ${s(t.releaseNone)};
+    button.disabled = !status.canAnnounce;
+    if (!status.canAnnounce) {
+      message.textContent = status.staged ? ${s(t.releaseUpToDate)} : ${s(t.releaseExplain)};
+    } else {
+      message.textContent = ${s(t.releaseExplain)};
+    }
+  }
+
+  fetch('/api/v1/app/release', { headers: auth })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(render)
+    .catch(function () { /* not an administrator, or not signed in */ });
+
+  button.addEventListener('click', function () {
+    button.disabled = true;
+    message.textContent = ${s(t.releaseWorking)};
+    fetch('/api/v1/app/release/announce', { method: 'POST', headers: auth })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (released) {
+        live.textContent = name(released);
+        staged.textContent = ${s(t.releaseNone)};
+        message.textContent = ${s(t.releaseDone)};
+      })
+      .catch(function (why) {
+        button.disabled = false;
+        message.textContent = ${s(t.releaseFailed)} + ' (' + why + ')';
+      });
+  });
+})();
+`;
+}
+
 const INSTALL_CSS = `
 ${DRIVER_CSS}
   /*
@@ -353,6 +447,28 @@ ${DRIVER_CSS}
   .meta__sep { padding: 0 7px; opacity: .55; }
 
   .panel { margin-top: 26px; padding: 18px 18px 6px; }
+
+  /*
+   * The release panel, which only an administrator ever sees.
+   *
+   * Deliberately the same glass panel as the install steps rather than
+   * something that announces itself as an admin tool: it is one more section on
+   * a page the dispatcher already knows, and a differently-styled box would
+   * read as part of the instructions a driver is meant to follow.
+   */
+  .release { padding-bottom: 18px; }
+  .release__rows {
+    margin: 0 0 16px; display: grid;
+    grid-template-columns: auto 1fr; gap: 6px 14px;
+    font-size: 13.5px;
+  }
+  .release__rows dt { color: var(--ink-3); }
+  .release__rows dd {
+    margin: 0; text-align: end; font-weight: 600; color: var(--ink-1);
+    /* Latin digits and a Latin version string, whichever way the page runs. */
+    direction: ltr; unicode-bidi: isolate;
+  }
+  .release .btn { width: 100%; }
   .panel__title {
     margin: 0 0 16px;
     font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;

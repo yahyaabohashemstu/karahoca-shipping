@@ -61,6 +61,25 @@ export interface DriverStrings {
   openInApp: string;
   downloadApk: string;
   hint: string;
+
+  /*
+   * The release panel.
+   *
+   * Only a signed-in administrator ever sees these — the page is otherwise
+   * driver-facing and public — but they are translated like everything else,
+   * because the person running a Turkish yard should not be the one user in
+   * the product reading English.
+   */
+  releaseTitle: string;
+  releaseLive: string;
+  releaseStaged: string;
+  releaseNone: string;
+  releaseAnnounce: string;
+  releaseWorking: string;
+  releaseDone: string;
+  releaseFailed: string;
+  releaseUpToDate: string;
+  releaseExplain: string;
 }
 
 const TR: DriverStrings = {
@@ -92,6 +111,18 @@ const TR: DriverStrings = {
   openInApp: 'Uygulamada aç',
   downloadApk: 'Uygulamayı indir (APK)',
   hint: 'Sorun yaşarsanız sevkiyat sorumlunuzu arayın.',
+
+  releaseTitle: 'Sürüm yayını',
+  releaseLive: 'Sürücülerdeki sürüm',
+  releaseStaged: 'Yayına hazır',
+  releaseNone: 'Bekleyen sürüm yok',
+  releaseAnnounce: 'Yeni sürümü indir',
+  releaseWorking: 'Yayınlanıyor…',
+  releaseDone: 'Yayınlandı. Eski sürümdeki sürücülere bildirim gidiyor.',
+  releaseFailed: 'Yayınlanamadı',
+  releaseUpToDate: 'Sürücüler zaten bu sürümde.',
+  releaseExplain:
+    'Bildirim yalnızca daha eski sürümdeki telefonlara gider. Güncel olanlar hiçbir şey görmez.',
 };
 
 const AR: DriverStrings = {
@@ -121,6 +152,18 @@ const AR: DriverStrings = {
   openInApp: 'افتح في التطبيق',
   downloadApk: 'نزّل التطبيق (APK)',
   hint: 'إذا واجهت مشكلة، اتصل بمسؤول الشحن.',
+
+  releaseTitle: 'إطلاق النسخة',
+  releaseLive: 'النسخة لدى السائقين',
+  releaseStaged: 'جاهزة للإطلاق',
+  releaseNone: 'لا توجد نسخة بانتظار الإطلاق',
+  releaseAnnounce: 'نزّل النسخة الجديدة',
+  releaseWorking: 'جارٍ الإطلاق…',
+  releaseDone: 'تمّ الإطلاق. يصل الإشعار الآن إلى السائقين ذوي النسخة الأقدم.',
+  releaseFailed: 'تعذّر الإطلاق',
+  releaseUpToDate: 'السائقون على هذه النسخة أصلًا.',
+  releaseExplain:
+    'يصل الإشعار إلى الهواتف ذات النسخة الأقدم فقط. ومن لديه النسخة الأخيرة لا يصله شيء.',
 };
 
 const KU: DriverStrings = {
@@ -150,6 +193,18 @@ const KU: DriverStrings = {
   openInApp: 'Di sepanê de veke',
   downloadApk: 'Sepanê daxîne (APK)',
   hint: 'Heke pirsgirêk hebe, gazî berpirsê barkirinê bike.',
+
+  releaseTitle: 'Belavkirina guhertoyê',
+  releaseLive: 'Guhertoya li cem şofêran',
+  releaseStaged: 'Amade ye ji bo belavkirinê',
+  releaseNone: 'Guhertoyek li bendê tune',
+  releaseAnnounce: 'Guhertoya nû dabeş bike',
+  releaseWorking: 'Tê belavkirin…',
+  releaseDone: 'Hat belavkirin. Agahdarî diçe şofêrên bi guhertoya kevntir.',
+  releaseFailed: 'Belavkirin bi ser neket',
+  releaseUpToDate: 'Şofêr jixwe li ser vê guhertoyê ne.',
+  releaseExplain:
+    'Agahdarî tenê diçe telefonên bi guhertoyeke kevntir. Yên nûtirîn tiştekî nabînin.',
 };
 
 const DICTIONARIES: Record<DriverLocale, DriverStrings> = { tr: TR, ar: AR, ku: KU };

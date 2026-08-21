@@ -123,19 +123,21 @@ The served path is `https://track.karahoca.com/downloads/karahoca-takip.apk`.
 `S.browser_fallback_url` points at it, so a driver who scans a code on a phone
 without the app gets the installer instead of a 404. Do not rename it.
 
-Two files move together, and that is the whole reason there is a script:
+**Publishing and releasing are two decisions.** Uploading a build tells nobody;
+an administrator pressing a button on `/app` is what puts it in front of
+drivers. A release goes out mid-shift to people on a road in northern Iraq, and
+the person who picks that moment should be at a desk.
+
+Four names live in the directory:
 
 | | |
 |---|---|
-| `karahoca-takip.apk` | the build |
+| `karahoca-takip.apk` | what the fleet downloads — always the **released** build |
 | `latest.json` | what the app reads to learn it is out of date |
+| `karahoca-takip-<code>.apk` | staged, waiting |
+| `latest.staged.json` | the manifest describing it |
 
-Publish them separately and you get the worst outcome available: a manifest
-advertising a version the download does not contain sends every phone in the
-fleet to download 24 MB and install the build it already has, forever, because
-the version never changes.
-
-### The one command
+### 1. Stage
 
 ```bash
 cd android && ./gradlew :app:assembleRelease && cd ..
@@ -144,40 +146,68 @@ infra/publish-apk.sh            # --dry-run to see the manifest without uploadin
 
 Bump `versionCode` in `android/app/build.gradle.kts` first, and put a line per
 language in `android/release-notes.json` — it becomes the text in the update
-banner on the driver's phone. The script refuses to publish a code that is not
-above the live one, because a phone will not offer such a build as an update
-and the install appears to do nothing.
+banner on the driver's phone. The script refuses a code that is not above the
+live one, because a phone will not offer such a build as an update and the
+install appears to do nothing.
 
-### What it checks, and why each one has teeth
+**What it checks.** The signer, with teeth: `apksigner verify --print-certs` on
+both the new APK and the live one; they must match, and must equal the
+fingerprint in `/.well-known/assetlinks.json` (`1a2b1286…3079`). Android refuses
+to install an APK signed by a different key over the app already on a driver's
+phone — the update silently does nothing, on every device at once, and the only
+remedy is a fleet-wide uninstall that discards every buffered point that never
+reached the server. See [08](08-signing-key-runbook.md). Then the version,
+against the live APK, and the sha256 of what actually landed on the box.
 
-**The signer.** `apksigner verify --print-certs` on both the new APK and the
-live one; they must match, and must equal the fingerprint in
-`/.well-known/assetlinks.json` (`1a2b1286…3079`). Android refuses to install an
-APK signed by a different key over the app already on a driver's phone — the
-update silently does nothing, on every device at once, and the only remedy is a
-fleet-wide uninstall that discards every buffered point that never reached the
-server. App Links verification breaks with it. See
-[08](08-signing-key-runbook.md).
+Nothing the fleet reads is touched. The previous build is kept as
+`karahoca-takip-<code>.apk.bak`.
 
-**The version.** `aapt2 dump badging`, compared against the live APK.
+### 2. Release
 
-**Atomicity.** nginx serves these files while a copy is in progress, so a
-straight `scp` hands a driver downloading at that moment a truncated APK that
-installs as a parse error. Both files go up as `.incoming`, are checksummed on
-the box, and are renamed into place — atomic on the same filesystem, and an
-in-flight download keeps the old inode and finishes cleanly. The APK is renamed
-**before** the manifest, so a phone that reads the manifest always finds the
-build it promises already there.
+Sign in to the dashboard **as an ADMIN**, open `/app`, and press
+**"نزّل النسخة الجديدة" / "Yeni sürümü indir"**. The panel is invisible to
+anyone else: the page is public — drivers reach it from the QR fallback with no
+account — so the control is revealed only when the browser is carrying a
+dashboard session, and `POST /api/v1/app/release/announce` is ADMIN-only
+regardless of what the page chooses to show.
 
-**What the world sees.** It re-downloads through the public URL afterwards and
-compares the hash to the manifest.
+Pressing it does three renames, in this order, and the order is the point:
 
-The previous APK is kept beside them as `karahoca-takip-<code>.apk.bak`.
+1. remove `latest.json` — for the instant that follows, phones are told
+   nothing, which they handle silently;
+2. `karahoca-takip-<code>.apk` → `karahoca-takip.apk`, so the bytes behind the
+   URL are the ones the new manifest describes;
+3. `latest.staged.json` → `latest.json`.
+
+Do it the other way round and there is a window where the manifest promises a
+sha256 the download does not have: a driver checking then pulls 24 MB and is
+told the file arrived corrupt.
+
+Only phones on an **older** build are notified. The app raises its banner when
+the manifest's `versionCode` is above its own, so anyone already on the released
+build sees nothing at all.
+
+### Two things about the box
+
+`/downloads/latest.json` is served by the **API**, not the nginx sidecar — a
+static file server cannot know whether a build has been released. Traefik routes
+that one path to `kh-api` at priority 200; everything else under `/downloads`,
+the APK included, still comes straight off disk.
+
+The directory is mounted read-write into the api container, which runs as uid
+1000. One-time, on the host:
+
+```bash
+chown -R 1000:1000 /opt/karahoca/downloads
+```
+
+Without it the release button returns 500 on the rename. `publish-apk.sh`
+chowns what it uploads for the same reason.
 
 ### The first hop is still manual
 
-An updater only helps from the version that contains it. Phones on an older
-build will never hear about a release — somebody has to tell those drivers to
+An updater only helps from the version that contains it. Phones on 1.4.0 and
+earlier will never hear about a release — somebody has to tell those drivers to
 open `/app` and reinstall, once.
 
 ---
