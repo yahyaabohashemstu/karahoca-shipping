@@ -26,6 +26,23 @@ android {
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
         /*
+         * 20 / 1.6.0 — the shipment a driver stopped by mistake.
+         *
+         * Stopping is the one action on this phone that nothing recovers from:
+         * it clears the flag, cancels the watchdog and parks the session, and
+         * every resurrection mechanism correctly stands down, because from the
+         * inside a stop is indistinguishable from a driver who meant it. The
+         * same action also sat on the ongoing notification, reachable from the
+         * lock screen of a phone in a door pocket.
+         *
+         * So it asks now — and if it happens anyway, a dispatcher can undo it:
+         * the server raises PAUSED_TOO_LONG after ten minutes, and pressing
+         * Resume reaches the phone through the session check here.
+         */
+        versionCode = 20
+        versionName = "1.6.0"
+
+        /*
          * 19 / 1.5.0 — the last release that has to be installed by hand.
          *
          * From here the app checks /downloads/latest.json twice a shift, says
@@ -39,8 +56,6 @@ android {
          * tracking nothing because the service missed the ten-second
          * startForeground deadline during the boot storm.
          */
-        versionCode = 19
-        versionName = "1.5.0"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",

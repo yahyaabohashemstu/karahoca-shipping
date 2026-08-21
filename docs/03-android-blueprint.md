@@ -379,6 +379,53 @@ hotspot and the file must always be the same file. Serve it from
 bind mount, outside the deploy cycle, and it has to be done atomically — the
 procedure is in [05 §6](05-deployment-coolify.md).
 
+## 7a. Problem 4b — the driver who stopped tracking by mistake
+
+Everything in sections 3 and 4 defends against the app being **killed**. None of
+it defends against the app being **told to stop**, because from the inside those
+are not the same event: a stop clears TRACKING_ACTIVE, cancels the watchdog and
+parks the session server-side, and every resurrection mechanism correctly stands
+down. That is right when the driver meant it, and it is the whole failure when
+they did not.
+
+And it was the easier mistake to make. The Stop button is large and red, and the
+same action sat on the **ongoing notification** — reachable from the lock screen,
+without unlocking, on a phone spending eight hours in a door pocket. One tap and
+the shipment went dark. Worse, it went dark *silently*: `SIGNAL_LOST` is raised
+only `WHERE s.status = 'ACTIVE'`, so a PAUSED session raised nothing at all, and
+nothing else watched paused sessions either.
+
+Three changes, one per layer:
+
+**Ask first.** `StopConfirmDialog`, mounted at the root of the composition
+because both routes end there — the button on screen, and an intent extra from
+the notification that arrives long before the tracking screen has composed. The
+notification's action is now a `getActivity` PendingIntent rather than a
+`getBroadcast` one: a notification cannot ask a question, so it opens the app on
+the question instead.
+
+**Tell the desk.** `PAUSED_TOO_LONG`, raised by the API ten minutes after a pause
+on a session that started and whose order is still open, WARNING and then
+CRITICAL after an hour. It resolves itself the moment the session leaves PAUSED.
+Ten minutes is the shortest threshold in that file on purpose: a pause is not a
+fault the system can wait out, it is a decision that has already been taken, and
+the lorry is moving either way.
+
+**Let the desk undo it.** A dispatcher pressing Resume flips the session back to
+ACTIVE, and `TrackingRepository.dispatcherResumedTracking()` is how a phone
+hears about it — there is no push channel, and a stopped phone sends nothing the
+server could answer. Checked when the driver opens the app, and by `SyncWorker`
+for a phone whose app is closed. The guards are the safety story and are pinned
+by [`ResumeDecisionTest`](../android/app/src/test/java/com/karahoca/tracker/data/repository/ResumeDecisionTest.kt):
+it only ever turns tracking **on**, never off, and only when our own stop was
+acknowledged by the server — otherwise a Stop pressed in a tunnel, whose POST
+failed, would leave the server reading ACTIVE and the phone would override the
+driver every fifteen minutes for the rest of the shift.
+
+The driver is told why, with an alert notification. A phone that silently
+started tracking again is a phone whose driver's obvious next move is to stop it
+a second time.
+
 ## 7b. Problem 5 — reaching a phone that has no app store
 
 Sideloading solved distribution and created this: there is no update channel,

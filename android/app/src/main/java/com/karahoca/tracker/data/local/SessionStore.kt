@@ -49,6 +49,18 @@ class SessionStore @Inject constructor(
         /** THE flag the whole resurrection chain keys off. */
         val TRACKING_ACTIVE = booleanPreferencesKey("tracking_active")
 
+        /**
+         * Did our own stop actually reach the server?
+         *
+         * Load-bearing for the remote-resume check. If the driver pressed Stop
+         * in a tunnel the POST failed, the server still reads ACTIVE, and a
+         * phone that resumed on "the server says ACTIVE" would override the
+         * driver's own decision minutes later. Only a stop the server
+         * acknowledged makes a later ACTIVE mean somebody at a desk put it
+         * back.
+         */
+        val STOP_ACKED      = booleanPreferencesKey("stop_acknowledged")
+
         val PING_INTERVAL   = longPreferencesKey("ping_interval_ms")
         val IDLE_INTERVAL   = longPreferencesKey("idle_interval_ms")
         val MIN_DISTANCE    = intPreferencesKey("min_distance_m")
@@ -177,6 +189,13 @@ class SessionStore @Inject constructor(
     suspend fun setTrackingActive(active: Boolean) {
         context.dataStore.edit { it[Keys.TRACKING_ACTIVE] = active }
     }
+
+    suspend fun setStopAcked(acked: Boolean) {
+        context.dataStore.edit { it[Keys.STOP_ACKED] = acked }
+    }
+
+    suspend fun stopAcked(): Boolean =
+        context.dataStore.data.first()[Keys.STOP_ACKED] ?: false
 
     suspend fun isTrackingActive(): Boolean =
         context.dataStore.data.first()[Keys.TRACKING_ACTIVE] ?: false

@@ -634,5 +634,20 @@ function KindIcon({ kind }: { kind: AlertKind }) {
           <path d="M5.7 5.2v3.6M8.3 5.2v3.6" {...p} strokeWidth={1.5} />
         </svg>
       );
+    /*
+     * A power symbol, not the pause bars STOPPED_TOO_LONG already uses.
+     *
+     * The two are one word apart in Turkish and would be one glyph apart on the
+     * badge — and they mean opposite things to a dispatcher. A lorry standing
+     * still is a lorry you can see; a lorry whose tracking was switched off is
+     * one you cannot.
+     */
+    case 'PAUSED_TOO_LONG':
+      return (
+        <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden>
+          <path d="M4.2 3.9a4.6 4.6 0 1 0 5.6 0" {...p} />
+          <path d="M7 1.6v4.5" {...p} strokeWidth={1.5} />
+        </svg>
+      );
   }
 }

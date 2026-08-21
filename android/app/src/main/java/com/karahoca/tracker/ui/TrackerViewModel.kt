@@ -93,6 +93,7 @@ class TrackerViewModel @Inject constructor(
     private val deviceInfo: DeviceInfoProvider,
     private val network: NetworkMonitor,
     private val updates: UpdateRepository,
+    private val notifications: com.karahoca.tracker.service.TrackingNotification,
 ) : ViewModel() {
 
     private companion object { const val TAG = "KH/ViewModel" }
@@ -165,6 +166,19 @@ class TrackerViewModel @Inject constructor(
             // strands the driver on a claim screen that ignores their scan.
             restored = true
             consumeDeepLink()
+
+            /*
+             * Did the desk restart this shipment while the app was closed?
+             *
+             * Checked here rather than in TrackerApplication so it costs the
+             * boot path nothing: this runs when a driver actually opens the
+             * app, and SyncWorker covers the case where they do not. Guarded
+             * like everything else in this scope — a failed lookup must degrade
+             * to "no", never to a crash on the screen the driver just opened.
+             */
+            runCatching {
+                if (repository.dispatcherResumedTracking()) resumeFromDispatcher()
+            }.onFailure { Log.e(TAG, "Remote resume check failed", it) }
 
             // 2 s poll instead of a bound service: the UI is open for seconds at
             // a time and a poll cannot leak a binding when the driver pockets
@@ -332,9 +346,36 @@ class TrackerViewModel @Inject constructor(
             // driver's intent; the service only knows its own lifecycle.
             store.setTrackingActive(false)
             LocationTrackingService.stop(context)
-            repository.notifyStop()
+            // Persisted, because it is what lets the phone tell a dispatcher's
+            // Resume apart from a stop that never reached the server. See
+            // TrackingRepository.dispatcherResumedTracking.
+            store.setStopAcked(repository.notifyStop())
             _state.update { it.copy(screen = TrackerUiState.Screen.READINESS) }
         }
+    }
+
+    /**
+     * Put tracking back on because somebody at a desk said so.
+     *
+     * The alert matters as much as the restart. A driver who stopped by
+     * accident does not know they did; one whose phone silently started
+     * tracking again would have no idea why the notification came back, and the
+     * obvious next move for them is to stop it a second time.
+     */
+    private suspend fun resumeFromDispatcher() {
+        Log.w(TAG, "Dispatcher resumed the session — restarting tracking")
+        store.setTrackingActive(true)
+        store.setStopAcked(false)
+        repository.recordLocalEvent(
+            type = "RESUMED",
+            message = "Resumed from the dashboard",
+        )
+        LocationTrackingService.start(context)
+        notifications.alert(
+            title = context.getString(com.karahoca.tracker.R.string.resume_alert_title),
+            body = context.getString(com.karahoca.tracker.R.string.resume_alert_body),
+        )
+        _state.update { it.copy(screen = TrackerUiState.Screen.TRACKING) }
     }
 
     fun syncNow(context: Context) {

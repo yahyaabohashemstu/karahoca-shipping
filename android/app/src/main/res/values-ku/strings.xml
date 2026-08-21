@@ -140,4 +140,12 @@
     <string name="update_allow_unknown_why">Android carekê destûr dixwaze da ku sepan xwe nû bike.</string>
     <string name="update_error_checksum">Pel xerabûyî hat</string>
     <string name="update_error_network">Girêdan tune</string>
+
+    <!-- Stopping tracking, and coming back from it -->
+    <string name="stop_confirm_title">Tu dixwazî şopandinê rawestînî?</string>
+    <string name="stop_confirm_body">Ku raweste, navend nikare wesayîtê bibîne. Heke bar neqediyaye, berdewam bike.</string>
+    <string name="stop_confirm_yes">Erê, rawestîne</string>
+    <string name="stop_confirm_no">Dev jê berde</string>
+    <string name="resume_alert_title">Şopandin ji nû ve dest pê kir</string>
+    <string name="resume_alert_body">Berpirsê barkirinê şopandin vekir. Cihê te dîsa tê şandin.</string>
 </resources>

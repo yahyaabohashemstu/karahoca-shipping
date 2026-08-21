@@ -10,7 +10,8 @@ type AlertKind =
   | 'BATTERY_LOW'
   | 'MOCK_LOCATION'
   | 'NOT_STARTED'
-  | 'STOPPED_TOO_LONG';
+  | 'STOPPED_TOO_LONG'
+  | 'PAUSED_TOO_LONG';
 
 type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
@@ -34,6 +35,21 @@ const SILENCE_MINUTES = 15;
  * the yard while the order says DISPATCHED and everyone believes it is moving.
  */
 const NOT_STARTED_MINUTES = 90;
+
+/**
+ * How long a shipment may sit paused before somebody is told.
+ *
+ * Ten minutes, and it is the shortest threshold in this file on purpose. A
+ * pause is not a fault the system can wait out: it is a *decision* that has
+ * already been taken, either deliberately or — far more often — by a stray tap
+ * on a notification action that sits on the lock screen. The truck is moving
+ * either way. Every minute past the tap is road nobody can see.
+ *
+ * Ten is long enough that a driver pulling in for tea and pressing stop
+ * properly is not an exception before they have parked, and short enough that
+ * a dispatcher can still catch a mistake in the same hour it happened.
+ */
+const PAUSED_MINUTES = 10;
 
 /**
  * Battery thresholds, with deliberate hysteresis.
@@ -307,6 +323,118 @@ export class MaintenanceService {
    * not ACTIVE — so a hand-off that failed at the gate is invisible until the
    * customer phones to ask where their delivery is.
    */
+  /**
+   * The shipment somebody stopped, and nobody noticed.
+   *
+   * This is the counterpart to detectSilence, and it exists because that one
+   * looks only at ACTIVE sessions. The phone's own defences — stopWithTask,
+   * START_STICKY, the restart alarm, the five-minute watchdog, the boot
+   * receiver — are deep, and every one of them protects against the app
+   * *dying*. None of them protects against the app being told to stop, because
+   * from the inside that is indistinguishable from the driver meaning it.
+   *
+   * So the recovery has to come from the desk. A driver who paused by accident
+   * cannot know they did; a dispatcher looking at an exception badge can ring
+   * them, or press Resume.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async detectAbandonedPauses(): Promise<void> {
+    await this.withLeaderLock('detect-paused', 250, async () => {
+      await this.raisePausedAlerts();
+      await this.clearResumedPauses();
+    });
+  }
+
+  private async raisePausedAlerts(): Promise<void> {
+    const rows = await this.db.query<{
+      id: string;
+      reference: string;
+      minutes_paused: number;
+      order_number: string | null;
+    }>(
+      /*
+       * Paused *when*, not "updated when".
+       *
+       * updated_at would look like the same answer and quietly is not: the
+       * touch_updated_at trigger fires on every write to the row, so a
+       * dispatcher editing a note or the expiry sweep brushing past it would
+       * reset the clock on a truck that has been dark for an hour. The PAUSED
+       * event is the thing that actually happened. updated_at is the fallback
+       * for rows predating the event, where it is the best available guess.
+       */
+      `WITH paused AS (
+         SELECT s.id, s.reference, o.order_number::text AS order_number,
+                COALESCE(p.paused_at, s.updated_at) AS paused_at
+         FROM kh.tracking_sessions s
+         JOIN kh.orders o ON o.id = s.order_id
+         LEFT JOIN LATERAL (
+           SELECT max(e.occurred_at) AS paused_at
+           FROM kh.session_events e
+           WHERE e.session_id = s.id AND e.type = 'PAUSED'
+         ) p ON true
+         WHERE s.status = 'PAUSED'
+           -- A session that never started is NOT_STARTED's problem, and
+           -- raising both would put two rows on the badge for one lorry.
+           AND s.started_at IS NOT NULL
+           -- The load arrived, or the order was called off. Neither is an
+           -- exception, and both leave the session parked forever.
+           AND o.status NOT IN ('DELIVERED', 'CANCELLED')
+       )
+       SELECT p.id, p.reference, p.order_number,
+              round(extract(epoch FROM (now() - p.paused_at)) / 60) AS minutes_paused
+       FROM paused p
+       WHERE p.paused_at < now() - make_interval(mins => $1::int)
+         -- Pre-filtered rather than round-tripped to kh.raise_alert() only to
+         -- be refused; see raiseSilenceAlerts for the same note.
+         AND NOT EXISTS (
+           SELECT 1 FROM kh.alerts al
+           WHERE al.session_id = p.id
+             AND al.kind = 'PAUSED_TOO_LONG'
+             AND al.resolved_at IS NULL
+         )`,
+      [PAUSED_MINUTES],
+    );
+
+    for (const row of rows) {
+      const minutes = Math.round(row.minutes_paused);
+      await this.raiseAlert(
+        row.id,
+        row.reference,
+        'PAUSED_TOO_LONG',
+        /*
+         * WARNING for the first hour, CRITICAL after.
+         *
+         * A pause that is minutes old is very likely a driver at a service
+         * station who will start again. A pause that has outlived an hour is a
+         * shipment moving with nobody watching it, which is the same condition
+         * SIGNAL_LOST reserves CRITICAL for — arrived at by a different route.
+         */
+        minutes >= 60 ? 'CRITICAL' : 'WARNING',
+        'Takip durduruldu',
+        `Sürücü takibi ${minutes} dakika önce durdurdu` +
+          (row.order_number ? ` (${row.order_number}).` : '.') +
+          ' Yanlışlıkla olabilir — sürücüyü arayın veya takibi yeniden başlatın.',
+        { minutesPaused: minutes, orderNumber: row.order_number },
+      );
+    }
+  }
+
+  /** Resumed, by the driver or from the dashboard. The exception is over. */
+  private async clearResumedPauses(): Promise<void> {
+    const rows = await this.db.query<{ session_id: string }>(
+      `SELECT DISTINCT al.session_id
+       FROM kh.alerts al
+       JOIN kh.tracking_sessions s ON s.id = al.session_id
+       JOIN kh.orders o ON o.id = s.order_id
+       WHERE al.kind = 'PAUSED_TOO_LONG'
+         AND al.resolved_at IS NULL
+         AND (s.status <> 'PAUSED' OR o.status IN ('DELIVERED', 'CANCELLED'))`,
+    );
+    for (const row of rows) {
+      await this.clearAlert(row.session_id, 'PAUSED_TOO_LONG');
+    }
+  }
+
   @Cron(CronExpression.EVERY_10_MINUTES)
   async detectNotStarted(): Promise<void> {
     await this.withLeaderLock('detect-not-started', 550, async () => {

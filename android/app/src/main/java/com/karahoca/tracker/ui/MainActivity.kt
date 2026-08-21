@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -114,10 +115,14 @@ class MainActivity : ComponentActivity() {
      */
     private var pendingStartUpdate by mutableStateOf(false)
 
+    /** Raised by the notification's Stop action, and by the button on screen. */
+    private var confirmingStop by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingDeepLinkCode = extractCode(intent)
         pendingStartUpdate = intent?.getBooleanExtra(EXTRA_START_UPDATE, false) == true
+        confirmingStop = intent?.getBooleanExtra(EXTRA_CONFIRM_STOP, false) == true
 
         setContent {
             KaraHocaTheme {
@@ -206,6 +211,26 @@ class MainActivity : ComponentActivity() {
                             onReturnedFromSettings = viewModel::onReturnedFromInstallSettings,
                         )
 
+                        /*
+                         * Asked once, and only once, before a shipment goes
+                         * dark.
+                         *
+                         * Mounted at the root rather than inside TrackingScreen
+                         * because both routes to it end here: the button on the
+                         * screen and the Stop action on the notification, which
+                         * arrives as an intent extra long before that screen
+                         * has composed.
+                         */
+                        if (confirmingStop) {
+                            StopConfirmDialog(
+                                onDismiss = { confirmingStop = false },
+                                onConfirm = {
+                                    confirmingStop = false
+                                    viewModel.stopTracking(context)
+                                },
+                            )
+                        }
+
                         // weight(1f), not the children's fillMaxSize(): a child
                         // that fills the whole column would overflow it once the
                         // banner takes vertical space, pushing the UI off-screen.
@@ -213,7 +238,8 @@ class MainActivity : ComponentActivity() {
                             when (state.screen) {
                                 TrackerUiState.Screen.CLAIM -> ClaimScreen(state, viewModel)
                                 TrackerUiState.Screen.READINESS -> ReadinessScreen(state, viewModel)
-                                TrackerUiState.Screen.TRACKING -> TrackingScreen(state, viewModel)
+                                TrackerUiState.Screen.TRACKING ->
+                                    TrackingScreen(state, viewModel) { confirmingStop = true }
                             }
                         }
                     }
@@ -225,6 +251,16 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by the update notification's action; read in onCreate/onNewIntent. */
         const val EXTRA_START_UPDATE = "kh.start_update"
+
+        /**
+         * Set by the tracking notification's Stop action.
+         *
+         * The action used to stop the service outright, from a button sitting
+         * on the lock screen that a driver could brush with a thumb while the
+         * phone was in a door pocket. A notification cannot ask a question, so
+         * it opens the app and asks there instead.
+         */
+        const val EXTRA_CONFIRM_STOP = "kh.confirm_stop"
     }
 
     /** singleTask: a QR scan while the app is already open arrives here. */
@@ -232,6 +268,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra(EXTRA_START_UPDATE, false)) pendingStartUpdate = true
+        if (intent.getBooleanExtra(EXTRA_CONFIRM_STOP, false)) confirmingStop = true
         // Only overwrite on a code. A plain relaunch — the launcher icon, a
         // notification tap — delivers an intent with no data, and assigning its
         // null would discard a scan that has not been consumed yet.
@@ -551,6 +588,47 @@ private fun UpdateBanner(
     }
 }
 
+/**
+ * The question that stands between a thumb and a dark shipment.
+ *
+ * Stopping is the only action in this app that cannot be undone from the phone:
+ * it clears the tracking flag, cancels the watchdog and parks the session
+ * server-side, and none of the six mechanisms that resurrect a *killed* service
+ * apply, because from the inside a stop is indistinguishable from a driver who
+ * meant it.
+ *
+ * The dismiss action is the default one, and the confirm is the destructive
+ * colour, so a driver who opened this by accident gets out of it by doing the
+ * easier thing.
+ */
+@Composable
+private fun StopConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+            )
+        },
+        title = { Text(stringResource(R.string.stop_confirm_title)) },
+        text = { Text(stringResource(R.string.stop_confirm_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    stringResource(R.string.stop_confirm_yes),
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.stop_confirm_no)) }
+        },
+    )
+}
+
 @Composable
 private fun CrashBanner(report: String, onShare: () -> Unit, onDismiss: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
@@ -839,7 +917,11 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
 }
 
 @Composable
-private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
+private fun TrackingScreen(
+    state: TrackerUiState,
+    viewModel: TrackerViewModel,
+    onRequestStop: () -> Unit,
+) {
     val context = LocalContext.current
     /*
      * Locale.ROOT, not getDefault, and the reason is the digits.
@@ -1036,7 +1118,9 @@ private fun TrackingScreen(state: TrackerUiState, viewModel: TrackerViewModel) {
 
             Spacer(Modifier.height(8.dp))
             Button(
-                onClick = { viewModel.stopTracking(context) },
+                // Asks rather than does. The button is large, red and directly
+                // under the one the driver presses to send a batch.
+                onClick = onRequestStop,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError,

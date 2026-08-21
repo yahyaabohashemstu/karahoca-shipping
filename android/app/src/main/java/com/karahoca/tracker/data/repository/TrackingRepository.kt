@@ -647,8 +647,46 @@ class TrackingRepository @Inject constructor(
         }.getOrDefault(false)
     }
 
-    suspend fun notifyStop() {
-        runCatching { api.stop() }
+    /**
+     * Tell the server the driver stopped.
+     *
+     * @return whether the server actually heard it. The caller persists that,
+     *   because it is what makes a later "the server says ACTIVE" mean a
+     *   dispatcher pressed Resume rather than "our stop never arrived".
+     */
+    suspend fun notifyStop(): Boolean =
+        runCatching { api.stop().isSuccessful }.getOrDefault(false)
+
+    /**
+     * Has somebody at a desk restarted this shipment?
+     *
+     * The one recovery path for a driver who stopped tracking by mistake. The
+     * phone cannot tell an accidental stop from a deliberate one — from the
+     * inside they are the same tap — so the correction has to come from
+     * outside, and this is the phone's only way to hear it: there is no push
+     * channel, and a stopped phone sends nothing the server could answer.
+     *
+     * Every guard here exists to stop this from overriding a driver who meant
+     * it. It only ever moves PAUSED to ACTIVE, never the reverse, and only when
+     * our own stop was acknowledged — so the ACTIVE it is reading can only have
+     * been put there by a dispatcher.
+     */
+    suspend fun dispatcherResumedTracking(): Boolean {
+        // Cheap local guards first: three DataStore reads decide it in the
+        // overwhelming majority of calls, and only the last one costs a request
+        // on a phone that may be paying for it by the megabyte.
+        if (!shouldAskAboutResume(
+                hasSession = store.sessionId() != null,
+                locallyTracking = store.isTrackingActive(),
+                ourStopWasAcknowledged = store.stopAcked(),
+            )
+        ) {
+            return false
+        }
+
+        val response = runCatching { api.session() }.getOrNull() ?: return false
+        if (!response.isSuccessful) return false
+        return remoteWantsTracking(response.body()?.status)
     }
 
     // =========================================================================
@@ -752,3 +790,34 @@ class TrackingRepository @Inject constructor(
         bm.isCharging
     }.getOrDefault(false)
 }
+
+/**
+ * Is it worth asking the server whether this session was restarted?
+ *
+ * Pulled out as a pure function because the interesting part is the
+ * *combination*, and every clause is one somebody could reasonably delete:
+ *
+ *  - `hasSession` — nothing to resume before a code has been claimed.
+ *  - `!locallyTracking` — this only ever turns tracking on. It must never be
+ *    able to turn it off, whatever the server says, or a dispatcher's stale
+ *    read could kill a shipment that is running fine.
+ *  - `ourStopWasAcknowledged` — the load-bearing one. If the driver pressed
+ *    Stop in a tunnel the POST failed, the server still reads ACTIVE, and a
+ *    phone resuming on "the server says ACTIVE" would silently override the
+ *    driver minutes later. Only a stop the server confirmed makes a later
+ *    ACTIVE mean a human at a desk put it back.
+ */
+internal fun shouldAskAboutResume(
+    hasSession: Boolean,
+    locallyTracking: Boolean,
+    ourStopWasAcknowledged: Boolean,
+): Boolean = hasSession && !locallyTracking && ourStopWasAcknowledged
+
+/**
+ * Only ACTIVE. Not "anything that is not PAUSED".
+ *
+ * COMPLETED, CANCELLED, EXPIRED and REVOKED are all "not paused" and all mean
+ * the shipment is over — resuming into any of them would start a foreground
+ * service that the next ingest would be rejected for.
+ */
+internal fun remoteWantsTracking(status: String?): Boolean = status == "ACTIVE"

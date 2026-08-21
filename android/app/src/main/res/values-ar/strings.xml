@@ -140,4 +140,12 @@
     <string name="update_allow_unknown_why">يطلب أندرويد إذنًا مرّة واحدة كي يحدّث التطبيق نفسه.</string>
     <string name="update_error_checksum">الملف وصل تالفًا</string>
     <string name="update_error_network">لا يوجد اتصال</string>
+
+    <!-- Stopping tracking, and coming back from it -->
+    <string name="stop_confirm_title">هل تريد إيقاف التتبّع؟</string>
+    <string name="stop_confirm_body">عند الإيقاف لن يرى المركز الشاحنة. إن لم تنتهِ الشحنة فتابع.</string>
+    <string name="stop_confirm_yes">نعم، أوقف</string>
+    <string name="stop_confirm_no">تراجع</string>
+    <string name="resume_alert_title">أُعيد تشغيل التتبّع</string>
+    <string name="resume_alert_body">أعاد مسؤول الشحن تشغيل التتبّع. يُرسَل موقعك من جديد.</string>
 </resources>

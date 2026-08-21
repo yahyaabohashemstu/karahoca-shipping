@@ -69,6 +69,27 @@ class SyncWorker @AssistedInject constructor(
          */
         runCatching { updates.check() }
 
+        /*
+         * A dispatcher pressing Resume is the only way back from an accidental
+         * stop, and this is the only place a phone with the app closed can hear
+         * it — there is no push channel, and a stopped phone sends nothing the
+         * server could answer. Fifteen minutes late is the cost; the
+         * alternative is never.
+         */
+        runCatching {
+            if (repository.dispatcherResumedTracking()) {
+                Log.w(TAG, "Dispatcher resumed the session — restarting tracking")
+                store.setTrackingActive(true)
+                store.setStopAcked(false)
+                repository.recordLocalEvent("RESUMED", "Resumed from the dashboard")
+                notifications.alert(
+                    title = applicationContext.getString(R.string.resume_alert_title),
+                    body = applicationContext.getString(R.string.resume_alert_body),
+                )
+                LocationTrackingService.start(applicationContext)
+            }
+        }.onFailure { Log.e(TAG, "Remote resume check failed", it) }
+
         val sessionId = store.sessionId()
         if (sessionId == null) {
             Log.d(TAG, "No session — nothing to sync")

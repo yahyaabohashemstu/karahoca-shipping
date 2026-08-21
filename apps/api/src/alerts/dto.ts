@@ -17,6 +17,7 @@ export const ALERT_KINDS = [
   'MOCK_LOCATION',
   'NOT_STARTED',
   'STOPPED_TOO_LONG',
+  'PAUSED_TOO_LONG',
 ] as const;
 
 export const ALERT_SEVERITIES = ['INFO', 'WARNING', 'CRITICAL'] as const;

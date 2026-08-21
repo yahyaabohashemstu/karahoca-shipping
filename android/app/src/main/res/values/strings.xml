@@ -160,4 +160,12 @@
     <string name="update_allow_unknown_why">Android, uygulamanın kendini güncellemesi için bir kez izin ister.</string>
     <string name="update_error_checksum">Dosya bozuk geldi</string>
     <string name="update_error_network">Bağlantı yok</string>
+
+    <!-- Stopping tracking, and coming back from it -->
+    <string name="stop_confirm_title">Takibi durdurmak istiyor musunuz?</string>
+    <string name="stop_confirm_body">Takip durursa merkez aracı göremez. Sevkiyat bitmediyse devam edin.</string>
+    <string name="stop_confirm_yes">Evet, durdur</string>
+    <string name="stop_confirm_no">Vazgeç</string>
+    <string name="resume_alert_title">Takip yeniden başlatıldı</string>
+    <string name="resume_alert_body">Sevkiyat sorumlusu takibi tekrar açtı. Konum gönderimi sürüyor.</string>
 </resources>

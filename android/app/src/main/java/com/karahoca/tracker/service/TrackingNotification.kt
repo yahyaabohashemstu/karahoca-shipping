@@ -118,12 +118,23 @@ class TrackingNotification @Inject constructor(
         )
     }
 
+    /**
+     * Stop, via a question.
+     *
+     * getActivity, not getBroadcast, and for the same reason the update action
+     * is: a notification cannot ask anything. This button sits on the lock
+     * screen of a phone spending eight hours in a door pocket, and it used to
+     * end the shipment on one brush of a thumb — no dialog, no undo, and none
+     * of the six mechanisms that resurrect a killed service apply, because a
+     * stop is not a failure. So it opens the app on the confirmation instead.
+     */
     private val stopAction: PendingIntent by lazy {
-        PendingIntent.getBroadcast(
+        PendingIntent.getActivity(
             context,
             1,
-            Intent(context, NotificationActionReceiver::class.java)
-                .setAction(NotificationActionReceiver.ACTION_STOP),
+            Intent(context, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_CONFIRM_STOP, true)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
@@ -358,7 +369,22 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_STOP -> LocationTrackingService.stop(context)
+            /*
+             * Only reachable from a PendingIntent minted before the Stop action
+             * became an activity — a notification posted by the previous build
+             * and still on screen. It must not stop anything: that is the
+             * behaviour this change exists to remove. Opening the confirmation
+             * is the same destination, and if the background-activity-start
+             * rules refuse it, nothing happens, which is the safe direction to
+             * fail in.
+             */
+            ACTION_STOP -> runCatching {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java)
+                        .putExtra(MainActivity.EXTRA_CONFIRM_STOP, true)
+                        .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                )
+            }
             ACTION_SYNC -> LocationTrackingService.syncNow(context)
         }
     }
