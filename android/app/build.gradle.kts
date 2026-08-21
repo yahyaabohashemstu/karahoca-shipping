@@ -26,6 +26,21 @@ android {
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
         /*
+         * 22 / 1.7.1 — the updater's own disk work, off the main thread.
+         *
+         * 1.7.0 made the app-open path call check(), which put a first-touch
+         * SharedPreferences load and a notification post on the thread drawing
+         * the screen the driver had just opened. It inherited a worker thread
+         * for free while only background scopes called it, which is why nothing
+         * about the method looked wrong: the call site changed, not the code.
+         *
+         * Functionally identical to 1.7.0 otherwise. Shipped separately because
+         * 1.7.0 was already released to the fleet by the time it was found.
+         */
+        versionCode = 22
+        versionName = "1.7.1"
+
+        /*
          * 21 / 1.7.0 — a release that reaches a phone the same day.
          *
          * 1.6.0 went out and nothing appeared on the handset watching for it.
@@ -40,9 +55,6 @@ android {
          * also identifies itself when it checks, so the dashboard can show
          * whether any phone came to look at all.
          */
-        versionCode = 21
-        versionName = "1.7.0"
-
         /*
          * 20 / 1.6.0 — the shipment a driver stopped by mistake.
          *
