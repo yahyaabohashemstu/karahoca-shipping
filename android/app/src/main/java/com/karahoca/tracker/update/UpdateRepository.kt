@@ -69,6 +69,24 @@ class UpdateRepository @Inject constructor(
 
     init {
         /*
+         * On the application scope, not here on the calling thread.
+         *
+         * This singleton is built wherever Hilt first needs it, and since the
+         * updater became a dependency of TrackingRepository that is the main
+         * thread, while an activity is being created. Reading a preferences
+         * file for the first time there is a disk hit on the frame the driver
+         * is waiting for.
+         *
+         * The cost of deferring it is that state() reads Idle for a moment
+         * after process start. Nothing depends on it being instant: the banner
+         * appears a frame later, and the notification path already re-checks
+         * when it finds Idle.
+         */
+        appScope.launch { restorePendingRelease() }
+    }
+
+    private suspend fun restorePendingRelease() = withContext(Dispatchers.IO) {
+        /*
          * A pending release has to survive process death, and on this app the
          * process dies constantly — an OEM kill, a low-memory kill, a reboot.
          *
@@ -114,11 +132,21 @@ class UpdateRepository @Inject constructor(
      * @param force skip the six-hour throttle. Used when the driver has the app
      *   open and is looking at the banner.
      */
-    suspend fun check(force: Boolean = false) {
-        if (!force && !dueForCheck()) return
+    suspend fun check(force: Boolean = false) = withContext(Dispatchers.IO) {
+        /*
+         * The whole body on IO, not just the request.
+         *
+         * It used to be called only from background scopes, so the
+         * SharedPreferences reads and the notification post inherited a worker
+         * thread for free. Then the app-open path started calling it from
+         * viewModelScope — Dispatchers.Main.immediate — and quietly moved a
+         * first-touch preferences load and a binder call onto the thread
+         * drawing the screen the driver had just opened.
+         */
+        if (!force && !dueForCheck()) return@withContext
         val manifest = runCatching { fetchManifest() }
             .onFailure { Log.d(TAG, "Version check failed: ${it.javaClass.simpleName}") }
-            .getOrNull() ?: return
+            .getOrNull() ?: return@withContext
 
         prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
 
@@ -131,12 +159,13 @@ class UpdateRepository @Inject constructor(
             if (_state.value !is UpdateState.Idle) _state.value = UpdateState.Idle
             prefs.edit().remove(KEY_PENDING).apply()
             notifications.clearUpdate()
-            return
+            return@withContext
         }
 
         // Never interrupt a download or an install with a fresh "available".
         when (_state.value) {
-            is UpdateState.Downloading, is UpdateState.Verifying, is UpdateState.Installing -> return
+            is UpdateState.Downloading, is UpdateState.Verifying, is UpdateState.Installing ->
+                return@withContext
             else -> Unit
         }
 
