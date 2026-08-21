@@ -82,6 +82,10 @@ export interface DriverStrings {
   releaseExplain: string;
   releaseCheckIns: string;
   releaseCheckInsNone: string;
+
+  /** The QR that points straight at the APK, for a second phone. */
+  qrHeading: string;
+  qrHint: string;
 }
 
 const TR: DriverStrings = {
@@ -127,6 +131,9 @@ const TR: DriverStrings = {
     'Bildirim yalnızca daha eski sürümdeki telefonlara gider. Güncel olanlar hiçbir şey görmez.',
   releaseCheckIns: 'Soran telefonlar',
   releaseCheckInsNone: 'Sunucu açıldığından beri soran olmadı',
+
+  qrHeading: 'Başka bir telefona kurmak için',
+  qrHint: 'Kamerayı kodun üzerine tutun; indirme hemen başlar.',
 };
 
 const AR: DriverStrings = {
@@ -170,6 +177,9 @@ const AR: DriverStrings = {
     'يصل الإشعار إلى الهواتف ذات النسخة الأقدم فقط. ومن لديه النسخة الأخيرة لا يصله شيء.',
   releaseCheckIns: 'هواتف استعلمت',
   releaseCheckInsNone: 'لم يستعلم أي هاتف منذ تشغيل الخادم',
+
+  qrHeading: 'للتثبيت على هاتف آخر',
+  qrHint: 'وجّه الكاميرا نحو الرمز؛ يبدأ التنزيل مباشرة.',
 };
 
 const KU: DriverStrings = {
@@ -213,6 +223,9 @@ const KU: DriverStrings = {
     'Agahdarî tenê diçe telefonên bi guhertoyeke kevntir. Yên nûtirîn tiştekî nabînin.',
   releaseCheckIns: 'Telefonên pirsîn',
   releaseCheckInsNone: 'Ji vekirina serverê ve kesî nepirsiye',
+
+  qrHeading: 'Ji bo sazkirina li ser telefoneke din',
+  qrHint: 'Kamerayê bide ser koda; daxistin yekser dest pê dike.',
 };
 
 const DICTIONARIES: Record<DriverLocale, DriverStrings> = { tr: TR, ar: AR, ku: KU };

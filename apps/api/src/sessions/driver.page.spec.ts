@@ -1,3 +1,4 @@
+import QRCode from 'qrcode';
 import { describe, expect, it } from 'vitest';
 import { HandoffController } from './handoff.controller';
 import { DRIVER_LOCALES, driverStrings, resolveDriverLocale, type DriverLocale } from './driver.i18n';
@@ -87,9 +88,9 @@ describe('the driver hand-off page', () => {
 });
 
 describe('the driver install page', () => {
-  it('renders every step in the reader’s language', () => {
+  it('renders every step in the reader’s language', async () => {
     for (const locale of DRIVER_LOCALES) {
-      const html = controller().landingApp(locale, undefined);
+      const html = await controller().landingApp(locale, undefined);
       const t = driverStrings(locale);
       for (const step of t.steps) {
         expect(html, `${locale}: ${step.slice(0, 24)}`).toContain(step);
@@ -99,17 +100,17 @@ describe('the driver install page', () => {
     }
   });
 
-  it('numbers the steps with a real list rather than in the strings', () => {
+  it('numbers the steps with a real list rather than in the strings', async () => {
     // A translated "1." is a translated number in the wrong numeral system and
     // on the wrong side of the line. The browser can do both correctly.
-    const html = controller().landingApp('ar', undefined);
+    const html = await controller().landingApp('ar', undefined);
     expect(html).toContain('<ol class="steps">');
     for (const step of driverStrings('ar').steps) {
       expect(html).not.toContain(`1. ${step}`);
     }
   });
 
-  it('gives the sequence somewhere to live', () => {
+  it('gives the sequence somewhere to live', async () => {
     /*
      * Structure, asserted, because this page has already been shipped twice
      * with the design system's colours and none of its containers — a mark, a
@@ -121,7 +122,7 @@ describe('the driver install page', () => {
      * has happened three times in this file's history and takes the whole
      * module down with it. If that recurs, this spec cannot even load.
      */
-    const html = controller().landingApp('tr', undefined);
+    const html = await controller().landingApp('tr', undefined);
     expect(html).toContain('class="glass panel"');
     expect(html).toContain('class="panel__title"');
     expect(html).toContain('<ol class="steps">');
@@ -134,10 +135,36 @@ describe('the driver install page', () => {
     expect(html).toContain(t.requirement);
   });
 
-  it('points at the APK the nginx sidecar actually serves', () => {
+  /**
+   * A QR encoding the wrong URL looks exactly like a QR encoding the right one.
+   *
+   * So this does not eyeball the markup: it re-encodes the APK URL with the
+   * same library and asserts the page carries those bytes. Encode anything else
+   * — the install page instead of the file, a stale filename, the API base —
+   * and the matrix differs and this fails.
+   */
+  it('carries a QR of the APK URL itself, not of this page', async () => {
+    const html = await controller().landingApp('tr', undefined);
+    const expected = await QRCode.toString(
+      'https://track.karahoca.com/downloads/karahoca-takip.apk',
+      { type: 'svg', errorCorrectionLevel: 'M', margin: 0, width: 220 },
+    );
+    expect(html).toContain('class="qr__code"');
+    expect(html).toContain(expected);
+  });
+
+  it('captions the QR in every language', async () => {
+    for (const locale of DRIVER_LOCALES) {
+      const html = await controller().landingApp(locale, undefined);
+      expect(html, locale).toContain(driverStrings(locale).qrHeading);
+      expect(html, locale).toContain(driverStrings(locale).qrHint);
+    }
+  });
+
+  it('points at the APK the nginx sidecar actually serves', async () => {
     // karahoca-takip.apk, not -tracker.apk: the filename is fixed by the
     // publishing convention and the download 404'd in production once already.
-    expect(controller().landingApp('tr', undefined)).toContain(
+    expect(await controller().landingApp('tr', undefined)).toContain(
       'https://track.karahoca.com/downloads/karahoca-takip.apk',
     );
   });

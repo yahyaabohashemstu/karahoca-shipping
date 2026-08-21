@@ -8,6 +8,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
+import QRCode from 'qrcode';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { Public } from '../auth/decorators';
 import { normalizeClaimCode } from '../common/crypto.util';
@@ -41,6 +42,33 @@ import {
 @Controller()
 export class HandoffController {
   constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+
+  /**
+   * The download QR, rendered once.
+   *
+   * It encodes a URL that never changes, so building it per request would be a
+   * few milliseconds of matrix arithmetic to produce identical bytes. Held as
+   * the promise rather than the string so concurrent first requests share one
+   * render instead of racing to do the same work.
+   *
+   * Inline SVG, not a data-URI PNG: this page has always been one
+   * self-contained response that must render on a driver's phone with no
+   * network beyond that request, and an SVG stays crisp when a dispatcher
+   * prints it and pins it up in the yard — which is the way it will mostly be
+   * used.
+   */
+  private apkQr?: Promise<string>;
+
+  private downloadQr(): Promise<string> {
+    this.apkQr ??= QRCode.toString(this.apkUrl(), {
+      type: 'svg',
+      errorCorrectionLevel: 'M',
+      margin: 0,
+      // Sized by CSS; this only sets the viewBox scale.
+      width: 220,
+    });
+    return this.apkQr;
+  }
 
   /**
    * Digital Asset Links — the file that turns `/t/<code>` into an App Link.
@@ -141,11 +169,12 @@ export class HandoffController {
   // day the install steps change — a driver on a cached copy is a driver
   // following the wrong instructions.
   @Header('Cache-Control', 'public, max-age=600')
-  landingApp(
+  async landingApp(
     @Query('lang') lang: string | undefined,
     @Headers('accept-language') acceptLanguage: string | undefined,
-  ): string {
+  ): Promise<string> {
     const apkUrl = this.apkUrl();
+    const qr = await this.downloadQr();
     const locale = resolveDriverLocale(lang, acceptLanguage);
     const t = driverStrings(locale);
 
@@ -178,6 +207,21 @@ ${pageHead(t.installTitle, pageStyle(INSTALL_CSS))}
       ${t.download}
     </a>
     <p class="meta">${t.fileKind}<span class="meta__sep" aria-hidden="true">·</span>${t.requirement}</p>
+
+    <!--
+      Straight at the APK, not at this page.
+
+      A QR that opened /app would land the scanner on the screen they are
+      already looking at, one tap further from the file. This one starts the
+      download on the camera's own confirmation — which is the fewest taps
+      anybody can offer: no scanner will act on a code without one, and it
+      should not.
+    -->
+    <section class="glass panel qr">
+      <h2 class="panel__title">${t.qrHeading}</h2>
+      <div class="qr__code" role="img" aria-label="${t.qrHeading}">${qr}</div>
+      <p class="qr__hint">${t.qrHint}</p>
+    </section>
 
     <section class="glass panel">
       <h2 class="panel__title">${t.stepsTitle}</h2>
@@ -466,6 +510,23 @@ ${DRIVER_CSS}
    * a page the dispatcher already knows, and a differently-styled box would
    * read as part of the instructions a driver is meant to follow.
    */
+  /*
+   * The download QR.
+   *
+   * White plate under the code whatever the theme is doing: a dark-mode page
+   * would otherwise render black modules on a dark panel, and while some
+   * scanners cope with inverted codes, plenty of the cheap handsets this fleet
+   * runs do not.
+   */
+  .qr { text-align: center; padding-bottom: 18px; }
+  .qr__code {
+    display: inline-block; margin: 4px 0 12px;
+    padding: 12px; border-radius: 14px;
+    background: #fff;
+  }
+  .qr__code svg { display: block; width: 168px; height: 168px; }
+  .qr__hint { margin: 0; font-size: 12.5px; color: var(--ink-3); }
+
   .release { padding-bottom: 18px; }
   .release__rows {
     margin: 0 0 16px; display: grid;
