@@ -20,3 +20,16 @@ import javax.inject.Qualifier
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ApplicationScope
+
+/**
+ * The HTTP client for update checks and APK downloads.
+ *
+ * Separate from the tracking client, which is wrong for this in three ways:
+ * its AuthInterceptor would attach a driver's bearer token to a request for a
+ * public file, its SigningInterceptor buffers the body to HMAC it, and its
+ * 180-second callTimeout — generous for a telemetry batch — would abort a
+ * 24 MB download on a rural cell somewhere around the eighth megabyte.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class UpdateClient

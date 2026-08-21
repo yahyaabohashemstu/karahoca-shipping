@@ -142,4 +142,22 @@
     <string name="check_notifications">Bildirim izni</string>
     <string name="check_notifications_why">Takip bildirimi olmadan Android servisi kapatabilir.</string>
     <string name="language_system">Telefon dili</string>
+
+    <!-- In-app update -->
+    <string name="update_channel">Uygulama güncellemesi</string>
+    <string name="update_channel_desc">Yeni bir sürüm hazır olduğunda bildirir.</string>
+    <string name="update_available_title">Yeni sürüm hazır: %1$s</string>
+    <string name="update_available_body">Güncellemek için dokunun. Takip kaldığı yerden devam eder.</string>
+    <string name="update_action">Güncelle</string>
+    <string name="update_banner_title">Yeni sürüm %1$s</string>
+    <string name="update_banner_note">%1$s · takip birkaç saniye içinde kendiliğinden devam eder</string>
+    <string name="update_downloading">İndiriliyor… %1$d%%</string>
+    <string name="update_verifying">Doğrulanıyor…</string>
+    <string name="update_installing">Kuruluyor…</string>
+    <string name="update_failed">Güncelleme başarısız: %1$s</string>
+    <string name="update_retry">Tekrar dene</string>
+    <string name="update_allow_unknown">İzin ver</string>
+    <string name="update_allow_unknown_why">Android, uygulamanın kendini güncellemesi için bir kez izin ister.</string>
+    <string name="update_error_checksum">Dosya bozuk geldi</string>
+    <string name="update_error_network">Bağlantı yok</string>
 </resources>

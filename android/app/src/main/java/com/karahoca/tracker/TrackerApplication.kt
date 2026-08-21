@@ -11,6 +11,7 @@ import com.karahoca.tracker.service.LocationTrackingService
 import com.karahoca.tracker.service.ServiceWatchdog
 import com.karahoca.tracker.sync.NetworkMonitor
 import com.karahoca.tracker.sync.SyncScheduler
+import com.karahoca.tracker.update.UpdateRepository
 import com.karahoca.tracker.util.AppLocale
 import com.karahoca.tracker.util.CrashReporter
 import dagger.hilt.android.HiltAndroidApp
@@ -27,6 +28,18 @@ class TrackerApplication : Application(), Configuration.Provider {
     @Inject lateinit var sessionStore: SessionStore
     @Inject lateinit var syncScheduler: SyncScheduler
     @Inject lateinit var networkMonitor: NetworkMonitor
+
+    /**
+     * Lazy, so building it stays off the main thread.
+     *
+     * Hilt injects fields eagerly in super.onCreate(), and this one pulls in
+     * TrackingNotification — three createNotificationChannel round trips into
+     * the system server. On the BOOT_COMPLETED path that is main-thread time
+     * spent inside the ten seconds the tracking service has to reach
+     * startForeground, which is a deadline this app has already missed once.
+     * dagger.Lazy defers the whole graph to the IO coroutine below.
+     */
+    @Inject lateinit var updates: dagger.Lazy<UpdateRepository>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -105,6 +118,16 @@ class TrackerApplication : Application(), Configuration.Provider {
             // already ended, and they still have to reach the server.
             runCatching { syncScheduler.schedulePeriodic() }
                 .onFailure { Log.e(TAG, "Could not schedule periodic sync", it) }
+
+            /*
+             * Every process start is a chance to notice a new release — and on
+             * a fleet with no app store, chances are scarce. Throttled to once
+             * every six hours inside check(), so a phone whose service is
+             * restarted repeatedly by an aggressive OEM does not re-ask on
+             * every resurrection.
+             */
+            runCatching { updates.get().check() }
+                .onFailure { Log.e(TAG, "Update check failed", it) }
 
             runCatching {
                 if (sessionStore.isTrackingActive() && sessionStore.sessionId() != null) {

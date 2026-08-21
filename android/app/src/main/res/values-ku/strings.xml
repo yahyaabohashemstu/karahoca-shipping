@@ -122,4 +122,22 @@
     <string name="check_notifications">Destûra agahdariyê</string>
     <string name="check_notifications_why">Bê agahdariya şopandinê Android dikare xizmetê bigire.</string>
     <string name="language_system">Zimanê têlefonê</string>
+
+    <!-- In-app update -->
+    <string name="update_channel">Nûkirina sepanê</string>
+    <string name="update_channel_desc">Dema guhertoyeke nû amade be te agahdar dike.</string>
+    <string name="update_available_title">Guhertoya nû amade ye: %1$s</string>
+    <string name="update_available_body">Ji bo nûkirinê bitikîne. Şopandin ji cihê xwe berdewam dike.</string>
+    <string name="update_action">Nû bike</string>
+    <string name="update_banner_title">Guhertoya nû %1$s</string>
+    <string name="update_banner_note">%1$s · şopandin di çend saniyeyan de bi xwe vedigere</string>
+    <string name="update_downloading">Tê daxistin… %1$d%%</string>
+    <string name="update_verifying">Tê pejirandin…</string>
+    <string name="update_installing">Tê sazkirin…</string>
+    <string name="update_failed">Nûkirin bi ser neket: %1$s</string>
+    <string name="update_retry">Dîsa biceribîne</string>
+    <string name="update_allow_unknown">Destûr bide</string>
+    <string name="update_allow_unknown_why">Android carekê destûr dixwaze da ku sepan xwe nû bike.</string>
+    <string name="update_error_checksum">Pel xerabûyî hat</string>
+    <string name="update_error_network">Girêdan tune</string>
 </resources>

@@ -26,29 +26,39 @@ android {
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
         /*
-         * 18 / 1.4.0 — three releases' worth, because 17 was the last one that
-         * actually reached a handset:
+         * 19 / 1.5.0 — the last release that has to be installed by hand.
          *
-         *   - the app on the same design language as the dashboard and the
-         *     driver pages, light and dark;
-         *   - the language chips on every screen, not only the claim one, so a
-         *     driver who picks the wrong flag at the yard gate is not stuck in
-         *     a language they cannot read for the rest of the run;
-         *   - and the reboot crash: the service missed the ten-second
-         *     startForeground deadline during the boot storm and Android killed
-         *     the process, so a phone that restarted mid-shipment came back
-         *     tracking nothing.
+         * From here the app checks /downloads/latest.json twice a shift, says
+         * so in a notification that comes back if it is dismissed, and installs
+         * the new build from a button inside itself. Before this, the only
+         * route from a fixed bug to a driver's phone was a telephone call and a
+         * talk-through, and three releases in a row failed to make the trip.
          *
-         * Minor rather than patch: the second is a feature and the first is
-         * every screen the driver sees.
+         * 18 / 1.4.0 was the redesign, the language chips on every screen, and
+         * the reboot crash — a phone that restarted mid-shipment came back
+         * tracking nothing because the service missed the ten-second
+         * startForeground deadline during the boot storm.
          */
-        versionCode = 18
-        versionName = "1.4.0"
+        versionCode = 19
+        versionName = "1.5.0"
 
         // Baked in so a driver never types a URL. Overridable per build type.
         buildConfigField("String", "DEFAULT_API_BASE_URL",
             "\"${project.findProperty("khApiBaseUrl") ?: "https://track.karahoca.com/api/v1/"}\"")
         buildConfigField("String", "DEEP_LINK_SCHEME", "\"karahoca\"")
+
+        /*
+         * Where the app looks to find out that it is out of date.
+         *
+         * A static file beside the APK rather than an API endpoint, because it
+         * is written by the same command that swaps the APK into place and so
+         * cannot advertise a version the download does not contain. Overridable
+         * for the same reason khApiBaseUrl is: to point a release-configuration
+         * build at a local stub and watch it update itself.
+         */
+        buildConfigField("String", "UPDATE_MANIFEST_URL",
+            "\"${project.findProperty("khUpdateManifestUrl")
+                ?: "https://track.karahoca.com/downloads/latest.json"}\"")
 
         /*
          * The host whose https://<host>/t/<code> links this app claims.

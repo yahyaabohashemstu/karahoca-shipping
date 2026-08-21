@@ -61,6 +61,21 @@
          ====================================================================== -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+         REQUEST_INSTALL_PACKAGES — the app updates itself.
+
+         There is no store behind this fleet: the APK is sideloaded over a
+         hotspot at the yard, so without this a fixed bug reaches a driver only
+         when somebody telephones them. Declaring it is not enough on its own;
+         Android 8 made it a per-app setting the driver grants once, and
+         UpdateInstaller sends them to that screen when it is missing.
+
+         The blast radius is small by construction: the platform refuses any APK
+         not signed with the key the installed app carries, so the worst a
+         tampered manifest can do is waste a download.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission
         android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
@@ -205,6 +220,12 @@
         <!-- AlarmManager heartbeat: "are you still alive?" every few minutes -->
         <receiver
             android:name=".service.WatchdogReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Where PackageInstaller reports back during a self-update -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
             android:enabled="true"
             android:exported="false" />
 

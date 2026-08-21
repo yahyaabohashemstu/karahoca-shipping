@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -63,6 +64,7 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import com.karahoca.tracker.R
+import com.karahoca.tracker.update.UpdateState
 import com.karahoca.tracker.util.AppLocale
 import com.karahoca.tracker.util.DistanceUnit
 import com.karahoca.tracker.util.formatRemaining
@@ -102,9 +104,20 @@ class MainActivity : ComponentActivity() {
      */
     private var pendingDeepLinkCode by mutableStateOf<String?>(null)
 
+    /**
+     * Set when the driver pressed "Update" on the notification.
+     *
+     * The notification could not start the download itself. An install ends at
+     * a system confirmation dialog, and only a visible app may launch one — so
+     * the press opens this activity instead, and the download starts here,
+     * where the app is in front for the part that needs it.
+     */
+    private var pendingStartUpdate by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingDeepLinkCode = extractCode(intent)
+        pendingStartUpdate = intent?.getBooleanExtra(EXTRA_START_UPDATE, false) == true
 
         setContent {
             KaraHocaTheme {
@@ -115,6 +128,25 @@ class MainActivity : ComponentActivity() {
                     pendingDeepLinkCode?.let {
                         viewModel.onDeepLinkCode(it)
                         pendingDeepLinkCode = null
+                    }
+                }
+
+                val update by viewModel.updateState.collectAsStateWithLifecycle()
+
+                LaunchedEffect(pendingStartUpdate, update) {
+                    if (!pendingStartUpdate) return@LaunchedEffect
+                    when (update) {
+                        // The notification outlived the process that posted it
+                        // and the restored state is empty. Ask the server again,
+                        // ignoring the six-hour throttle — the driver is standing
+                        // here having just pressed the button.
+                        is UpdateState.Idle -> viewModel.recheckForUpdate()
+                        is UpdateState.Available -> {
+                            viewModel.startUpdate()
+                            pendingStartUpdate = false
+                        }
+                        // Already running, or already failed and showing why.
+                        else -> pendingStartUpdate = false
                     }
                 }
 
@@ -152,6 +184,28 @@ class MainActivity : ComponentActivity() {
                          */
                         LanguageBar()
 
+                        /*
+                         * Under the chips rather than above them, so the
+                         * language bar keeps being the one thing that owns the
+                         * status-bar inset. On every screen, because a driver
+                         * spends the whole shift on the tracking one and would
+                         * otherwise never see it.
+                         */
+                        // remember: notesFor resolves the driver's language,
+                        // which on API 33+ is a binder call into LocaleManager.
+                        // Unmemoised it ran on every recomposition of the root,
+                        // which the 2-second state poll drives.
+                        val notes = remember(update.manifestOrNull) {
+                            update.manifestOrNull?.let(viewModel::updateNotes)
+                        }
+                        UpdateBanner(
+                            state = update,
+                            notes = notes,
+                            onUpdate = viewModel::startUpdate,
+                            unknownSourcesIntent = viewModel::unknownSourcesIntent,
+                            onReturnedFromSettings = viewModel::onReturnedFromInstallSettings,
+                        )
+
                         // weight(1f), not the children's fillMaxSize(): a child
                         // that fills the whole column would overflow it once the
                         // banner takes vertical space, pushing the UI off-screen.
@@ -168,10 +222,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    companion object {
+        /** Set by the update notification's action; read in onCreate/onNewIntent. */
+        const val EXTRA_START_UPDATE = "kh.start_update"
+    }
+
     /** singleTask: a QR scan while the app is already open arrives here. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_START_UPDATE, false)) pendingStartUpdate = true
         // Only overwrite on a code. A plain relaunch — the launcher icon, a
         // notification tap — delivers an intent with no data, and assigning its
         // null would discard a scan that has not been consumed yet.
@@ -372,6 +432,125 @@ private fun shareText(context: Context, text: String) {
  * container rather than a hard-coded 0xFF7F1D1D, so it is the same red the
  * dispatcher sees on a failed action.
  */
+/**
+ * "A new version is ready", and the button that installs it.
+ *
+ * The fleet is sideloaded, so before this the only route from a fixed bug to a
+ * driver's phone was a telephone call and a talk-through. It shows the size
+ * before the driver commits — 24 MB on a roaming plan in Iraq is their money,
+ * not ours — and says plainly that tracking comes back on its own, because the
+ * one thing that would stop a driver mid-run from pressing it is the fear that
+ * the shipment stops with the app.
+ *
+ * Not dismissable. The notification can be swiped away and returns six hours
+ * later; this stays, because a driver who has decided to update at the next
+ * stop should not have to go looking for the button again.
+ */
+@Composable
+private fun UpdateBanner(
+    state: UpdateState,
+    notes: String?,
+    onUpdate: () -> Unit,
+    unknownSourcesIntent: () -> Intent,
+    onReturnedFromSettings: () -> Unit,
+) {
+    val manifest = state.manifestOrNull ?: return
+
+    val settings = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { onReturnedFromSettings() }
+
+    val failed = state as? UpdateState.Failed
+    val container =
+        if (failed != null) MaterialTheme.colorScheme.errorContainer
+        else MaterialTheme.colorScheme.primaryContainer
+    val onContainer =
+        if (failed != null) MaterialTheme.colorScheme.onErrorContainer
+        else MaterialTheme.colorScheme.onPrimaryContainer
+
+    Surface(color = container) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (failed != null) Icons.Default.Error else Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = onContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        when {
+                            // Not a failure the driver caused or can retry:
+                            // it is a switch in Settings, so leading with a
+                            // failure heading would be a lie. (Quoting one here
+                            // is also how this comment failed the hardcoded
+                            // string guard, which reads the whole argument list
+                            // of a Text call and does not skip comments.)
+                            failed?.needsUnknownSources == true ->
+                                stringResource(R.string.update_banner_title, manifest.versionName)
+                            failed != null ->
+                                stringResource(R.string.update_failed, failed.reason)
+                            else ->
+                                stringResource(R.string.update_banner_title, manifest.versionName)
+                        },
+                        color = onContainer,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    val subtitle = when (state) {
+                        is UpdateState.Failed -> state.reason
+                        is UpdateState.Downloading ->
+                            stringResource(R.string.update_downloading, state.percent)
+                        is UpdateState.Verifying -> stringResource(R.string.update_verifying)
+                        is UpdateState.Installing -> stringResource(R.string.update_installing)
+                        else -> notes
+                            ?: stringResource(R.string.update_banner_note, manifest.sizeLabel)
+                    }
+                    Text(
+                        subtitle,
+                        color = onContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                when (state) {
+                    is UpdateState.Available -> Button(onClick = onUpdate) {
+                        Text(stringResource(R.string.update_action))
+                    }
+                    is UpdateState.Failed ->
+                        if (state.needsUnknownSources) {
+                            Button(onClick = { settings.launch(unknownSourcesIntent()) }) {
+                                Text(stringResource(R.string.update_allow_unknown))
+                            }
+                        } else {
+                            Button(onClick = onUpdate) {
+                                Text(stringResource(R.string.update_retry))
+                            }
+                        }
+                    // Downloading, verifying, installing: nothing to press. A
+                    // second tap would either restart the download or, worse,
+                    // open a second install session.
+                    else -> Unit
+                }
+            }
+
+            when (state) {
+                is UpdateState.Downloading -> LinearProgressIndicator(
+                    progress = { state.percent / 100f },
+                    color = onContainer,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+                is UpdateState.Verifying, is UpdateState.Installing -> LinearProgressIndicator(
+                    color = onContainer,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+                else -> Unit
+            }
+        }
+    }
+}
+
 @Composable
 private fun CrashBanner(report: String, onShare: () -> Unit, onDismiss: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }

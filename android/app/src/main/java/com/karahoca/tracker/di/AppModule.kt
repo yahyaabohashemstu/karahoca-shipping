@@ -107,6 +107,26 @@ object AppModule {
         .connectionPool(okhttp3.ConnectionPool(2, 5, TimeUnit.MINUTES))
         .build()
 
+    /**
+     * Plain, unauthenticated, and patient.
+     *
+     * No interceptors at all: the manifest and the APK are public files on the
+     * same host, nothing here is signed, and nothing here should carry a
+     * driver's credentials. No callTimeout either — that limit is a ceiling on
+     * the *whole* call, so any value large enough for 24 MB at 2G speeds would
+     * be meaningless as a timeout anyway. The read timeout is what catches a
+     * connection that has actually died.
+     */
+    @Provides
+    @Singleton
+    @UpdateClient
+    fun updateClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
     @Provides
     @Singleton
     fun retrofit(client: OkHttpClient, json: Json): Retrofit = Retrofit.Builder()

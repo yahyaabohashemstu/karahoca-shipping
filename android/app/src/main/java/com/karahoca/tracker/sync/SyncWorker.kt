@@ -47,6 +47,7 @@ class SyncWorker @AssistedInject constructor(
     private val repository: TrackingRepository,
     private val store: SessionStore,
     private val notifications: TrackingNotification,
+    private val updates: com.karahoca.tracker.update.UpdateRepository,
 ) : CoroutineWorker(appContext, params) {
 
     companion object {
@@ -57,6 +58,17 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
+        /*
+         * Before the session guard on purpose.
+         *
+         * A driver between shipments has no session, so everything below this
+         * returns immediately — and they are exactly the driver with time to
+         * install an update before the next run. check() is throttled to six
+         * hours and silent when offline, so the cost of putting it on a worker
+         * that runs every fifteen minutes is a comparison against a timestamp.
+         */
+        runCatching { updates.check() }
+
         val sessionId = store.sessionId()
         if (sessionId == null) {
             Log.d(TAG, "No session — nothing to sync")

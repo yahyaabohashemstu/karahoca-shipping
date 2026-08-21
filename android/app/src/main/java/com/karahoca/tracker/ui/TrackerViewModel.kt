@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.karahoca.tracker.data.local.SessionStore
+import com.karahoca.tracker.update.UpdateRepository
+import com.karahoca.tracker.update.UpdateState
 import com.karahoca.tracker.data.repository.TrackingRepository
 import com.karahoca.tracker.service.LocationTrackingService
 import com.karahoca.tracker.sync.NetworkMonitor
@@ -90,12 +92,44 @@ class TrackerViewModel @Inject constructor(
     private val store: SessionStore,
     private val deviceInfo: DeviceInfoProvider,
     private val network: NetworkMonitor,
+    private val updates: UpdateRepository,
 ) : ViewModel() {
 
     private companion object { const val TAG = "KH/ViewModel" }
 
     private val _state = MutableStateFlow(TrackerUiState())
     val state: StateFlow<TrackerUiState> = _state.asStateFlow()
+
+    /*
+     * Kept out of TrackerUiState deliberately.
+     *
+     * That state is rebuilt wholesale by a 2-second poll; folding a download's
+     * percentage into it would mean either the poll stamping over the progress
+     * or the progress stamping over a stale copy of everything else. The
+     * updater owns its own flow and the banner collects it directly.
+     */
+    val updateState: StateFlow<UpdateState> = updates.state
+
+    /** One tap: download, verify, hand to the platform installer. */
+    fun startUpdate() = updates.start()
+
+    /**
+     * Ask again now, throttle or no throttle.
+     *
+     * Only from the notification's Update button landing on an empty state:
+     * the driver has pressed something and is owed either a banner or nothing
+     * at all, not a six-hour wait.
+     */
+    fun recheckForUpdate() {
+        viewModelScope.launch { runCatching { updates.check(force = true) } }
+    }
+
+    fun onReturnedFromInstallSettings() = updates.onReturnedFromSettings()
+
+    fun unknownSourcesIntent() = updates.unknownSourcesIntent()
+
+    fun updateNotes(manifest: com.karahoca.tracker.update.UpdateManifest) =
+        updates.notesFor(manifest)
 
     /*
      * A deep link can arrive before we know what session this phone is already

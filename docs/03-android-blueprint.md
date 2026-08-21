@@ -379,6 +379,63 @@ hotspot and the file must always be the same file. Serve it from
 bind mount, outside the deploy cycle, and it has to be done atomically — the
 procedure is in [05 §6](05-deployment-coolify.md).
 
+## 7b. Problem 5 — reaching a phone that has no app store
+
+Sideloading solved distribution and created this: there is no update channel,
+so a fixed bug reaches a driver only when somebody telephones them and talks
+them through re-downloading. Three releases in a row failed to make that trip —
+a redesign, the language switcher, and a crash on reboot all sat in `main`
+while every phone in the fleet ran the build from a fortnight earlier.
+
+From 1.5.0 the app carries its own updater.
+
+```
+/downloads/latest.json  ──check, 6-hourly──▶  UpdateRepository
+   versionCode, sha256, size, notes                 │
+                                          Available │ notification (ongoing)
+                                                    │ + banner on every screen
+                                     driver presses ▼
+                                        download ─▶ sha256 ─▶ PackageInstaller
+                                                                   │
+                                              MY_PACKAGE_REPLACED ─┘
+                                                    │
+                                          BootReceiver resumes the session
+```
+
+**The check is cheap and rare.** A few hundred bytes of JSON, throttled to once
+every six hours, on work that was going to run anyway — process start and
+`SyncWorker`. It is placed *before* SyncWorker's session guard on purpose: a
+driver between shipments is exactly the driver with time to install something.
+
+**Nothing downloads until the driver presses the button.** 24 MB on a roaming
+plan in Iraq is their money. The banner shows the size before they commit, and
+says tracking comes back by itself — which is the one thing that would
+otherwise stop a driver mid-run from pressing it.
+
+**The notification is "semi-permanent", and that needs both halves.**
+`setOngoing` keeps it out of a careless swipe up to Android 13; on 14 and above
+the platform lets anything be dismissed, so what actually makes it persistent is
+that the next six-hourly check posts it again. A driver can clear it to see
+their lock screen and it returns that evening.
+
+**The install ends at a system dialog, and only a visible app may launch one.**
+That constraint shapes the whole flow: the notification's Update action is a
+`getActivity` PendingIntent that opens the app and starts the download there,
+rather than a `getBroadcast` that would be unable to finish what it started. If
+the download outlives the driver's attention — the normal case on a rural cell —
+`UpdateInstallReceiver` falls back to posting the confirmation dialog as its own
+notification.
+
+**Three things stand between a bad manifest and a bad install.** The sha256 in
+the manifest is checked against the downloaded bytes; the platform refuses any
+APK not signed with the key the installed app already carries; and
+`setAppPackageName` means a session for some other package is rejected before
+the driver sees a prompt. The worst a tampered manifest achieves is a wasted
+download.
+
+Publishing is one command — `infra/publish-apk.sh` — because the APK and the
+manifest have to move together. See [05 §6](05-deployment-coolify.md).
+
 ## 8. Field verification checklist
 
 Before declaring a device fleet-ready, on **that exact phone model**:

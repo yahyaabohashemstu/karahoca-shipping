@@ -123,54 +123,62 @@ The served path is `https://track.karahoca.com/downloads/karahoca-takip.apk`.
 `S.browser_fallback_url` points at it, so a driver who scans a code on a phone
 without the app gets the installer instead of a 404. Do not rename it.
 
-### Build
+Two files move together, and that is the whole reason there is a script:
+
+| | |
+|---|---|
+| `karahoca-takip.apk` | the build |
+| `latest.json` | what the app reads to learn it is out of date |
+
+Publish them separately and you get the worst outcome available: a manifest
+advertising a version the download does not contain sends every phone in the
+fleet to download 24 MB and install the build it already has, forever, because
+the version never changes.
+
+### The one command
 
 ```bash
-cd android
-./gradlew :app:assembleRelease
+cd android && ./gradlew :app:assembleRelease && cd ..
+infra/publish-apk.sh            # --dry-run to see the manifest without uploading
 ```
 
-The production URL is already the default; `-PkhApiBaseUrl=` only exists to
-point a release-configuration build at a test API. Signing comes from
-`android/keystore.properties` (git-ignored) — see [08](08-signing-key-runbook.md).
+Bump `versionCode` in `android/app/build.gradle.kts` first, and put a line per
+language in `android/release-notes.json` — it becomes the text in the update
+banner on the driver's phone. The script refuses to publish a code that is not
+above the live one, because a phone will not offer such a build as an update
+and the install appears to do nothing.
 
-Bump `versionCode` in `app/build.gradle.kts` **before** building. A driver's
-phone will not offer an update for an equal or lower code, and the install will
-simply appear to do nothing.
+### What it checks, and why each one has teeth
 
-### Verify before uploading, every time
+**The signer.** `apksigner verify --print-certs` on both the new APK and the
+live one; they must match, and must equal the fingerprint in
+`/.well-known/assetlinks.json` (`1a2b1286…3079`). Android refuses to install an
+APK signed by a different key over the app already on a driver's phone — the
+update silently does nothing, on every device at once, and the only remedy is a
+fleet-wide uninstall that discards every buffered point that never reached the
+server. App Links verification breaks with it. See
+[08](08-signing-key-runbook.md).
 
-```bash
-apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
-curl -sO https://track.karahoca.com/downloads/karahoca-takip.apk   # the live one
-apksigner verify --print-certs karahoca-takip.apk
-```
+**The version.** `aapt2 dump badging`, compared against the live APK.
 
-The two SHA-256 digests must match each other **and** the fingerprint in
-`/.well-known/assetlinks.json` (`1a2b1286…3079`). A mismatch means the update
-will not install over the app already on a driver's phone, and App Links
-verification breaks — see [08](08-signing-key-runbook.md).
+**Atomicity.** nginx serves these files while a copy is in progress, so a
+straight `scp` hands a driver downloading at that moment a truncated APK that
+installs as a parse error. Both files go up as `.incoming`, are checksummed on
+the box, and are renamed into place — atomic on the same filesystem, and an
+in-flight download keeps the old inode and finishes cleanly. The APK is renamed
+**before** the manifest, so a phone that reads the manifest always finds the
+build it promises already there.
 
-`aapt2 dump badging` on the new APK confirms the version actually moved.
+**What the world sees.** It re-downloads through the public URL afterwards and
+compares the hash to the manifest.
 
-### Upload atomically
+The previous APK is kept beside them as `karahoca-takip-<code>.apk.bak`.
 
-Never `scp` straight over the live path: nginx serves that file while the
-upload is in flight, and a driver downloading at that moment gets a truncated
-APK that installs as a parse error.
+### The first hop is still manual
 
-```bash
-scp app-release.apk root@<host>:/opt/karahoca/downloads/.karahoca-takip.apk.incoming
-ssh root@<host> '
-  cd /opt/karahoca/downloads
-  sha256sum .karahoca-takip.apk.incoming            # compare with the local sum
-  cp karahoca-takip.apk karahoca-takip-<old>.apk.bak
-  mv .karahoca-takip.apk.incoming karahoca-takip.apk
-'
-```
-
-A rename on the same filesystem is atomic, and an in-flight download keeps the
-old inode and finishes cleanly.
+An updater only helps from the version that contains it. Phones on an older
+build will never hear about a release — somebody has to tell those drivers to
+open `/app` and reinstall, once.
 
 ---
 

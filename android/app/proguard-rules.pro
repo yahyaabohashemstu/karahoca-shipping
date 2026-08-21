@@ -56,6 +56,8 @@
 -keep class com.karahoca.tracker.service.BootReceiver { *; }
 -keep class com.karahoca.tracker.service.WatchdogReceiver { *; }
 -keep class com.karahoca.tracker.service.NotificationActionReceiver { *; }
+# The platform installer calls back into this one by component name.
+-keep class com.karahoca.tracker.update.UpdateInstallReceiver { *; }
 -keep class com.karahoca.tracker.TrackerApplication { *; }
 -keep class com.karahoca.tracker.ui.MainActivity { *; }
 

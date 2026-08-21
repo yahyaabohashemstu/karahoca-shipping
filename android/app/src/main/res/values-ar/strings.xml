@@ -122,4 +122,22 @@
     <string name="check_notifications">إذن الإشعارات</string>
     <string name="check_notifications_why">بدون إشعار التتبّع قد يوقف أندرويد الخدمة.</string>
     <string name="language_system">لغة الهاتف</string>
+
+    <!-- In-app update -->
+    <string name="update_channel">تحديث التطبيق</string>
+    <string name="update_channel_desc">يُنبّهك عند توفّر نسخة جديدة.</string>
+    <string name="update_available_title">نسخة جديدة جاهزة: %1$s</string>
+    <string name="update_available_body">اضغط للتحديث. يستأنف التتبّع من حيث توقّف.</string>
+    <string name="update_action">حدّث</string>
+    <string name="update_banner_title">نسخة جديدة %1$s</string>
+    <string name="update_banner_note">%1$s · يعود التتبّع من تلقاء نفسه خلال ثوانٍ</string>
+    <string name="update_downloading">جارٍ التنزيل… %1$d%%</string>
+    <string name="update_verifying">جارٍ التحقّق…</string>
+    <string name="update_installing">جارٍ التثبيت…</string>
+    <string name="update_failed">فشل التحديث: %1$s</string>
+    <string name="update_retry">أعد المحاولة</string>
+    <string name="update_allow_unknown">اسمح</string>
+    <string name="update_allow_unknown_why">يطلب أندرويد إذنًا مرّة واحدة كي يحدّث التطبيق نفسه.</string>
+    <string name="update_error_checksum">الملف وصل تالفًا</string>
+    <string name="update_error_network">لا يوجد اتصال</string>
 </resources>
