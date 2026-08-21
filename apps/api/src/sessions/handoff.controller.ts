@@ -59,6 +59,31 @@ export class HandoffController {
    */
   private apkQr?: Promise<string>;
 
+  /**
+   * The same code as a PNG, for saving and printing.
+   *
+   * PNG rather than handing over the SVG that is already on the page: this gets
+   * pinned to a wall, sent down WhatsApp and dropped into a Word document, and
+   * an SVG is awkward or invisible in all three. Five kilobytes as a data URI,
+   * which keeps the page a single self-contained response with no second
+   * endpoint to route, cache or get wrong.
+   *
+   * margin 2, where the on-screen SVG has none: the quiet zone around a code is
+   * what a scanner uses to find its edges, and on screen that job is done by
+   * the white plate the SVG sits on. Printed on white paper with no plate,
+   * there would be nothing.
+   */
+  private apkQrPng?: Promise<string>;
+
+  private downloadQrPng(): Promise<string> {
+    this.apkQrPng ??= QRCode.toDataURL(this.apkUrl(), {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 512,
+    });
+    return this.apkQrPng;
+  }
+
   private downloadQr(): Promise<string> {
     this.apkQr ??= QRCode.toString(this.apkUrl(), {
       type: 'svg',
@@ -174,7 +199,7 @@ export class HandoffController {
     @Headers('accept-language') acceptLanguage: string | undefined,
   ): Promise<string> {
     const apkUrl = this.apkUrl();
-    const qr = await this.downloadQr();
+    const [qr, qrPng] = await Promise.all([this.downloadQr(), this.downloadQrPng()]);
     const locale = resolveDriverLocale(lang, acceptLanguage);
     const t = driverStrings(locale);
 
@@ -221,6 +246,14 @@ ${pageHead(t.installTitle, pageStyle(INSTALL_CSS))}
       <h2 class="panel__title">${t.qrHeading}</h2>
       <div class="qr__code" role="img" aria-label="${t.qrHeading}">${qr}</div>
       <p class="qr__hint">${t.qrHint}</p>
+      <!--
+        A plain download attribute on a data URI: no script, and nothing for a
+        content policy to refuse. The filename is what a dispatcher will see in
+        their downloads folder six months from now, so it says what it is.
+      -->
+      <a class="btn btn--quiet qr__save" download="karahoca-takip-qr.png" href="${qrPng}">
+        ${t.qrDownload}
+      </a>
     </section>
 
     <section class="glass panel">
@@ -526,6 +559,7 @@ ${DRIVER_CSS}
   }
   .qr__code svg { display: block; width: 168px; height: 168px; }
   .qr__hint { margin: 0; font-size: 12.5px; color: var(--ink-3); }
+  .qr__save { margin-top: 14px; }
 
   .release { padding-bottom: 18px; }
   .release__rows {

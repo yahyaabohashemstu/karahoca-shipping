@@ -153,11 +153,35 @@ describe('the driver install page', () => {
     expect(html).toContain(expected);
   });
 
+  /**
+   * The saved file is the one that gets printed and pinned up, so it is worth
+   * more than the on-screen code — and it is the one nobody will re-check.
+   */
+  it('offers the same code as a saveable PNG', async () => {
+    const html = await controller().landingApp('tr', undefined);
+    const expected = await QRCode.toDataURL(
+      'https://track.karahoca.com/downloads/karahoca-takip.apk',
+      { errorCorrectionLevel: 'M', margin: 2, width: 512 },
+    );
+    expect(html).toContain(`download="karahoca-takip-qr.png"`);
+    expect(html).toContain(expected);
+    // A printed code with no quiet zone is a code a scanner cannot find the
+    // edges of. On screen the white plate does that job; on paper nothing does.
+    expect(expected).not.toBe(
+      await QRCode.toDataURL('https://track.karahoca.com/downloads/karahoca-takip.apk', {
+        errorCorrectionLevel: 'M',
+        margin: 0,
+        width: 512,
+      }),
+    );
+  });
+
   it('captions the QR in every language', async () => {
     for (const locale of DRIVER_LOCALES) {
       const html = await controller().landingApp(locale, undefined);
       expect(html, locale).toContain(driverStrings(locale).qrHeading);
       expect(html, locale).toContain(driverStrings(locale).qrHint);
+      expect(html, locale).toContain(driverStrings(locale).qrDownload);
     }
   });
 
