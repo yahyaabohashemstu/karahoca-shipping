@@ -26,6 +26,19 @@ android {
         minSdk = 26          // Oreo: background execution limits + notification channels
         targetSdk = 35       // Android 15
         /*
+         * 24 / 1.9.0 — the desk can write to the driver of one shipment.
+         *
+         * A message arrives as a notification with sound and as a card in the
+         * app that stays until the driver presses "read", and both receipts go
+         * back to the dashboard. The phone hears about a message from the
+         * count on its next ingest response, or from the sync worker when it
+         * is not tracking. Builds before this one keep their messages waiting
+         * on the server until they update, and the dashboard says so.
+         */
+        versionCode = 24
+        versionName = "1.9.0"
+
+        /*
          * 23 / 1.8.0 — the phone says which build it is, so the desk can see it.
          *
          * The device row recorded a version at claim and never again, which
@@ -37,8 +50,6 @@ android {
          * The dashboard renders it, and the server raises APP_OUTDATED against
          * a lorry still on an old build a day after a release.
          */
-        versionCode = 23
-        versionName = "1.8.0"
 
         /*
          * 22 / 1.7.1 — the updater's own disk work, off the main thread.
