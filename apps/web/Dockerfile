@@ -8,8 +8,9 @@
 
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+# The lockfile and `npm ci`, for the reason given in apps/api/Dockerfile.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 FROM node:22-alpine AS build
 WORKDIR /app

@@ -8,8 +8,13 @@
 
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+# The lockfile, and `npm ci`, so the image holds the versions that were tested.
+# With package.json alone every deploy resolved whatever was newest that day:
+# d4b05bb failed to build because @nestjs/platform-socket.io had moved from the
+# tested 11.1.29 to 11.2.7 in the weeks since the last deploy, and a release
+# that merely changed behaviour would have shipped without anybody noticing.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 FROM node:22-alpine AS build
 WORKDIR /app

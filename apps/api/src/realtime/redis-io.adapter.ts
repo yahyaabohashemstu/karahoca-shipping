@@ -16,7 +16,13 @@ import type { ServerOptions } from 'socket.io';
  * adapter manages its own channel namespace.
  */
 export class RedisIoAdapter extends IoAdapter {
-  private readonly logger = new Logger(RedisIoAdapter.name);
+  /*
+   * Not `logger`. @nestjs/platform-socket.io 11.2 gave IoAdapter a logger of
+   * its own, and a private field of the same name in a subclass is a compile
+   * error — which is how the deploy of d4b05bb failed, on a build that had
+   * resolved a newer Nest than the one it was tested with.
+   */
+  private readonly log = new Logger(RedisIoAdapter.name);
   private adapterConstructor?: ReturnType<typeof createAdapter>;
   private connections: Redis[] = [];
 
@@ -40,7 +46,7 @@ export class RedisIoAdapter extends IoAdapter {
     this.adapterConstructor = createAdapter(pubClient, subClient, {
       key: 'kh-socket',
     });
-    this.logger.log('Socket.IO Redis adapter connected');
+    this.log.log('Socket.IO Redis adapter connected');
   }
 
   createIOServer(port: number, options?: ServerOptions): unknown {

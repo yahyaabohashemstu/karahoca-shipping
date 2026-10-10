@@ -3,8 +3,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund
+# The lockfile and `npm ci`, for the reason given in apps/api/Dockerfile.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY migrate.mjs ./
 COPY migrations ./migrations
