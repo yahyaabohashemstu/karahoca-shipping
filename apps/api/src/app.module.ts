@@ -11,6 +11,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
 import { JobsModule } from './jobs/jobs.module';
+import { MessagesModule } from './messages/messages.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RedisModule } from './redis/redis.module';
 import { SessionsModule } from './sessions/sessions.module';
@@ -35,6 +36,8 @@ import { TrackingModule } from './tracking/tracking.module';
     CatalogModule,
     AlertsModule,
     ReleaseModule,
+    // The desk talking to one driver; the ingest hint lives in IngestModule.
+    MessagesModule,
     // Elevation tiles for the 3D map. Deliberately last and deliberately
     // dependency-free: it must keep serving when the database is busy.
     // Place search for the destination picker. Same shape as TerrainModule:

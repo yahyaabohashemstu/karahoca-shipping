@@ -235,6 +235,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Notification action: driver marks a message from the desk as read -->
+        <receiver
+            android:name=".messages.MessageActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- ==================================================================
              SYNC
              ================================================================== -->

@@ -148,4 +148,12 @@
     <string name="stop_confirm_no">تراجع</string>
     <string name="resume_alert_title">أُعيد تشغيل التتبّع</string>
     <string name="resume_alert_body">أعاد مسؤول الشحن تشغيل التتبّع. يُرسَل موقعك من جديد.</string>
+
+    <string name="message_channel">رسائل المركز</string>
+    <string name="message_channel_desc">الرسائل التي يكتبها إليك مسؤول الشحن.</string>
+    <string name="message_title">رسالة من المركز</string>
+    <string name="message_read">قرأتُها</string>
+    <string name="message_position">%1$s/%2$s</string>
+    <string name="messages_heading">الرسائل الواردة من المركز</string>
+    <string name="message_new">جديدة</string>
 </resources>

@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.karahoca.tracker.data.local.SessionStore
 import com.karahoca.tracker.update.UpdateRepository
+import com.karahoca.tracker.messages.DriverMessage
+import com.karahoca.tracker.messages.MessageRepository
 import com.karahoca.tracker.update.UpdateState
 import com.karahoca.tracker.data.repository.TrackingRepository
 import com.karahoca.tracker.service.LocationTrackingService
@@ -94,6 +96,7 @@ class TrackerViewModel @Inject constructor(
     private val network: NetworkMonitor,
     private val updates: UpdateRepository,
     private val notifications: com.karahoca.tracker.service.TrackingNotification,
+    private val messageRepository: MessageRepository,
 ) : ViewModel() {
 
     private companion object { const val TAG = "KH/ViewModel" }
@@ -137,6 +140,33 @@ class TrackerViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { updates.check(force = true) }
                 .onFailure { Log.d(TAG, "Update check on open failed", it) }
+        }
+    }
+
+    /*
+     * Messages from the desk, newest first. Like the update state, kept out of
+     * TrackerUiState: that is rebuilt by a two-second poll, and a read pressed
+     * between two polls must not flicker back.
+     */
+    val messages: StateFlow<List<DriverMessage>> = messageRepository.messages
+
+    /** The driver pressed "read" on the card. Gone at once; the receipt follows. */
+    fun markMessageRead(id: String) = messageRepository.markRead(id)
+
+    /**
+     * The app came to the front: ask whether the desk has written.
+     *
+     * The upload hint already covers a phone that is tracking, so this matters
+     * most for one that is not — a driver who opens the app at the yard after
+     * a night with tracking stopped should see what was sent overnight before
+     * pressing anything. Thirty seconds between asks, because a driver
+     * switching back and forth to the map would otherwise ask each time.
+     */
+    fun onForeground() {
+        viewModelScope.launch {
+            runCatching {
+                if (repository.refreshTokenIfStale()) messageRepository.sync(minIntervalMs = 30_000)
+            }.onFailure { Log.d(TAG, "Message check on open failed", it) }
         }
     }
 
@@ -332,6 +362,9 @@ class TrackerViewModel @Inject constructor(
                             checks = deviceInfo.readinessChecks(),
                         )
                     }
+                    // Anything the desk wrote before the code was entered —
+                    // "load at bay 4" is most useful before the lorry moves.
+                    runCatching { messageRepository.sync() }
                 }
                 .onFailure { err ->
                     _state.update {
@@ -415,6 +448,9 @@ class TrackerViewModel @Inject constructor(
             LocationTrackingService.stop(context)
             repository.notifyStop()
             store.clearSession()
+            // Another shipment's messages are not this driver's business any
+            // more, and their notifications go with them.
+            runCatching { messageRepository.clear() }
             _state.update {
                 TrackerUiState(checks = deviceInfo.readinessChecks())
             }

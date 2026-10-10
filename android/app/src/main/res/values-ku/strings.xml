@@ -148,4 +148,12 @@
     <string name="stop_confirm_no">Dev jê berde</string>
     <string name="resume_alert_title">Şopandin ji nû ve dest pê kir</string>
     <string name="resume_alert_body">Berpirsê barkirinê şopandin vekir. Cihê te dîsa tê şandin.</string>
+
+    <string name="message_channel">Peyamên navendê</string>
+    <string name="message_channel_desc">Peyamên ku berpirsê barkirinê ji te re dinivîse.</string>
+    <string name="message_title">Peyam ji navendê</string>
+    <string name="message_read">Min xwend</string>
+    <string name="message_position">%1$s/%2$s</string>
+    <string name="messages_heading">Peyamên ji navendê</string>
+    <string name="message_new">Nû</string>
 </resources>

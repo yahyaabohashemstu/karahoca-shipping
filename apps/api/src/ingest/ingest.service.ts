@@ -12,6 +12,7 @@ import { DatabaseService } from '../database/database.service';
 import { RedisService } from '../redis/redis.service';
 import { RealtimePublisher } from '../realtime/realtime.publisher';
 import { ReleaseService } from '../release/release.service';
+import { MessagesService } from '../messages/messages.service';
 import type { DriverContext } from '../auth/auth.types';
 
 /** Shape accepted by `kh.ingest_points` via jsonb_to_recordset. */
@@ -72,6 +73,7 @@ export class IngestService {
     private readonly redis: RedisService,
     private readonly publisher: RealtimePublisher,
     private readonly releases: ReleaseService,
+    private readonly messages: MessagesService,
   ) {}
 
   /**
@@ -135,6 +137,19 @@ export class IngestService {
       );
     }
 
+    /*
+     * Started before the write and awaited after it, so the hint costs this
+     * request no latency: a Redis GET racing a Postgres function call it will
+     * always lose to. A failure here is a hint we cannot give, never a batch
+     * we refuse — the phone's own sync worker asks independently.
+     */
+    const pendingMessages = this.messages
+      .pendingCount(driver.sessionId)
+      .catch((err: Error) => {
+        this.logger.warn(`Message hint unavailable for ${driver.sessionId}: ${err.message}`);
+        return null;
+      });
+
     const [row] = await this.db.query<{ ingest_points: IngestResult }>(
       `SELECT kh.ingest_points($1::uuid, $2::uuid, $3::text, $4::jsonb, $5::boolean, $6::inet, $7::int, $8::int)
               AS ingest_points`,
@@ -194,6 +209,16 @@ export class IngestService {
        * releases.
        */
       releasedAppBuild: this.releases.liveVersionCode(),
+      /*
+       * Messages from the desk that this phone has not yet confirmed.
+       *
+       * The same trick as the release hint, for the same reason: this is the
+       * one response a working phone reads every few seconds. A count rather
+       * than the messages themselves, so the hot path never carries prose —
+       * a phone that sees a non-zero number fetches /driver/messages once and
+       * acknowledges, which brings this back to zero.
+       */
+      pendingMessages: await pendingMessages,
     };
   }
 

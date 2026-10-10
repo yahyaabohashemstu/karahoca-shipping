@@ -48,6 +48,7 @@ class SyncWorker @AssistedInject constructor(
     private val store: SessionStore,
     private val notifications: TrackingNotification,
     private val updates: com.karahoca.tracker.update.UpdateRepository,
+    private val messages: com.karahoca.tracker.messages.MessageRepository,
 ) : CoroutineWorker(appContext, params) {
 
     companion object {
@@ -98,7 +99,27 @@ class SyncWorker @AssistedInject constructor(
 
         Log.i(TAG, "Sync pass starting (attempt ${runAttemptCount})")
 
-        return when (val outcome = repository.syncAll()) {
+        val outcome = repository.syncAll()
+
+        /*
+         * After the upload, not before it: syncAll refreshes a stale token
+         * before it does anything else, so by here the fetch has a credential
+         * that works.
+         *
+         * This is the only way a message reaches a phone that is not tracking
+         * — a driver who stopped for the night, or has claimed the code and not
+         * yet started — because such a phone uploads nothing the server could
+         * answer with a hint. syncIfStale skips the request when a recent
+         * upload already carried one.
+         */
+        if (outcome !is TrackingRepository.SyncOutcome.SessionClosed &&
+            outcome !is TrackingRepository.SyncOutcome.Unauthorised
+        ) {
+            runCatching { messages.syncIfStale() }
+                .onFailure { Log.w(TAG, "Message check failed", it) }
+        }
+
+        return when (outcome) {
             is TrackingRepository.SyncOutcome.Drained -> {
                 Log.i(TAG, "Buffer drained")
                 maybeStopServiceIfFinished()

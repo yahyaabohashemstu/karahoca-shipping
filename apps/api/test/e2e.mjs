@@ -357,6 +357,7 @@ async function main() {
       socket,
       'position:update', 'route:backfill', 'session:state', 'session:event',
       'ingest:stats', 'fleet:positions', 'fleet:snapshot', 'subscribed',
+      'session:message',
     );
 
     // NOTE: emit WITHOUT an ack callback. The gateway handlers return a
@@ -618,6 +619,113 @@ async function main() {
   }
 
   // ---------------------------------------------------------------------------
+  group('driver messages');
+  {
+    const send = (body) =>
+      api(`/sessions/${sessionId}/messages`, { method: 'POST', token: adminToken, body: { body } });
+    const hint = async () => {
+      const res = await signedFetch('/ingest/ping', {
+        ...driver, body: { point: point(Date.now() - 700, 40.7654, 29.9187) },
+      });
+      return (await res.json()).pendingMessages;
+    };
+
+    const anon = await api(`/sessions/${sessionId}/messages`);
+    eq('the thread is not public', anon.status, 401);
+
+    const nowhere = await api(`/sessions/${randomUUID()}/messages`, {
+      method: 'POST', token: adminToken, body: { body: 'Kimse yok' },
+    });
+    eq('a message to a session that does not exist is a 404', nowhere.status, 404);
+
+    const blank = await send('   \r\n  ');
+    eq('a blank message is refused', blank.status, 400);
+    eq('blank-message code is stable', blank.body?.error?.code, 'EMPTY_MESSAGE');
+
+    const long = await send('x'.repeat(501));
+    eq('a message over 500 characters is refused', long.status, 400);
+    eq('too-long code is stable', long.body?.error?.code, 'MESSAGE_TOO_LONG');
+
+    // 500 code points, 1,000 UTF-16 units: the limit is the database's, not JavaScript's.
+    const emoji = await send('🚚'.repeat(500));
+    eq('the limit counts characters, not UTF-16 units', emoji.status, 201);
+
+    eq('the first message waits for the phone', await hint(), 1);
+
+    const sent = await send("  Rampa 3'e yanaşın, 1 değil.\r\n");
+    eq('dispatcher sends a message', sent.status, 201);
+    eq('body is trimmed and line endings normalised', sent.body?.body, "Rampa 3'e yanaşın, 1 değil.");
+    check('the sender is named on the thread', typeof sent.body?.sentByName === 'string' && sent.body.sentByName.length > 0);
+    eq('a new message is not delivered', sent.body?.deliveredAt, null);
+    const msgId = sent.body?.id;
+
+    const sentFrame = await events.wait('session:message', (p) => p.id === msgId && p.state === 'SENT');
+    check('the dispatcher socket hears SENT', sentFrame !== null);
+
+    eq('the ingest response carries the undelivered count', await hint(), 2);
+
+    const inbox = await api('/driver/messages', { token: driver.token });
+    eq('the phone fetches its messages', inbox.status, 200);
+    eq('newest first', inbox.body?.messages?.[0]?.id, msgId);
+    check('the phone is not handed the dispatcher\'s name', inbox.body?.messages?.[0]?.sentByName === undefined);
+    check('serverTime returned for clock correction', Number.isFinite(inbox.body?.serverTime));
+
+    const unsigned = await fetch(`${API}/driver/messages/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${driver.token}` },
+      body: JSON.stringify({ delivered: [msgId] }),
+    });
+    eq('an unsigned receipt is refused', unsigned.status, 401);
+
+    const emojiId = emoji.body?.id;
+    const ack = await signedFetch('/driver/messages/ack', {
+      ...driver, body: { delivered: [msgId, emojiId, randomUUID()] },
+    });
+    eq('delivery receipts accepted', ack.status, 200);
+    eq('two delivered, the stranger id ignored', (await ack.json()).delivered, 2);
+
+    const deliveredFrame = await events.wait('session:message', (p) => p.id === msgId && p.state === 'DELIVERED');
+    check('the dispatcher socket hears DELIVERED', deliveredFrame !== null);
+    eq('the hint drops to zero once the phone has them', await hint(), 0);
+
+    const again = await signedFetch('/driver/messages/ack', { ...driver, body: { delivered: [msgId] } });
+    eq('a repeated receipt changes nothing', (await again.json()).delivered, 0);
+
+    // A phone whose clock is an hour fast cannot read a message in the future.
+    const read = await signedFetch('/driver/messages/ack', {
+      ...driver, body: { read: [{ id: msgId, at: Date.now() + 3_600_000 }] },
+    });
+    eq('read receipt accepted', (await read.json()).read, 1);
+    const readFrame = await events.wait('session:message', (p) => p.id === msgId && p.state === 'READ');
+    check('the dispatcher socket hears READ', readFrame !== null);
+
+    // Delivered and read in one receipt, with a time before the message existed:
+    // both take the clamped device time, so neither precedes sent_at.
+    const late = await send('Müşteri 14:00\'e kadar kapalı.');
+    const both = await signedFetch('/driver/messages/ack', {
+      ...driver, body: { delivered: [late.body?.id], read: [{ id: late.body?.id, at: Date.now() - 86_400_000 }] },
+    });
+    const bothBody = await both.json();
+    eq('a combined receipt counts as one read', bothBody.read, 1);
+    eq('…and not as a second delivery', bothBody.delivered, 0);
+
+    const thread = await api(`/sessions/${sessionId}/messages`, { token: adminToken });
+    eq('the dispatcher reads the thread', thread.status, 200);
+    eq('the thread holds all three', thread.body?.length, 3);
+    const first = thread.body?.find((m) => m.id === msgId);
+    const last = thread.body?.find((m) => m.id === late.body?.id);
+    check('a future device clock is clamped to now',
+          first && new Date(first.readAt).getTime() <= Date.now() + 1000, first?.readAt);
+    check('read is never before delivered',
+          first && new Date(first.readAt).getTime() >= new Date(first.deliveredAt).getTime(),
+          `${first?.deliveredAt} → ${first?.readAt}`);
+    check('a past device clock is clamped to sent_at',
+          last && new Date(last.readAt).getTime() >= new Date(last.sentAt).getTime(),
+          `${last?.sentAt} → ${last?.readAt}`);
+    eq('delivered and read together share the moment', last?.deliveredAt, last?.readAt);
+  }
+
+  // ---------------------------------------------------------------------------
   group('session lifecycle');
   {
     const completed = await api(`/sessions/${sessionId}/complete`, {
@@ -634,6 +742,12 @@ async function main() {
     });
     eq('closed session refuses further points', afterClose.status, 403);
     eq('closure code is stable', (await afterClose.json())?.error?.code, 'SESSION_CLOSED');
+
+    const tooLate = await api(`/sessions/${sessionId}/messages`, {
+      method: 'POST', token: adminToken, body: { body: 'Geç kaldı' },
+    });
+    eq('a closed shipment takes no more messages', tooLate.status, 409);
+    eq('closed-session code is stable for messages', tooLate.body?.error?.code, 'SESSION_CLOSED');
   }
 
   // ---------------------------------------------------------------------------

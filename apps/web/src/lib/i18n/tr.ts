@@ -681,6 +681,34 @@ ${url}`,
       cancelVerb: 'İptal et',
     },
   },
+  /*
+   * The desk writing to one driver. Wording here is the dispatcher's; what the
+   * driver reads is the dispatcher's own text, in whatever language they wrote
+   * it, under a heading the phone translates for itself.
+   */
+  driverMessages: {
+    heading: 'Sürücüye mesaj',
+    to: 'Alıcı',
+    thisDriver: 'Bu sevkiyatın sürücüsü',
+    placeholder: "Örn. Rampa 3'e yanaşın, müşteri 14:00'e kadar kapalı.",
+    send: 'Gönder',
+    shortcut: 'Ctrl + Enter ile gönderilir',
+    sent: 'Mesaj gönderildi',
+    sentBody: 'Sürücünün telefonuna bildirim olarak düşecek.',
+    sendFailed: 'Mesaj gönderilemedi',
+    empty: 'Mesaj boş.',
+    tooLong: (max: string) => `Mesaj en fazla ${max} karakter olabilir.`,
+    closed: 'Sevkiyat kapandı; bu sürücüye artık mesaj gönderilemez.',
+    noDevice:
+      'Sürücü henüz kodu girmedi. Mesaj, telefon bu sevkiyata bağlandığı anda iletilir.',
+    oldApp: (version: string) =>
+      `Bu telefondaki uygulama (${version}) mesajları gösteremiyor. Sürücü uygulamayı güncellediğinde iletilir.`,
+    none: 'Bu sevkiyatta henüz mesaj yok.',
+    loadFailed: 'Mesajlar alınamadı',
+    stateSent: 'Gönderildi · telefon bekleniyor',
+    stateDelivered: (time: string) => `Telefona ulaştı ${time}`,
+    stateRead: (time: string) => `Okundu ${time}`,
+  },
 };
 
 /**

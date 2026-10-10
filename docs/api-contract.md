@@ -83,6 +83,8 @@ rotated token revokes the entire family.
 | `POST` | `/sessions/:id/claim-code` | New code; **revokes the current device** |
 | `PATCH` | `/sessions/:id/policy` | Retune intervals mid-shift; the device picks it up from its next ingest response |
 | `POST` | `/sessions/:id/{pause\|resume\|complete\|cancel}` | `complete` recomputes exact distance and marks the order delivered |
+| `GET` | `/sessions/:id/messages` | The thread with the driver, newest first, with `deliveredAt` / `readAt` receipts |
+| `POST` | `/sessions/:id/messages` | `{ "body": "…" }` — ADMIN/DISPATCHER; 1–500 characters after trimming; 409 `SESSION_CLOSED` once the shipment is over |
 | `GET` | `/tracking/live` | Fleet snapshot; the socket takes over after this |
 | `GET` | `/tracking/sessions/:id/route?toleranceM=8&raw=false` | GeoJSON, simplified in Postgres |
 | `GET` | `/tracking/sessions/:id/playback?maxPoints=4000` | Positional tuples for the scrubber |
@@ -203,7 +205,9 @@ Nonces are single-use for `2 × HMAC_SKEW_SEC`.
   "batchId": "uuid", "serverTime": 1786531200,
   "sessionStatus": "ACTIVE", "pointsTotal": 4211, "distanceM": 187432.6,
   "policy": { "pingIntervalSec": 10, "idleIntervalSec": 60, "minDistanceM": 0 },
-  "nextAction": "CONTINUE"
+  "nextAction": "CONTINUE",
+  "releasedAppBuild": 24,
+  "pendingMessages": 0
 }
 ```
 
@@ -233,6 +237,38 @@ Accepted types: `STARTED`, `PAUSED`, `RESUMED`, `GPS_LOST`, `GPS_RECOVERED`,
 `NETWORK_LOST`, `NETWORK_RECOVERED`, `BUFFER_OVERFLOW`, `PERMISSION_REVOKED`,
 `BATTERY_LOW`, `SERVICE_KILLED`, `SERVICE_RESTORED`, `NOTE`.
 
+### Messages from the desk
+
+A dispatcher writes to the driver of one shipment from its session page. The
+phone has no push channel, so it fetches:
+
+- **`pendingMessages`** on every ingest response is the number of messages this
+  session's phone has not confirmed. Non-zero means *fetch now*. A tracking
+  phone therefore hears about a message within one upload cycle.
+- The fifteen-minute sync worker fetches when no recent ingest hint exists — the
+  only path for a phone that is not tracking.
+- Opening the app fetches too.
+
+`GET /driver/messages` → `{ "messages": [{ "id", "body", "sentAt", "readAt" }], "serverTime" }`,
+the last fifty, newest first.
+
+`POST /driver/messages/ack` (signed):
+
+```json
+{ "delivered": ["uuid", …], "read": [{ "id": "uuid", "at": 1786531200000 }] }
+```
+
+Idempotent; ids from another session are ignored. `at` is the moment the driver
+pressed *read*, on the corrected clock; the server clamps it between `sent_at`
+and now, and never before the delivery it already recorded. A read implies a
+delivery, so a message read before its delivery receipt landed takes the read
+time for both. Each change is announced to the session room as
+`session:message { sessionId, id, state: SENT|DELIVERED|READ, at }`.
+
+Builds before 1.9.0 (24) ignore the hint; their messages wait on the server and
+are delivered once the phone updates. The dashboard warns when the bound phone
+is on such a build.
+
 ### `GET /driver/session`, `POST /driver/stop`
 
 Current session state (and `serverTime` for clock correction), and a clean pause.
@@ -251,7 +287,7 @@ io('wss://track.karahoca.com', { path: '/realtime', auth: { token: accessToken }
 | Emit | Payload | Ack / stream |
 |---|---|---|
 | `subscribe:fleet` | — | acks with `fleet:snapshot`, then `fleet:positions` ~1/s |
-| `subscribe:session` | `{ sessionId }` | `position:update`, `route:backfill`, `session:event`, `session:state`, `ingest:stats` |
+| `subscribe:session` | `{ sessionId }` | `position:update`, `route:backfill`, `session:event`, `session:state`, `session:message`, `ingest:stats` |
 | `unsubscribe:fleet` / `unsubscribe:session` | | |
 | `ping` | — | `pong { serverTime }` |
 

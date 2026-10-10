@@ -9,6 +9,7 @@ import { downloadAuthed } from '@/lib/download';
 import { useSessionStream } from '@/lib/useRealtime';
 import { displayState, useNow } from '@/lib/signal';
 import { ShareLinks } from '@/components/ShareLinks';
+import { DriverMessages } from '@/components/DriverMessages';
 import { AppShell, useRequireAuth } from '@/components/AppShell';
 import {
   Badge,
@@ -439,6 +440,21 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                 {t.sessionDetail.regenerate}
               </Button>
             </section>
+          )}
+
+          {/*
+            Above the consignee's link: it is the one thing on this panel a
+            dispatcher does to the shipment while it is moving, and the order
+            page is where they choose who it reaches.
+          */}
+          {session && (
+            <DriverMessages
+              sessionId={id}
+              status={currentStatus}
+              driverName={session.driverName}
+              vehiclePlate={session.vehiclePlate}
+              device={session.device}
+            />
           )}
 
           {/*

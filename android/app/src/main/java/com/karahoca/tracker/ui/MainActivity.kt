@@ -25,7 +25,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -42,9 +44,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.karahoca.tracker.ui.theme.KaraHocaTheme
 import androidx.compose.foundation.BorderStroke
@@ -66,6 +70,8 @@ import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import com.karahoca.tracker.R
 import com.karahoca.tracker.update.UpdateState
+import com.karahoca.tracker.messages.DriverMessage
+import android.text.format.DateUtils
 import com.karahoca.tracker.util.AppLocale
 import com.karahoca.tracker.util.DistanceUnit
 import com.karahoca.tracker.util.formatRemaining
@@ -137,6 +143,15 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val update by viewModel.updateState.collectAsStateWithLifecycle()
+                val messages by viewModel.messages.collectAsStateWithLifecycle()
+
+                // Every return to the front, not only the first: the activity
+                // outlives hours in the background, and that is exactly when
+                // the desk writes.
+                LifecycleResumeEffect(viewModel) {
+                    viewModel.onForeground()
+                    onPauseOrDispose { }
+                }
 
                 LaunchedEffect(pendingStartUpdate, update) {
                     if (!pendingStartUpdate) return@LaunchedEffect
@@ -210,6 +225,17 @@ class MainActivity : ComponentActivity() {
                             unknownSourcesIntent = viewModel::unknownSourcesIntent,
                             onReturnedFromSettings = viewModel::onReturnedFromInstallSettings,
                         )
+
+                        /*
+                         * Outside every screen's scroll, for the same reason as
+                         * the update banner: a message about the gate the lorry
+                         * is approaching cannot be something the driver has to
+                         * scroll to find. Not on the claim screen, which has no
+                         * shipment for a message to be about.
+                         */
+                        if (state.screen != TrackerUiState.Screen.CLAIM) {
+                            MessageCard(messages = messages, onRead = viewModel::markMessageRead)
+                        }
 
                         /*
                          * Asked once, and only once, before a shipment goes
@@ -589,6 +615,156 @@ private fun UpdateBanner(
 }
 
 /**
+ * A message from the desk, on screen until the driver says they have read it.
+ *
+ * Oldest unread first, one at a time: a driver working through three messages
+ * reads them in the order they were written, and "1/3" says there are more
+ * behind this one. The body scrolls inside a bounded height, because a
+ * five-hundred-character message must not push the whole app below the fold.
+ *
+ * The button is the read receipt the dispatcher is waiting on, which is why it
+ * is a full-width primary button rather than a dismiss cross: closing a card
+ * and confirming you read it are different acts, and only one of them is worth
+ * reporting.
+ */
+@Composable
+private fun MessageCard(messages: List<DriverMessage>, onRead: (String) -> Unit) {
+    val unread = remember(messages) { messages.filter { !it.read }.sortedBy { it.sentAt } }
+    val message = unread.firstOrNull() ?: return
+    val onContainer = MaterialTheme.colorScheme.onPrimaryContainer
+
+    Surface(color = MaterialTheme.colorScheme.primaryContainer) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Chat,
+                    contentDescription = null,
+                    tint = onContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.message_title),
+                    color = onContainer,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (unread.size > 1) {
+                    Text(
+                        stringResource(R.string.message_position, "1", unread.size.toString()),
+                        color = onContainer,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(
+                    messageTime(message.sentAt),
+                    color = onContainer.copy(alpha = 0.75f),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+            // Keyed, so the next message starts at its top rather than at
+            // wherever the driver had scrolled the previous one to.
+            key(message.id) {
+                Text(
+                    message.body,
+                    color = onContainer,
+                    // The dispatcher's own words, in their own direction. Left
+                    // unspecified, Compose lays a paragraph out in the UI's
+                    // direction, so an Arabic message on a Turkish phone came
+                    // out left-aligned with its full stop on the wrong side.
+                    style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                    // Full width, or a short Arabic line is right-aligned
+                    // inside a box only as wide as itself, at the left.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            }
+            Button(
+                onClick = { onRead(message.id) },
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .height(48.dp),
+            ) {
+                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.message_read), fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/**
+ * The last few messages, read or not, on the screen the driver keeps open.
+ *
+ * The card above disappears the moment a message is read, and a driver who
+ * comes to the gate an hour later wants to check which bay it said. Five is
+ * enough for that; the dispatcher's page has the whole thread.
+ */
+@Composable
+private fun MessageHistory(messages: List<DriverMessage>) {
+    if (messages.isEmpty()) return
+    Spacer(Modifier.height(16.dp))
+    Section(padded = false) {
+        Text(
+            stringResource(R.string.messages_heading),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
+        )
+        messages.take(5).forEachIndexed { index, m ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        messageTime(m.sentAt),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!m.read) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            shape = MaterialTheme.shapes.extraSmall,
+                        ) {
+                            Text(
+                                stringResource(R.string.message_new),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
+                Text(
+                    m.body,
+                    style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                    fontWeight = if (m.read) FontWeight.Normal else FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+/**
+ * Time alone for today, day and month before it otherwise. Locale.ROOT for
+ * the same reason as the tracking screen's clock: Latin digits beside Latin
+ * plate and order numbers, whatever language the words are in.
+ */
+private fun messageTime(sentAt: Long): String =
+    SimpleDateFormat(if (DateUtils.isToday(sentAt)) "HH:mm" else "dd.MM HH:mm", Locale.ROOT)
+        .format(Date(sentAt))
+
+/**
  * The question that stands between a thumb and a dark shipment.
  *
  * Stopping is the only action in this app that cannot be undone from the phone:
@@ -772,6 +948,9 @@ private fun ReadinessScreen(state: TrackerUiState, viewModel: TrackerViewModel) 
                 state.customerName?.let { InfoRow(stringResource(R.string.label_customer), it) }
                 state.destination?.let { InfoRow(stringResource(R.string.label_destination), it) }
             }
+
+            val messages by viewModel.messages.collectAsStateWithLifecycle()
+            MessageHistory(messages)
 
             Spacer(Modifier.height(26.dp))
             Text(
@@ -1097,6 +1276,9 @@ private fun TrackingScreen(
                     if (state.lastSyncAt > 0) time.format(Date(state.lastSyncAt)) else "—",
                 )
             }
+
+            val messages by viewModel.messages.collectAsStateWithLifecycle()
+            MessageHistory(messages)
 
             if (state.pendingCount > 50) {
                 Spacer(Modifier.height(12.dp))

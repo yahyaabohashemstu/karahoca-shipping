@@ -168,4 +168,13 @@
     <string name="stop_confirm_no">Vazgeç</string>
     <string name="resume_alert_title">Takip yeniden başlatıldı</string>
     <string name="resume_alert_body">Sevkiyat sorumlusu takibi tekrar açtı. Konum gönderimi sürüyor.</string>
+
+    <!-- Messages from the desk. The body is the dispatcher's own words; only these frame it. -->
+    <string name="message_channel">Merkezden mesajlar</string>
+    <string name="message_channel_desc">Sevkiyat sorumlusunun size yazdığı mesajlar.</string>
+    <string name="message_title">Merkezden mesaj</string>
+    <string name="message_read">Okudum</string>
+    <string name="message_position">%1$s/%2$s</string>
+    <string name="messages_heading">Merkezden gelen mesajlar</string>
+    <string name="message_new">Yeni</string>
 </resources>

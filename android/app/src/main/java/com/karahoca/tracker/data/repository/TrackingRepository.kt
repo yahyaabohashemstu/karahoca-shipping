@@ -13,6 +13,7 @@ import com.karahoca.tracker.data.local.PendingEventDao
 import com.karahoca.tracker.data.local.PendingEventEntity
 import com.karahoca.tracker.data.local.SessionStore
 import com.karahoca.tracker.update.UpdateRepository
+import com.karahoca.tracker.messages.MessageRepository
 import com.karahoca.tracker.data.remote.ApiFailure
 import com.karahoca.tracker.data.remote.ClaimRequest
 import com.karahoca.tracker.data.remote.DriverEventRequest
@@ -71,6 +72,14 @@ class TrackingRepository @Inject constructor(
      * then does happens on its own scope and its own HTTP client.
      */
     private val updates: UpdateRepository,
+    /*
+     * Messages from the desk, for the same reason as the updater: the ingest
+     * response is the one thing a working phone reads often enough to stand in
+     * for a push. The hint is handed over and forgotten — the fetch it causes
+     * runs on the message repository's own scope, never inside this class's
+     * upload lock.
+     */
+    private val messages: MessageRepository,
 ) {
 
     companion object {
@@ -467,6 +476,7 @@ class TrackingRepository @Inject constructor(
                  * every ten seconds and the hint is on every one of them.
                  */
                 runCatching { updates.onServerHint(it.releasedAppBuild) }
+                runCatching { messages.onServerHint(it.pendingMessages) }
                 it.policy?.let { policy ->
                     store.savePolicy(
                         policy.pingIntervalSec,
@@ -634,6 +644,18 @@ class TrackingRepository @Inject constructor(
         )
         body.reference
     }
+
+    /**
+     * Refresh the access token if it is about to lapse.
+     *
+     * For callers outside the upload path — opening the app, fetching
+     * messages — on a phone that may have spent a day switched off, whose
+     * token then expired while nothing was uploading to notice.
+     */
+    suspend fun refreshTokenIfStale(): Boolean =
+        if (store.sessionId() == null) false
+        else if (!store.tokenNeedsRefresh()) true
+        else uploadMutex.withLock { if (store.tokenNeedsRefresh()) refreshToken() else true }
 
     private suspend fun refreshToken(): Boolean {
         val refresh = store.refreshToken() ?: return false

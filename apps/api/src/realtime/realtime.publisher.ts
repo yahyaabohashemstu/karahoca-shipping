@@ -224,6 +224,24 @@ export class RealtimePublisher implements OnApplicationShutdown {
     this.server.to(ROOM_ALERTS).emit('fleet:alert-acknowledged', payload);
   }
 
+  /**
+   * A message to the driver changed state: sent, reached the phone, or read.
+   *
+   * Session room only. The fleet overview has nothing to draw for it, and the
+   * only person who needs the tick to move is the one looking at that thread —
+   * who otherwise sits refreshing a page to find out whether the driver has
+   * seen "unload at gate 3" yet.
+   */
+  driverMessage(update: {
+    sessionId: string;
+    id: string;
+    state: 'SENT' | 'DELIVERED' | 'READ';
+    at: string;
+  }): void {
+    if (!this.server) return;
+    this.server.to(roomSession(update.sessionId)).emit('session:message', update);
+  }
+
   /** Per-batch ingest telemetry, useful on the session detail page. */
   ingestStats(
     sessionId: string,

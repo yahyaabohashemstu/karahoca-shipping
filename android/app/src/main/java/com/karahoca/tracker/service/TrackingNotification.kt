@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
 import com.karahoca.tracker.R
+import com.karahoca.tracker.messages.MessageActionReceiver
 import com.karahoca.tracker.ui.MainActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -40,10 +41,19 @@ class TrackingNotification @Inject constructor(
         const val CHANNEL_ID = "karahoca_tracking"
         private const val CHANNEL_ID_ALERTS = "karahoca_alerts"
         private const val CHANNEL_ID_UPDATE = "karahoca_update"
+        private const val CHANNEL_ID_MESSAGES = "karahoca_messages"
 
         /** The update prompt. 4711 is the tracking service's. */
         private const val UPDATE_ID = 4712
         private const val CONFIRM_INSTALL_ID = 4713
+
+        /**
+         * Every message notification shares this id and is told apart by its
+         * tag, the message's own id — so each message is its own notification,
+         * a second one never replaces the first, and reading one cancels
+         * exactly that one.
+         */
+        private const val MESSAGE_ID = 4720
     }
 
     private val manager = NotificationManagerCompat.from(context)
@@ -97,6 +107,25 @@ class TrackingNotification @Inject constructor(
                 setShowBadge(true)
                 enableVibration(false)
                 setSound(null, null)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            },
+        )
+
+        /*
+         * HIGH, with the default sound and vibration: the one channel in this
+         * app that is a person talking to the driver. A message that arrives
+         * silently is a message read at the next fuel stop, after the gate it
+         * was about.
+         */
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID_MESSAGES,
+                context.getString(R.string.message_channel),
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = context.getString(R.string.message_channel_desc)
+                enableVibration(true)
+                setShowBadge(true)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             },
         )
@@ -342,6 +371,57 @@ class TrackingNotification @Inject constructor(
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(openApp)
+
+    // =========================================================================
+    // Messages from the desk
+    // =========================================================================
+
+    /**
+     * One message, as its own notification.
+     *
+     * The body is the dispatcher's own words, in whatever language they wrote
+     * them; only the heading is ours. Tapping it opens the app, where the
+     * message waits on a card until the driver presses "read" — and the same
+     * button sits on the notification, for a driver who has read it in the
+     * shade and has no reason to open anything.
+     */
+    @Suppress("MissingPermission")
+    fun driverMessage(id: String, body: String, sentAt: Long, orderNumber: String?) {
+        val read = PendingIntent.getBroadcast(
+            context,
+            // Per message, or every notification's button would carry the
+            // extras of whichever was posted last.
+            id.hashCode(),
+            Intent(context, MessageActionReceiver::class.java)
+                .setAction(MessageActionReceiver.ACTION_READ)
+                .putExtra(MessageActionReceiver.EXTRA_MESSAGE_ID, id),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_MESSAGES)
+            .setSmallIcon(R.drawable.ic_tracking)
+            .setColor(ContextCompat.getColor(context, R.color.brand_primary))
+            .setContentTitle(context.getString(R.string.message_title))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            // Which shipment — an identifier, never translated.
+            .setSubText(orderNumber)
+            .setWhen(sentAt.takeIf { it > 0 } ?: System.currentTimeMillis())
+            .setShowWhen(true)
+            .setContentIntent(openApp)
+            .addAction(0, context.getString(R.string.message_read), read)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+        runCatching { manager.notify(messageTag(id), MESSAGE_ID, notification) }
+    }
+
+    fun cancelMessage(id: String) {
+        runCatching { manager.cancel(messageTag(id), MESSAGE_ID) }
+    }
+
+    private fun messageTag(id: String) = "msg:$id"
 
     /** High-importance alert. Used when the session is revoked or ends remotely. */
     @Suppress("MissingPermission")

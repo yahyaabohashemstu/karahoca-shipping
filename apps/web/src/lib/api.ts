@@ -384,6 +384,22 @@ export interface SessionDetail extends FleetPosition {
   events: SessionEvent[];
 }
 
+/**
+ * One message from the desk to the driver of a shipment.
+ *
+ * The three timestamps are three different answers to "did they get it?":
+ * the dispatcher pressed Send, the phone fetched it and put up a notification,
+ * the driver pressed the read button.
+ */
+export interface DriverMessage {
+  id: string;
+  body: string;
+  sentAt: string;
+  sentByName: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+}
+
 // -----------------------------------------------------------------------------
 // Alerts — the exception desk
 // -----------------------------------------------------------------------------
@@ -495,6 +511,15 @@ export const api = {
     }),
 
   revokeShareLink: (id: string) => apiFetch<void>(`/share/${id}`, { method: 'DELETE' }),
+
+  driverMessages: (sessionId: string) =>
+    apiFetch<DriverMessage[]>(`/sessions/${sessionId}/messages`),
+
+  sendDriverMessage: (sessionId: string, body: string) =>
+    apiFetch<DriverMessage>(`/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
 
   sessionAction: (id: string, action: 'pause' | 'resume' | 'complete' | 'cancel', reason?: string) =>
     apiFetch<unknown>(`/sessions/${id}/${action}`, {

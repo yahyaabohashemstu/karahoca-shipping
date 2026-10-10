@@ -38,4 +38,14 @@ interface TrackingApi {
 
     @POST("driver/stop")
     suspend fun stop(): Response<SimpleAck>
+
+    // ---- Messages from the desk ---------------------------------------------
+
+    /** The last fifty for this session, newest first. Unsigned, like any GET. */
+    @GET("driver/messages")
+    suspend fun messages(): Response<DriverMessagesResponse>
+
+    /** Delivery and read receipts. Idempotent, so a lost response is harmless. */
+    @POST("driver/messages/ack")
+    suspend fun ackMessages(@Body body: MessageAckRequest): Response<SimpleAck>
 }

@@ -179,8 +179,51 @@ data class IngestResponse(
      * Absent from older servers, which is why it is nullable.
      */
     val releasedAppBuild: Int? = null,
+    /**
+     * Messages from the desk this phone has not yet confirmed receiving.
+     *
+     * The same piggyback as [releasedAppBuild], and for the same reason: this
+     * app has no push channel and this is the response it reads every few
+     * seconds. Non-zero means "fetch /driver/messages". Absent from servers
+     * that predate messages, which is why it is nullable — and null is not
+     * zero: it means nobody said.
+     */
+    val pendingMessages: Int? = null,
     /** "CONTINUE" | "PAUSE" — an instruction, not something the client infers. */
     val nextAction: String? = null,
+)
+
+// =============================================================================
+// Messages from the desk
+// =============================================================================
+
+@Serializable
+data class DriverMessageDto(
+    val id: String,
+    val body: String,
+    /** ISO-8601 from the server. */
+    val sentAt: String,
+    /** Set once any phone on this session has said the driver read it. */
+    val readAt: String? = null,
+)
+
+@Serializable
+data class DriverMessagesResponse(
+    val messages: List<DriverMessageDto> = emptyList(),
+    val serverTime: Long = 0,
+)
+
+@Serializable
+data class ReadReceiptDto(
+    val id: String,
+    /** Epoch millis on the server-corrected clock: when the button was pressed. */
+    val at: Long? = null,
+)
+
+@Serializable
+data class MessageAckRequest(
+    val delivered: List<String> = emptyList(),
+    val read: List<ReadReceiptDto> = emptyList(),
 )
 
 @Serializable
